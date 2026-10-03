@@ -1,0 +1,340 @@
+{
+  "schemaVersion": 2,
+  "status": "design-proposal",
+  "description": "学科备考工作台与学习空间的设计初值；尚未验证应用接入。",
+  "defaultTheme": "paper",
+  "themeChoices": [
+    "paper",
+    "light",
+    "dark",
+    "system"
+  ],
+  "systemThemeMapping": {
+    "light": "light",
+    "dark": "dark"
+  },
+  "themes": {
+    "paper": {
+      "surface": {
+        "app": "#F7F3E8",
+        "sidebar": "#EFE9D9",
+        "document": "#FFFDF7",
+        "card": "#F3EDDD",
+        "control": "#FFFCF3"
+      },
+      "text": {
+        "primary": "#292720",
+        "secondary": "#625E54",
+        "muted": "#6B6558"
+      },
+      "border": {
+        "divider": "#DDD5C4",
+        "control": "#8B806D"
+      },
+      "action": {
+        "accent": "#B64532",
+        "accentText": "#FFFDF7",
+        "focus": "#B64532"
+      },
+      "status": {
+        "verified": "#356B46",
+        "pending": "#88601A",
+        "error": "#A23232",
+        "info": "#365F82"
+      }
+    },
+    "light": {
+      "surface": {
+        "app": "#F5F6F7",
+        "sidebar": "#ECEFF1",
+        "document": "#FFFFFF",
+        "card": "#F7F8F9",
+        "control": "#FFFFFF"
+      },
+      "text": {
+        "primary": "#24282D",
+        "secondary": "#59636F",
+        "muted": "#626B75"
+      },
+      "border": {
+        "divider": "#DDE1E6",
+        "control": "#76818D"
+      },
+      "action": {
+        "accent": "#A93F2E",
+        "accentText": "#FFFFFF",
+        "focus": "#A93F2E"
+      },
+      "status": {
+        "verified": "#2F6642",
+        "pending": "#805B16",
+        "error": "#A52F32",
+        "info": "#315F88"
+      }
+    },
+    "dark": {
+      "surface": {
+        "app": "#202321",
+        "sidebar": "#272B28",
+        "document": "#1B1F1C",
+        "card": "#292E29",
+        "control": "#242A25"
+      },
+      "text": {
+        "primary": "#EDEFE8",
+        "secondary": "#BAC3B8",
+        "muted": "#A2AD9F"
+      },
+      "border": {
+        "divider": "#444C43",
+        "control": "#929D8F"
+      },
+      "action": {
+        "accent": "#E09A83",
+        "accentText": "#241F1B",
+        "focus": "#E09A83"
+      },
+      "status": {
+        "verified": "#9BC99E",
+        "pending": "#E4C077",
+        "error": "#EAA09B",
+        "info": "#A0C3E6"
+      }
+    }
+  },
+  "accentPresets": {
+    "cinnabar": {
+      "paper": {
+        "accent": "#B64532",
+        "text": "#FFFDF7"
+      },
+      "light": {
+        "accent": "#A93F2E",
+        "text": "#FFFFFF"
+      },
+      "dark": {
+        "accent": "#E09A83",
+        "text": "#241F1B"
+      }
+    },
+    "teal": {
+      "paper": {
+        "accent": "#25645A",
+        "text": "#FFFDF7"
+      },
+      "light": {
+        "accent": "#25645A",
+        "text": "#FFFFFF"
+      },
+      "dark": {
+        "accent": "#88C6B3",
+        "text": "#18251F"
+      }
+    },
+    "indigo": {
+      "paper": {
+        "accent": "#48548C",
+        "text": "#FFFDF7"
+      },
+      "light": {
+        "accent": "#48548C",
+        "text": "#FFFFFF"
+      },
+      "dark": {
+        "accent": "#AAB9EB",
+        "text": "#1E2231"
+      }
+    }
+  },
+  "geometryPx": {
+    "defaultWindow": {
+      "width": 1440,
+      "height": 960
+    },
+    "minimumWindow": {
+      "width": 1024,
+      "height": 640
+    },
+    "titleBarHeight": 44,
+    "activityBarWidth": 64,
+    "projectTree": {
+      "default": 240,
+      "min": 180,
+      "max": 360
+    },
+    "documentTabHeight": 36,
+    "rightPanel": {
+      "default": 300,
+      "min": 260,
+      "max": 440
+    },
+    "rightToolRailWidth": 32,
+    "bottomPanel": {
+      "collapsed": 28,
+      "expandedDefault": 200
+    },
+    "statusBarHeight": 24,
+    "cardRadius": 8,
+    "controlRadius": 5,
+    "spacing": [
+      4,
+      8,
+      12,
+      16,
+      24,
+      32
+    ],
+    "wideLayoutThreshold": 1280,
+    "singleColumnThreshold": 800,
+    "classroom": {
+      "sceneSidebar": {
+        "default": 200,
+        "min": 160,
+        "max": 280
+      },
+      "discussionPanel": {
+        "default": 320,
+        "min": 260,
+        "max": 420
+      },
+      "canvasFit": "contain",
+      "preserveSceneCoordinates": true,
+      "showSourceEntry": true
+    }
+  },
+  "appearanceDefaults": {
+    "theme": "paper",
+    "accentPreset": "cinnabar",
+    "uiFont": "system-sans",
+    "readingFont": "system-sans",
+    "readingFontSizePx": 18,
+    "readingLineHeight": 1.8,
+    "readingMaxWidthPx": 760,
+    "zoom": 1,
+    "density": "standard",
+    "reduceMotion": "system"
+  },
+  "appearanceLimits": {
+    "readingFontSizePx": {
+      "min": 16,
+      "max": 24
+    },
+    "readingLineHeight": {
+      "min": 1.5,
+      "max": 2
+    },
+    "readingMaxWidthPx": {
+      "min": 640,
+      "max": 920
+    },
+    "zoom": {
+      "min": 0.8,
+      "max": 1.5,
+      "step": 0.05
+    },
+    "density": [
+      "standard",
+      "compact"
+    ],
+    "allowArbitraryCss": false,
+    "allowExecutableSkins": false
+  },
+  "teachingDefaults": {
+    "learningMode": "beginner",
+    "explanation": "intuitive",
+    "hintDepth": "stepwise",
+    "exerciseBalance": "balanced",
+    "selfExplanation": true,
+    "everydayExamples": "moderate",
+    "extraPreference": ""
+  },
+  "teachingLimits": {
+    "learningMode": [
+      "beginner",
+      "review"
+    ],
+    "explanation": [
+      "intuitive",
+      "rigorous",
+      "concise"
+    ],
+    "hintDepth": [
+      "light",
+      "stepwise",
+      "full"
+    ],
+    "exerciseBalance": [
+      "explanation-first",
+      "balanced",
+      "practice-first"
+    ],
+    "everydayExamples": [
+      "moderate",
+      "minimal"
+    ],
+    "extraPreferenceMaxCharacters": 500,
+    "freezePerRun": true,
+    "mayOverrideSourceContract": false
+  },
+  "classroomDefaults": {
+    "mode": "teacher-led",
+    "teacherStyle": "stepwise",
+    "peerCount": 1,
+    "peerParticipation": "moderate",
+    "whiteboardEnabled": true,
+    "visualization": "recommended",
+    "ttsEnabled": false,
+    "focusMode": false
+  },
+  "classroomLimits": {
+    "mode": [
+      "teacher-led",
+      "self-study",
+      "discussion"
+    ],
+    "teacherStyle": [
+      "socratic",
+      "stepwise",
+      "concise"
+    ],
+    "peerCount": {
+      "min": 0,
+      "max": 2
+    },
+    "peerParticipation": [
+      "quiet",
+      "moderate"
+    ],
+    "visualization": [
+      "recommended",
+      "manual"
+    ],
+    "maxCallsPerRound": 4,
+    "maxPeerTurnsPerRound": 2,
+    "shareBudgetAcrossRoles": true,
+    "cumulativeSessionBudgetRequired": true,
+    "peerMaySubmitHumanAnswer": false,
+    "peerMayWriteWhiteboardByDefault": false,
+    "mayOverrideSourceContract": false,
+    "freezeConfigurationPerTurn": true,
+    "newSubjectClaimsRequireReview": true
+  },
+  "classroomDisplay": {
+    "actorLabels": {
+      "human_learner": "你",
+      "teacher_ai": "老师 · AI",
+      "peer_ai": "同学 · AI",
+      "system": "系统"
+    },
+    "roleColorsUseThemeSemantics": {
+      "teacher_ai": "status.info",
+      "peer_ai": "text.secondary",
+      "human_learner": "action.accent"
+    },
+    "alwaysShowAiRoleLabel": true,
+    "unverifiedContentArea": "candidate-only",
+    "applyReadingFontSizeToSceneCoordinates": false,
+    "widgetRestartRestore": "explicit-versioned-snapshot-only",
+    "independentPracticePeerAnswering": false
+  }
+}

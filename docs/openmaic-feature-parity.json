@@ -1,0 +1,1638 @@
+{
+  "schemaVersion": 1,
+  "recordedOn": "2026-10-03",
+  "baseline": {
+    "root": "F:/file/OpenMAIC-main",
+    "version": "1.1.1",
+    "next": "16.3.3",
+    "react": "19.2.3",
+    "scope": "local source; no live provider or full upstream test verification"
+  },
+  "policy": {
+    "allBaselineProductCapabilitiesRequired": true,
+    "partialDoesNotCountAsComplete": true,
+    "phaseDoesNotRemoveRequirement": true,
+    "preserveStudySourceAndIdentityRules": true,
+    "defaultPersistence": "SQLite via local service; upstream storage contract adapters",
+    "notes": "能力按产品行为对齐；实验开关、旧/新renderer或chat内部实现不要求重复生产维护。"
+  },
+  "features": [
+    {
+      "id": "OMA-001",
+      "category": "library",
+      "name": "课程库与搜索/筛选",
+      "required": true,
+      "status": "planned",
+      "phase": "F",
+      "upstreamPaths": [
+        "app/api/stages",
+        "app/api/folders",
+        "lib/persistence/library.ts"
+      ],
+      "acceptance": "可列出并打开项目课程，显示真实场景和资源状态",
+      "evidence": []
+    },
+    {
+      "id": "OMA-002",
+      "category": "library",
+      "name": "课程文件夹与成员管理",
+      "required": true,
+      "status": "partial",
+      "phase": "F",
+      "upstreamPaths": [
+        "app/api/stages",
+        "app/api/folders",
+        "lib/persistence/library.ts"
+      ],
+      "acceptance": "文件夹创建重命名删除、课程归档和空文件夹可重启读回",
+      "evidence": [
+        "SQLite schema v8 和 /api/folders 支持项目分区创建、重命名、成员归组/取消分组与 ungroup 删除，tests/classroom-document-organization.test.ts 回归通过；remove 级联删除明确拒绝，课程库组织 UI 尚未接入。"
+      ]
+    },
+    {
+      "id": "OMA-003",
+      "category": "library",
+      "name": "课程发布/撤回与访问状态",
+      "required": true,
+      "status": "planned",
+      "phase": "F",
+      "upstreamPaths": [
+        "app/api/stages",
+        "app/api/folders",
+        "lib/persistence/library.ts"
+      ],
+      "acceptance": "发布版本冻结，撤回后访问规则生效且保留历史",
+      "evidence": []
+    },
+    {
+      "id": "OMA-004",
+      "category": "generation",
+      "name": "主题与资料创建课程",
+      "required": true,
+      "status": "planned",
+      "phase": "B",
+      "upstreamPaths": [
+        "app/api/generate-classroom",
+        "app/api/generate",
+        "lib/server/scene-generation.ts"
+      ],
+      "acceptance": "相同来源包生成可追踪草案，缺资料明确阻断",
+      "evidence": []
+    },
+    {
+      "id": "OMA-005",
+      "category": "generation",
+      "name": "大纲生成、预览与人工调整",
+      "required": true,
+      "status": "planned",
+      "phase": "B",
+      "upstreamPaths": [
+        "app/api/generate-classroom",
+        "app/api/generate",
+        "lib/server/scene-generation.ts"
+      ],
+      "acceptance": "大纲可修改再生成，稳定条目标识不靠序号映射",
+      "evidence": []
+    },
+    {
+      "id": "OMA-006",
+      "category": "generation",
+      "name": "幻灯片/测验/互动/PBL场景生成",
+      "required": true,
+      "status": "planned",
+      "phase": "B",
+      "upstreamPaths": [
+        "app/api/generate-classroom",
+        "app/api/generate",
+        "lib/server/scene-generation.ts"
+      ],
+      "acceptance": "四类场景均通过DSL校验并有内容与资产",
+      "evidence": []
+    },
+    {
+      "id": "OMA-007",
+      "category": "generation",
+      "name": "授课动作和角色档案生成",
+      "required": true,
+      "status": "planned",
+      "phase": "B",
+      "upstreamPaths": [
+        "app/api/generate-classroom",
+        "app/api/generate",
+        "lib/server/scene-generation.ts"
+      ],
+      "acceptance": "动作与角色真实产生且受权限/证据检查",
+      "evidence": []
+    },
+    {
+      "id": "OMA-008",
+      "category": "generation",
+      "name": "渐进生成、停止、局部重试与继续",
+      "required": true,
+      "status": "planned",
+      "phase": "B",
+      "upstreamPaths": [
+        "app/api/generate-classroom",
+        "app/api/generate",
+        "lib/server/scene-generation.ts"
+      ],
+      "acceptance": "失败重试不重复文档/资产，停止后无新提交",
+      "evidence": []
+    },
+    {
+      "id": "OMA-009",
+      "category": "generation",
+      "name": "图片/视频/音频媒体任务编排",
+      "required": true,
+      "status": "planned",
+      "phase": "B",
+      "upstreamPaths": [
+        "app/api/generate-classroom",
+        "app/api/generate",
+        "lib/server/scene-generation.ts"
+      ],
+      "acceptance": "进度来自真实任务，错误可见，资源完成后持久绑定",
+      "evidence": []
+    },
+    {
+      "id": "OMA-010",
+      "category": "pro_runtime",
+      "name": "Pro对话式课程规划与修改",
+      "required": true,
+      "status": "planned",
+      "phase": "D",
+      "upstreamPaths": [
+        "lib/server/agent-runtime",
+        "app/api/agent",
+        "components/workbench",
+        "skills/agent-runtime"
+      ],
+      "acceptance": "多轮会话能建立、修订课程并展示真实结果",
+      "evidence": []
+    },
+    {
+      "id": "OMA-011",
+      "category": "pro_runtime",
+      "name": "工作台直接挂载真实课堂",
+      "required": true,
+      "status": "planned",
+      "phase": "D",
+      "upstreamPaths": [
+        "lib/server/agent-runtime",
+        "app/api/agent",
+        "components/workbench",
+        "skills/agent-runtime"
+      ],
+      "acceptance": "使用同一ClassroomSurface，不以预览图替代",
+      "evidence": []
+    },
+    {
+      "id": "OMA-012",
+      "category": "pro_runtime",
+      "name": "持久会话、消息、事件与历史",
+      "required": true,
+      "status": "planned",
+      "phase": "D",
+      "upstreamPaths": [
+        "lib/server/agent-runtime",
+        "app/api/agent",
+        "components/workbench",
+        "skills/agent-runtime"
+      ],
+      "acceptance": "重启读回会话，事件顺序稳定，历史属于当前项目",
+      "evidence": []
+    },
+    {
+      "id": "OMA-013",
+      "category": "pro_runtime",
+      "name": "取消、继续、干预与任务接管",
+      "required": true,
+      "status": "planned",
+      "phase": "D",
+      "upstreamPaths": [
+        "lib/server/agent-runtime",
+        "app/api/agent",
+        "components/workbench",
+        "skills/agent-runtime"
+      ],
+      "acceptance": "租约/取消/重启接管可验证，无重复业务动作",
+      "evidence": []
+    },
+    {
+      "id": "OMA-014",
+      "category": "pro_runtime",
+      "name": "会话材料上传/引用/提取",
+      "required": true,
+      "status": "planned",
+      "phase": "D",
+      "upstreamPaths": [
+        "lib/server/agent-runtime",
+        "app/api/agent",
+        "components/workbench",
+        "skills/agent-runtime"
+      ],
+      "acceptance": "材料状态与解析结果持久，原件和出处可打开",
+      "evidence": []
+    },
+    {
+      "id": "OMA-015",
+      "category": "pro_runtime",
+      "name": "课程工具与24个内置教学skill",
+      "required": true,
+      "status": "planned",
+      "phase": "D",
+      "upstreamPaths": [
+        "lib/server/agent-runtime",
+        "app/api/agent",
+        "components/workbench",
+        "skills/agent-runtime"
+      ],
+      "acceptance": "24技能可加载并调用受控工具，有固定版本",
+      "evidence": []
+    },
+    {
+      "id": "OMA-016",
+      "category": "pro_runtime",
+      "name": "自定义skill创建、导入、管理与导出",
+      "required": true,
+      "status": "planned",
+      "phase": "D",
+      "upstreamPaths": [
+        "lib/server/agent-runtime",
+        "app/api/agent",
+        "components/workbench",
+        "skills/agent-runtime"
+      ],
+      "acceptance": "技能可重启恢复，用户文本不能越权",
+      "evidence": []
+    },
+    {
+      "id": "OMA-017",
+      "category": "pro_runtime",
+      "name": "外部工作台skill与生成任务API",
+      "required": true,
+      "status": "planned",
+      "phase": "D",
+      "upstreamPaths": [
+        "lib/server/agent-runtime",
+        "app/api/agent",
+        "components/workbench",
+        "skills/agent-runtime"
+      ],
+      "acceptance": "技能包与任务API实际可用，凭据和项目授权生效",
+      "evidence": []
+    },
+    {
+      "id": "OMA-018",
+      "category": "slides_editing",
+      "name": "完整课件DSL与版本迁移",
+      "required": true,
+      "status": "partial",
+      "phase": "B",
+      "upstreamPaths": [
+        "packages/@openmaic/dsl",
+        "packages/@openmaic/renderer",
+        "packages/@openmaic/editor",
+        "components/slide-renderer",
+        "lib/edit"
+      ],
+      "acceptance": "四类scene校验与迁移通过，来源侧表版本不丢",
+      "evidence": [
+        "apps/learning/app/api/maic/documents/[[...segments]]/route.ts：写入前跑真实 validateStage/validateScene；dslVersionState 判定未来版本并返回 409 FUTURE_VERSION",
+        "tests/classroom-document-store.test.ts「高于当前应用支持的 DSL 版本被显式拒绝」：上游客户端得到 DocumentVersionError(kind=future) 且落库文档指纹未变"
+      ]
+    },
+    {
+      "id": "OMA-019",
+      "category": "slides_editing",
+      "name": "文字/公式/图形/图片/表格/图表/媒体课件",
+      "required": true,
+      "status": "partial",
+      "phase": "B",
+      "upstreamPaths": [
+        "packages/@openmaic/dsl",
+        "packages/@openmaic/renderer",
+        "packages/@openmaic/editor",
+        "components/slide-renderer",
+        "lib/edit"
+      ],
+      "acceptance": "所有已支持元素可渲染、编辑、保存与导出",
+      "evidence": [
+        "apps/learning/lib/classroom/reviewed-lesson.ts 用真实 Slide/PPTTextElement 形状；scripts/smoke-electron-boundary.cjs 断言 @openmaic/renderer 画出 slide-element-slide-1-title",
+        "已增加实际 PNG 图片与随包公式字体，按项目授权下载并校验摘要后呈现；表格/图表/媒体、完整编辑与导出仍待接入（见 OMA-075）"
+      ]
+    },
+    {
+      "id": "OMA-020",
+      "category": "slides_editing",
+      "name": "Pro画布拖动/缩放/旋转/多选",
+      "required": true,
+      "status": "planned",
+      "phase": "B",
+      "upstreamPaths": [
+        "packages/@openmaic/dsl",
+        "packages/@openmaic/renderer",
+        "packages/@openmaic/editor",
+        "components/slide-renderer",
+        "lib/edit"
+      ],
+      "acceptance": "真实交互编辑，重开几何与样式正确",
+      "evidence": []
+    },
+    {
+      "id": "OMA-021",
+      "category": "slides_editing",
+      "name": "元素属性、样式和富文本编辑",
+      "required": true,
+      "status": "planned",
+      "phase": "B",
+      "upstreamPaths": [
+        "packages/@openmaic/dsl",
+        "packages/@openmaic/renderer",
+        "packages/@openmaic/editor",
+        "components/slide-renderer",
+        "lib/edit"
+      ],
+      "acceptance": "编辑模型合法且有撤销恢复语义",
+      "evidence": []
+    },
+    {
+      "id": "OMA-022",
+      "category": "slides_editing",
+      "name": "场景增删、排序、复制与局部重生成",
+      "required": true,
+      "status": "planned",
+      "phase": "B",
+      "upstreamPaths": [
+        "packages/@openmaic/dsl",
+        "packages/@openmaic/renderer",
+        "packages/@openmaic/editor",
+        "components/slide-renderer",
+        "lib/edit"
+      ],
+      "acceptance": "场景稳定ID，发布历史不被原地改写",
+      "evidence": []
+    },
+    {
+      "id": "OMA-023",
+      "category": "slides_editing",
+      "name": "AI编辑及校验后的JSON Patch",
+      "required": true,
+      "status": "planned",
+      "phase": "B",
+      "upstreamPaths": [
+        "packages/@openmaic/dsl",
+        "packages/@openmaic/renderer",
+        "packages/@openmaic/editor",
+        "components/slide-renderer",
+        "lib/edit"
+      ],
+      "acceptance": "非法修改拒绝，合法修改形成新草案与审阅记录",
+      "evidence": []
+    },
+    {
+      "id": "OMA-024",
+      "category": "slides_editing",
+      "name": "编辑历史与多会话修改记录",
+      "required": true,
+      "status": "planned",
+      "phase": "B",
+      "upstreamPaths": [
+        "packages/@openmaic/dsl",
+        "packages/@openmaic/renderer",
+        "packages/@openmaic/editor",
+        "components/slide-renderer",
+        "lib/edit"
+      ],
+      "acceptance": "修改可追踪，切会话不混淆文档版本",
+      "evidence": []
+    },
+    {
+      "id": "OMA-025",
+      "category": "classroom",
+      "name": "真实课堂加载与四类场景导航",
+      "required": true,
+      "status": "partial",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/classroom/ClassroomSurface.tsx",
+        "components/stage",
+        "lib/chat/pi",
+        "lib/orchestration",
+        "lib/playback",
+        "lib/whiteboard"
+      ],
+      "acceptance": "ClassroomSurface实际运行，slide/quiz/interactive/pbl可进入",
+      "evidence": [
+        "apps/learning/components/classroom-surface.tsx 以 @openmaic/storage 的 HttpDocumentStore 读文档并按 order 导航 slide/quiz/interactive",
+        "固定课堂采用上游 PlaybackEngine/游标/导航/时序代码、SlideCanvas 和 HttpRuntimeStore；ClassroomSurface/Stage/加载与分派为独立编写的窄适配，完整原宿主、教师/白板/Director/PBL未接入，不证明完整课堂能力。",
+        "实际目录包 UI 验收已覆盖原生选择器、鼠标作答、离线失败/手动重试、答案与过程整应用重启读回、iframe 无 Node/preload、服务崩溃恢复和凭据轮换；独立干净 Windows 验收仍待完成。",
+        "tests/classroom-read-guards.test.ts：页面读取无权威写入；演示导入需明确确认；下发前重算内容摘要、复验来源；来源失效保留历史并拒绝下发。"
+      ]
+    },
+    {
+      "id": "OMA-026",
+      "category": "classroom",
+      "name": "播放/暂停/速度/动作级导航",
+      "required": true,
+      "status": "partial",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/classroom/ClassroomSurface.tsx",
+        "components/stage",
+        "lib/chat/pi",
+        "lib/orchestration",
+        "lib/playback",
+        "lib/whiteboard"
+      ],
+      "acceptance": "播放动作与控制生效且恢复位置准确",
+      "evidence": [
+        "openmaic-adaptation 直接适配上游 PlaybackEngine、类型、动作导航与时序，tests/classroom-upstream-adaptation.test.ts 覆盖 pause/resume/cancel/complete。固定课件无教师动作，未支持动作明确拒绝；真实教师/白板及动作级恢复仍待接入。"
+      ]
+    },
+    {
+      "id": "OMA-027",
+      "category": "classroom",
+      "name": "沉浸模式与键盘操作",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/classroom/ClassroomSurface.tsx",
+        "components/stage",
+        "lib/chat/pi",
+        "lib/orchestration",
+        "lib/playback",
+        "lib/whiteboard"
+      ],
+      "acceptance": "键盘控制、退出和窗口缩放可走查",
+      "evidence": []
+    },
+    {
+      "id": "OMA-028",
+      "category": "classroom",
+      "name": "多角色教师/同学档案与配置",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/classroom/ClassroomSurface.tsx",
+        "components/stage",
+        "lib/chat/pi",
+        "lib/orchestration",
+        "lib/playback",
+        "lib/whiteboard"
+      ],
+      "acceptance": "角色身份持续显示，可配置参与者并关闭同学",
+      "evidence": []
+    },
+    {
+      "id": "OMA-029",
+      "category": "classroom",
+      "name": "教师授课、自由问答与课堂讨论",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/classroom/ClassroomSurface.tsx",
+        "components/stage",
+        "lib/chat/pi",
+        "lib/orchestration",
+        "lib/playback",
+        "lib/whiteboard"
+      ],
+      "acceptance": "真实模型/已审讲解执行，等待本人时不空转",
+      "evidence": []
+    },
+    {
+      "id": "OMA-030",
+      "category": "classroom",
+      "name": "圆桌讨论和用户中断/优先",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/classroom/ClassroomSurface.tsx",
+        "components/stage",
+        "lib/chat/pi",
+        "lib/orchestration",
+        "lib/playback",
+        "lib/whiteboard"
+      ],
+      "acceptance": "多角色顺序可追踪，停止取消未提交轮次",
+      "evidence": []
+    },
+    {
+      "id": "OMA-031",
+      "category": "classroom",
+      "name": "白板文字/公式/图形与逐步推导",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/classroom/ClassroomSurface.tsx",
+        "components/stage",
+        "lib/chat/pi",
+        "lib/orchestration",
+        "lib/playback",
+        "lib/whiteboard"
+      ],
+      "acceptance": "白板动作真实执行，重试不重复，版本可恢复",
+      "evidence": []
+    },
+    {
+      "id": "OMA-032",
+      "category": "classroom",
+      "name": "聚光灯/激光笔/聚焦与动作编排",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/classroom/ClassroomSurface.tsx",
+        "components/stage",
+        "lib/chat/pi",
+        "lib/orchestration",
+        "lib/playback",
+        "lib/whiteboard"
+      ],
+      "acceptance": "目标存在且动作可播放/撤销或恢复",
+      "evidence": []
+    },
+    {
+      "id": "OMA-033",
+      "category": "classroom",
+      "name": "课程完成页与学习反馈",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/classroom/ClassroomSurface.tsx",
+        "components/stage",
+        "lib/chat/pi",
+        "lib/orchestration",
+        "lib/playback",
+        "lib/whiteboard"
+      ],
+      "acceptance": "状态依据本人提交，未作答不自动标完成",
+      "evidence": []
+    },
+    {
+      "id": "OMA-034",
+      "category": "quiz",
+      "name": "单选/多选/简答完整题型",
+      "required": true,
+      "status": "partial",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/scene-renderers/quiz-view.tsx",
+        "app/api/quiz-grade",
+        "lib/quiz"
+      ],
+      "acceptance": "各题型真实呈现与提交，题目身份可查",
+      "evidence": []
+    },
+    {
+      "id": "OMA-035",
+      "category": "quiz",
+      "name": "判分、过程、反馈与答案显示规则",
+      "required": true,
+      "status": "partial",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/scene-renderers/quiz-view.tsx",
+        "app/api/quiz-grade",
+        "lib/quiz"
+      ],
+      "acceptance": "判分依据冻结答案，本人提交前不抢答",
+      "evidence": []
+    },
+    {
+      "id": "OMA-036",
+      "category": "quiz",
+      "name": "不可变作答/草稿/进度持久化",
+      "required": true,
+      "status": "partial",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/scene-renderers/quiz-view.tsx",
+        "app/api/quiz-grade",
+        "lib/quiz"
+      ],
+      "acceptance": "响应丢失可去重重试，同内容重做可新提交",
+      "evidence": []
+    },
+    {
+      "id": "OMA-037",
+      "category": "quiz",
+      "name": "本人/AI演示分区与learner绑定",
+      "required": true,
+      "status": "partial",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/scene-renderers/quiz-view.tsx",
+        "app/api/quiz-grade",
+        "lib/quiz"
+      ],
+      "acceptance": "主体由服务绑定，AI作答绝不提高本人掌握",
+      "evidence": []
+    },
+    {
+      "id": "OMA-038",
+      "category": "interactive",
+      "name": "生成式HTML互动与iframe隔离",
+      "required": true,
+      "status": "partial",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/scene-renderers/interactive-renderer.tsx",
+        "lib/interactive",
+        "lib/types/widgets.ts",
+        "skills/agent-runtime/deep-interactive"
+      ],
+      "acceptance": "脚本可运行且无法访问preload/项目文件/主凭据",
+      "evidence": [
+        "互动内容为 DSL InteractiveContent.html，经 srcDoc 注入 sandbox=\"allow-scripts\" 的 iframe",
+        "scripts/smoke-electron-boundary.cjs：父框架读不到该 frame 的 DOM，帧内 typeof sewNative 与 typeof require 均为 undefined；上游 InteractiveIframeHost 消息协议与保活尚未接入"
+      ]
+    },
+    {
+      "id": "OMA-039",
+      "category": "interactive",
+      "name": "3D可视化互动",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/scene-renderers/interactive-renderer.tsx",
+        "lib/interactive",
+        "lib/types/widgets.ts",
+        "skills/agent-runtime/deep-interactive"
+      ],
+      "acceptance": "可操作真实3D场景，资源和公式来源可查",
+      "evidence": []
+    },
+    {
+      "id": "OMA-040",
+      "category": "interactive",
+      "name": "模拟实验与参数预测/观察",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/scene-renderers/interactive-renderer.tsx",
+        "lib/interactive",
+        "lib/types/widgets.ts",
+        "skills/agent-runtime/deep-interactive"
+      ],
+      "acceptance": "改变参数并记录本人预测、观察与解释",
+      "evidence": []
+    },
+    {
+      "id": "OMA-041",
+      "category": "interactive",
+      "name": "知识游戏与评分/成就",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/scene-renderers/interactive-renderer.tsx",
+        "lib/interactive",
+        "lib/types/widgets.ts",
+        "skills/agent-runtime/deep-interactive"
+      ],
+      "acceptance": "真实挑战可完成，评分由可信规则核验",
+      "evidence": []
+    },
+    {
+      "id": "OMA-042",
+      "category": "interactive",
+      "name": "思维导图/流程图/关系图互动",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/scene-renderers/interactive-renderer.tsx",
+        "lib/interactive",
+        "lib/types/widgets.ts",
+        "skills/agent-runtime/deep-interactive"
+      ],
+      "acceptance": "节点关系可操作，标准关系有证据",
+      "evidence": []
+    },
+    {
+      "id": "OMA-043",
+      "category": "interactive",
+      "name": "在线编程与测试用例",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/scene-renderers/interactive-renderer.tsx",
+        "lib/interactive",
+        "lib/types/widgets.ts",
+        "skills/agent-runtime/deep-interactive"
+      ],
+      "acceptance": "核对Python/JS/TS/Java/C++实际执行后端，提交结果可存",
+      "evidence": []
+    },
+    {
+      "id": "OMA-044",
+      "category": "interactive",
+      "name": "教师观察、高亮、设置条件与引导",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/scene-renderers/interactive-renderer.tsx",
+        "lib/interactive",
+        "lib/types/widgets.ts",
+        "skills/agent-runtime/deep-interactive"
+      ],
+      "acceptance": "真实场景消息和工具动作关联当前课程版本",
+      "evidence": []
+    },
+    {
+      "id": "OMA-045",
+      "category": "interactive",
+      "name": "互动保活与可支持的快照恢复",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "components/scene-renderers/interactive-renderer.tsx",
+        "lib/interactive",
+        "lib/types/widgets.ts",
+        "skills/agent-runtime/deep-interactive"
+      ],
+      "acceptance": "可支持组件恢复；其他明确重置而保留本人记录",
+      "evidence": []
+    },
+    {
+      "id": "OMA-046",
+      "category": "pbl",
+      "name": "项目制学习场景与角色选择",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "lib/pbl/v2",
+        "components/scene-renderers/pbl-renderer.tsx",
+        "app/api/pbl/v2"
+      ],
+      "acceptance": "真实PBL场景，有项目背景、角色与目标",
+      "evidence": []
+    },
+    {
+      "id": "OMA-047",
+      "category": "pbl",
+      "name": "阶段任务、里程碑与交付物",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "lib/pbl/v2",
+        "components/scene-renderers/pbl-renderer.tsx",
+        "app/api/pbl/v2"
+      ],
+      "acceptance": "任务状态和本人交付重启可读，AI贡献单独标记",
+      "evidence": []
+    },
+    {
+      "id": "OMA-048",
+      "category": "pbl",
+      "name": "导师指导与项目评价",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "lib/pbl/v2",
+        "components/scene-renderers/pbl-renderer.tsx",
+        "app/api/pbl/v2"
+      ],
+      "acceptance": "反馈依据真实产物，评价候选和确定性检查分开",
+      "evidence": []
+    },
+    {
+      "id": "OMA-049",
+      "category": "pbl",
+      "name": "PBL模拟器与任务工具",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "lib/pbl/v2",
+        "components/scene-renderers/pbl-renderer.tsx",
+        "app/api/pbl/v2"
+      ],
+      "acceptance": "模拟器/开任务/任务更新均实际运行且守权限",
+      "evidence": []
+    },
+    {
+      "id": "OMA-050",
+      "category": "materials_search",
+      "name": "文档上传与多格式内容抽取",
+      "required": true,
+      "status": "partial",
+      "phase": "B",
+      "upstreamPaths": [
+        "lib/document",
+        "lib/media-parse",
+        "lib/pdf",
+        "lib/web-search",
+        "app/api/materials",
+        "app/api/extract-document",
+        "app/api/parse-pdf"
+      ],
+      "acceptance": "保留原件、原始位置和规范化版本，提取后不自动核实",
+      "evidence": []
+    },
+    {
+      "id": "OMA-051",
+      "category": "materials_search",
+      "name": "PDF、OCR、表格与公式解析",
+      "required": true,
+      "status": "planned",
+      "phase": "B",
+      "upstreamPaths": [
+        "lib/document",
+        "lib/media-parse",
+        "lib/pdf",
+        "lib/web-search",
+        "app/api/materials",
+        "app/api/extract-document",
+        "app/api/parse-pdf"
+      ],
+      "acceptance": "本地/云解析可切换，错误与资源限制可见",
+      "evidence": []
+    },
+    {
+      "id": "OMA-052",
+      "category": "materials_search",
+      "name": "音频/视频转写与关键帧材料",
+      "required": true,
+      "status": "planned",
+      "phase": "B",
+      "upstreamPaths": [
+        "lib/document",
+        "lib/media-parse",
+        "lib/pdf",
+        "lib/web-search",
+        "app/api/materials",
+        "app/api/extract-document",
+        "app/api/parse-pdf"
+      ],
+      "acceptance": "转写含时间位置，缺FFmpeg/ASR明确失败",
+      "evidence": []
+    },
+    {
+      "id": "OMA-053",
+      "category": "materials_search",
+      "name": "网页资料与多搜索provider",
+      "required": true,
+      "status": "planned",
+      "phase": "B",
+      "upstreamPaths": [
+        "lib/document",
+        "lib/media-parse",
+        "lib/pdf",
+        "lib/web-search",
+        "app/api/materials",
+        "app/api/extract-document",
+        "app/api/parse-pdf"
+      ],
+      "acceptance": "来源URL、抓取内容与版本可定位，搜索不直接发布",
+      "evidence": []
+    },
+    {
+      "id": "OMA-054",
+      "category": "materials_search",
+      "name": "深度研究/事实核查/材料引用",
+      "required": true,
+      "status": "planned",
+      "phase": "B",
+      "upstreamPaths": [
+        "lib/document",
+        "lib/media-parse",
+        "lib/pdf",
+        "lib/web-search",
+        "app/api/materials",
+        "app/api/extract-document",
+        "app/api/parse-pdf"
+      ],
+      "acceptance": "研究产物是候选证据，人工语义审核仍有效",
+      "evidence": []
+    },
+    {
+      "id": "OMA-055",
+      "category": "materials_search",
+      "name": "PPTX导入与文档/资产转换",
+      "required": true,
+      "status": "planned",
+      "phase": "B",
+      "upstreamPaths": [
+        "lib/document",
+        "lib/media-parse",
+        "lib/pdf",
+        "lib/web-search",
+        "app/api/materials",
+        "app/api/extract-document",
+        "app/api/parse-pdf"
+      ],
+      "acceptance": "文字公式图像转入可编辑文档并登记出处",
+      "evidence": []
+    },
+    {
+      "id": "OMA-056",
+      "category": "providers_media",
+      "name": "完整LLM provider注册表与兼容接口",
+      "required": true,
+      "status": "planned",
+      "phase": "E",
+      "upstreamPaths": [
+        "lib/ai/providers.ts",
+        "lib/ai/thinking-config.ts",
+        "lib/server/model-routes.ts",
+        "lib/media",
+        "lib/audio",
+        "lib/config/token-plan-presets.ts"
+      ],
+      "acceptance": "固定基线各provider可配置/检测，不假称所有联网测试通过",
+      "evidence": []
+    },
+    {
+      "id": "OMA-057",
+      "category": "providers_media",
+      "name": "本地模型与Lemonade/Ollama连接",
+      "required": true,
+      "status": "planned",
+      "phase": "E",
+      "upstreamPaths": [
+        "lib/ai/providers.ts",
+        "lib/ai/thinking-config.ts",
+        "lib/server/model-routes.ts",
+        "lib/media",
+        "lib/audio",
+        "lib/config/token-plan-presets.ts"
+      ],
+      "acceptance": "显式本地endpoint授权，连接失败可见",
+      "evidence": []
+    },
+    {
+      "id": "OMA-058",
+      "category": "providers_media",
+      "name": "模型发现、思考配置与分阶段路由",
+      "required": true,
+      "status": "planned",
+      "phase": "E",
+      "upstreamPaths": [
+        "lib/ai/providers.ts",
+        "lib/ai/thinking-config.ts",
+        "lib/server/model-routes.ts",
+        "lib/media",
+        "lib/audio",
+        "lib/config/token-plan-presets.ts"
+      ],
+      "acceptance": "阶段路由生效并记录实际provider/model/config版本",
+      "evidence": []
+    },
+    {
+      "id": "OMA-059",
+      "category": "providers_media",
+      "name": "配置预设、服务端配置与连接检测",
+      "required": true,
+      "status": "partial",
+      "phase": "E",
+      "upstreamPaths": [
+        "lib/ai/providers.ts",
+        "lib/ai/thinking-config.ts",
+        "lib/server/model-routes.ts",
+        "lib/media",
+        "lib/audio",
+        "lib/config/token-plan-presets.ts"
+      ],
+      "acceptance": "密钥受保护，测试执行真实请求且可取消",
+      "evidence": []
+    },
+    {
+      "id": "OMA-060",
+      "category": "providers_media",
+      "name": "多provider图像生成与ComfyUI工作流",
+      "required": true,
+      "status": "planned",
+      "phase": "E",
+      "upstreamPaths": [
+        "lib/ai/providers.ts",
+        "lib/ai/thinking-config.ts",
+        "lib/server/model-routes.ts",
+        "lib/media",
+        "lib/audio",
+        "lib/config/token-plan-presets.ts"
+      ],
+      "acceptance": "真实任务与产物落盘，生成失败不计成功",
+      "evidence": []
+    },
+    {
+      "id": "OMA-061",
+      "category": "providers_media",
+      "name": "多provider视频生成与轮询任务",
+      "required": true,
+      "status": "planned",
+      "phase": "E",
+      "upstreamPaths": [
+        "lib/ai/providers.ts",
+        "lib/ai/thinking-config.ts",
+        "lib/server/model-routes.ts",
+        "lib/media",
+        "lib/audio",
+        "lib/config/token-plan-presets.ts"
+      ],
+      "acceptance": "真实轮询/取消/超时，视频资源可重新播放",
+      "evidence": []
+    },
+    {
+      "id": "OMA-062",
+      "category": "providers_media",
+      "name": "教师讲解与讨论TTS、播放速度",
+      "required": true,
+      "status": "planned",
+      "phase": "E",
+      "upstreamPaths": [
+        "lib/ai/providers.ts",
+        "lib/ai/thinking-config.ts",
+        "lib/server/model-routes.ts",
+        "lib/media",
+        "lib/audio",
+        "lib/config/token-plan-presets.ts"
+      ],
+      "acceptance": "文本与音频同步，多个角色音色可区分",
+      "evidence": []
+    },
+    {
+      "id": "OMA-063",
+      "category": "providers_media",
+      "name": "音色管理、自然描述、声音设计/克隆",
+      "required": true,
+      "status": "planned",
+      "phase": "E",
+      "upstreamPaths": [
+        "lib/ai/providers.ts",
+        "lib/ai/thinking-config.ts",
+        "lib/server/model-routes.ts",
+        "lib/media",
+        "lib/audio",
+        "lib/config/token-plan-presets.ts"
+      ],
+      "acceptance": "音色参考资源持久，实际合成可播放",
+      "evidence": []
+    },
+    {
+      "id": "OMA-064",
+      "category": "providers_media",
+      "name": "麦克风ASR与本地FunASR等后端",
+      "required": true,
+      "status": "planned",
+      "phase": "E",
+      "upstreamPaths": [
+        "lib/ai/providers.ts",
+        "lib/ai/thinking-config.ts",
+        "lib/server/model-routes.ts",
+        "lib/media",
+        "lib/audio",
+        "lib/config/token-plan-presets.ts"
+      ],
+      "acceptance": "录音授权、转写与发送链实际可用",
+      "evidence": []
+    },
+    {
+      "id": "OMA-065",
+      "category": "providers_media",
+      "name": "多模态用量记录与查看",
+      "required": true,
+      "status": "planned",
+      "phase": "E",
+      "upstreamPaths": [
+        "lib/ai/providers.ts",
+        "lib/ai/thinking-config.ts",
+        "lib/server/model-routes.ts",
+        "lib/media",
+        "lib/audio",
+        "lib/config/token-plan-presets.ts"
+      ],
+      "acceptance": "LLM/image/video/TTS/ASR实际用量可重算",
+      "evidence": []
+    },
+    {
+      "id": "OMA-066",
+      "category": "providers_media",
+      "name": "缺provider/断网/额度与任务失败状态",
+      "required": true,
+      "status": "partial",
+      "phase": "E",
+      "upstreamPaths": [
+        "lib/ai/providers.ts",
+        "lib/ai/thinking-config.ts",
+        "lib/server/model-routes.ts",
+        "lib/media",
+        "lib/audio",
+        "lib/config/token-plan-presets.ts"
+      ],
+      "acceptance": "不伪造产物或进度，已发布课件可继续阅读",
+      "evidence": []
+    },
+    {
+      "id": "OMA-067",
+      "category": "export",
+      "name": "可编辑PowerPoint导出",
+      "required": true,
+      "status": "planned",
+      "phase": "E",
+      "upstreamPaths": [
+        "lib/export",
+        "lib/import",
+        "lib/video-export",
+        "lib/video-export-app",
+        "app/api/export-video",
+        "render-service"
+      ],
+      "acceptance": "文字/公式/图像/图表可编辑，不把课件整体栅格化",
+      "evidence": []
+    },
+    {
+      "id": "OMA-068",
+      "category": "export",
+      "name": "自包含互动HTML导出",
+      "required": true,
+      "status": "planned",
+      "phase": "E",
+      "upstreamPaths": [
+        "lib/export",
+        "lib/import",
+        "lib/video-export",
+        "lib/video-export-app",
+        "app/api/export-video",
+        "render-service"
+      ],
+      "acceptance": "HTML实际可运行，离线外链缺口有报告",
+      "evidence": []
+    },
+    {
+      "id": "OMA-069",
+      "category": "export",
+      "name": "完整课堂ZIP导出/导入",
+      "required": true,
+      "status": "planned",
+      "phase": "E",
+      "upstreamPaths": [
+        "lib/export",
+        "lib/import",
+        "lib/video-export",
+        "lib/video-export-app",
+        "app/api/export-video",
+        "render-service"
+      ],
+      "acceptance": "结构和媒体可移植，新实例导入后无需旧浏览器缓存",
+      "evidence": []
+    },
+    {
+      "id": "OMA-070",
+      "category": "export",
+      "name": "离线资源内联与重导出",
+      "required": true,
+      "status": "planned",
+      "phase": "E",
+      "upstreamPaths": [
+        "lib/export",
+        "lib/import",
+        "lib/video-export",
+        "lib/video-export-app",
+        "app/api/export-video",
+        "render-service"
+      ],
+      "acceptance": "KaTeX/Three.js/addons/字体/脚本资源逐一核对",
+      "evidence": []
+    },
+    {
+      "id": "OMA-071",
+      "category": "export",
+      "name": "MP4导出与独立渲染任务",
+      "required": true,
+      "status": "planned",
+      "phase": "E",
+      "upstreamPaths": [
+        "lib/export",
+        "lib/import",
+        "lib/video-export",
+        "lib/video-export-app",
+        "app/api/export-video",
+        "render-service"
+      ],
+      "acceptance": "Chromium/FFmpeg资源声明，真实可播放视频与失败恢复",
+      "evidence": []
+    },
+    {
+      "id": "OMA-072",
+      "category": "export",
+      "name": "资源打包和媒体可移植引用",
+      "required": true,
+      "status": "planned",
+      "phase": "E",
+      "upstreamPaths": [
+        "lib/export",
+        "lib/import",
+        "lib/video-export",
+        "lib/video-export-app",
+        "app/api/export-video",
+        "render-service"
+      ],
+      "acceptance": "不保存失效URL或开发绝对路径，未打包资源可见",
+      "evidence": []
+    },
+    {
+      "id": "OMA-073",
+      "category": "persistence_experience",
+      "name": "DocumentStore版本/CAS/DSL迁移合同",
+      "required": true,
+      "status": "partial",
+      "phase": "F",
+      "upstreamPaths": [
+        "packages/@openmaic/storage",
+        "lib/persistence",
+        "lib/server/identity",
+        "lib/server/persistence-hooks",
+        "lib/i18n/locales.ts",
+        "lib/store/settings.ts"
+      ],
+      "acceptance": "适配真实stage/scene，版本冲突可验证",
+      "evidence": []
+    },
+    {
+      "id": "OMA-074",
+      "category": "persistence_experience",
+      "name": "RuntimeStore会话/追加seq/分区合同",
+      "required": true,
+      "status": "partial",
+      "phase": "F",
+      "upstreamPaths": [
+        "packages/@openmaic/storage",
+        "lib/persistence",
+        "lib/server/identity",
+        "lib/server/persistence-hooks",
+        "lib/i18n/locales.ts",
+        "lib/store/settings.ts"
+      ],
+      "acceptance": "真实聊天/作答/播放分区并恢复，顺序不靠时间",
+      "evidence": [
+        "tests/classroom-runtime-http.test.ts 用实际 HttpRuntimeStore 验证服务 learner 身份、有序追加/CAS、完成保护及作答/review/收据原子保存；目录包鼠标提交和整应用重启已读回同一记录与解题过程。真实聊天/教师运行分区尚未启用。"
+      ]
+    },
+    {
+      "id": "OMA-075",
+      "category": "persistence_experience",
+      "name": "AssetStore资产注册/替换/引用/回收/配额",
+      "required": true,
+      "status": "partial",
+      "phase": "F",
+      "upstreamPaths": [
+        "packages/@openmaic/storage",
+        "lib/persistence",
+        "lib/server/identity",
+        "lib/server/persistence-hooks",
+        "lib/i18n/locales.ts",
+        "lib/store/settings.ts"
+      ],
+      "acceptance": "资源删除不破坏被引用课程，摘要不当访问凭证",
+      "evidence": [
+        "schema v5 与 classroom-assets repository 保存项目分区字节、内部 SHA-256、修订和稳定槽位；/api/maic/assets 适配真实 HttpAssetStore，摘要不作访问凭据",
+        "显式导入后课堂加载实际图片/字体；tests/classroom-assets.test.ts、tests/classroom-demo-assets.test.ts、生产 HTTP 与 Electron/随包服务验证入口覆盖",
+        "多课程引用保护、安全删除与离线回收、大媒体和完整上游课堂管线仍未完成"
+      ]
+    },
+    {
+      "id": "OMA-076",
+      "category": "persistence_experience",
+      "name": "device/account KV与偏好恢复",
+      "required": true,
+      "status": "partial",
+      "phase": "F",
+      "upstreamPaths": [
+        "packages/@openmaic/storage",
+        "lib/persistence",
+        "lib/server/identity",
+        "lib/server/persistence-hooks",
+        "lib/i18n/locales.ts",
+        "lib/store/settings.ts"
+      ],
+      "acceptance": "非事实设置与学习权威分开，不形成双数据库权威",
+      "evidence": [
+        "HttpAccountKV 的 entries/keys 原始合同按项目与代次绑定 SQLite；tests/classroom-runtime-http.test.ts 覆盖重开读回与越权拒绝。完整上游 device/account 消费图和跨设备同步未接入。"
+      ]
+    },
+    {
+      "id": "OMA-077",
+      "category": "persistence_experience",
+      "name": "SQLite默认与可选HTTP/Postgres后端适配",
+      "required": true,
+      "status": "partial",
+      "phase": "F",
+      "upstreamPaths": [
+        "packages/@openmaic/storage",
+        "lib/persistence",
+        "lib/server/identity",
+        "lib/server/persistence-hooks",
+        "lib/i18n/locales.ts",
+        "lib/store/settings.ts"
+      ],
+      "acceptance": "保留后端接口，可选共享后端不破坏本地项目",
+      "evidence": []
+    },
+    {
+      "id": "OMA-078",
+      "category": "persistence_experience",
+      "name": "所有者认证/匿名认领/共享团队扩展",
+      "required": true,
+      "status": "planned",
+      "phase": "F",
+      "upstreamPaths": [
+        "packages/@openmaic/storage",
+        "lib/persistence",
+        "lib/server/identity",
+        "lib/server/persistence-hooks",
+        "lib/i18n/locales.ts",
+        "lib/store/settings.ts"
+      ],
+      "acceptance": "认证无效不回退匿名，认领完整迁移且隔离身份",
+      "evidence": []
+    },
+    {
+      "id": "OMA-079",
+      "category": "persistence_experience",
+      "name": "课程库/创建/资产后端宿主扩展钩子",
+      "required": true,
+      "status": "planned",
+      "phase": "F",
+      "upstreamPaths": [
+        "packages/@openmaic/storage",
+        "lib/persistence",
+        "lib/server/identity",
+        "lib/server/persistence-hooks",
+        "lib/i18n/locales.ts",
+        "lib/store/settings.ts"
+      ],
+      "acceptance": "宿主扩展不需散改路由且受项目来源准入",
+      "evidence": []
+    },
+    {
+      "id": "OMA-080",
+      "category": "persistence_experience",
+      "name": "暗色/主题/响应式/布局与操控",
+      "required": true,
+      "status": "partial",
+      "phase": "F",
+      "upstreamPaths": [
+        "packages/@openmaic/storage",
+        "lib/persistence",
+        "lib/server/identity",
+        "lib/server/persistence-hooks",
+        "lib/i18n/locales.ts",
+        "lib/store/settings.ts"
+      ],
+      "acceptance": "工作台课堂主题一致，窄窗DPI键盘均走查",
+      "evidence": []
+    },
+    {
+      "id": "OMA-081",
+      "category": "persistence_experience",
+      "name": "12个locale国际化与语言推断",
+      "required": true,
+      "status": "planned",
+      "phase": "F",
+      "upstreamPaths": [
+        "packages/@openmaic/storage",
+        "lib/persistence",
+        "lib/server/identity",
+        "lib/server/persistence-hooks",
+        "lib/i18n/locales.ts",
+        "lib/store/settings.ts"
+      ],
+      "acceptance": "locale注册表全部支持，UI翻译与课程语言可设置",
+      "evidence": []
+    },
+    {
+      "id": "OMA-082",
+      "category": "persistence_experience",
+      "name": "课堂文档/白板讨论/作答/互动分层恢复",
+      "required": true,
+      "status": "partial",
+      "phase": "F",
+      "upstreamPaths": [
+        "packages/@openmaic/storage",
+        "lib/persistence",
+        "lib/server/identity",
+        "lib/server/persistence-hooks",
+        "lib/i18n/locales.ts",
+        "lib/store/settings.ts"
+      ],
+      "acceptance": "每层按真实检查点恢复，未知互动明确重置",
+      "evidence": []
+    },
+    {
+      "id": "OMA-083",
+      "category": "persistence_experience",
+      "name": "共享部署/访问码/可选远程连接",
+      "required": true,
+      "status": "planned",
+      "phase": "F",
+      "upstreamPaths": [
+        "packages/@openmaic/storage",
+        "lib/persistence",
+        "lib/server/identity",
+        "lib/server/persistence-hooks",
+        "lib/i18n/locales.ts",
+        "lib/store/settings.ts"
+      ],
+      "acceptance": "明确授权且私密项目不公开，保留部署能力接口",
+      "evidence": []
+    },
+    {
+      "id": "OMA-084",
+      "category": "persistence_experience",
+      "name": "版本冻结、许可、资源与SDK可追踪复用",
+      "required": true,
+      "status": "partial",
+      "phase": "F",
+      "upstreamPaths": [
+        "packages/@openmaic/storage",
+        "lib/persistence",
+        "lib/server/identity",
+        "lib/server/persistence-hooks",
+        "lib/i18n/locales.ts",
+        "lib/store/settings.ts"
+      ],
+      "acceptance": "所有实际复制源码/依赖/字体资产记录版本及改动",
+      "evidence": []
+    },
+    {
+      "id": "OMA-085",
+      "category": "interactive",
+      "name": "procedural-skill步骤技能训练",
+      "required": true,
+      "status": "planned",
+      "phase": "C",
+      "upstreamPaths": [
+        "lib/types/widgets.ts",
+        "skills/agent-runtime/vocational"
+      ],
+      "acceptance": "技能步骤、工具和成功条件可操作并保存真实本人记录",
+      "evidence": []
+    }
+  ],
+  "builtinSkills": [
+    "build-personal-skill",
+    "curriculum-planner",
+    "deep-interactive",
+    "deep-research",
+    "fact-check",
+    "feynman-learning",
+    "k12-core-literacy-planning",
+    "learning-to-learn",
+    "lecture-style",
+    "page-clone",
+    "pptx-import",
+    "pro-editing",
+    "slide-craft",
+    "slide-dsl",
+    "social-emotional-learning",
+    "spiral-curriculum",
+    "stage-design",
+    "stage-dsl",
+    "style-clone",
+    "teacher-style-clone",
+    "understanding-by-design",
+    "vocational",
+    "workshop-style",
+    "zone-of-proximal-development"
+  ],
+  "locales": [
+    "zh-CN",
+    "zh-TW",
+    "en-US",
+    "ja-JP",
+    "ru-RU",
+    "ar-SA",
+    "pt-BR",
+    "ko-KR",
+    "es-MX",
+    "fr-FR",
+    "vi-VN",
+    "de-DE"
+  ],
+  "providerBaseline": {
+    "llm": {
+      "source": "lib/types/provider.ts",
+      "ids": [
+        "openai",
+        "azure",
+        "atlascloud",
+        "anthropic",
+        "bedrock",
+        "google",
+        "deepseek",
+        "qwen",
+        "kimi",
+        "minimax",
+        "glm",
+        "siliconflow",
+        "doubao",
+        "openrouter",
+        "grok",
+        "tencent-hunyuan",
+        "xiaomi",
+        "tokendance",
+        "lemonade",
+        "ollama"
+      ],
+      "customExtension": true
+    },
+    "tts": {
+      "source": "lib/audio/types.ts",
+      "ids": [
+        "openai-tts",
+        "azure-tts",
+        "glm-tts",
+        "qwen-tts",
+        "voxcpm-tts",
+        "doubao-tts",
+        "elevenlabs-tts",
+        "minimax-tts",
+        "lemonade-tts",
+        "browser-native-tts"
+      ],
+      "customExtension": true
+    },
+    "asr": {
+      "source": "lib/audio/types.ts",
+      "ids": [
+        "openai-whisper",
+        "browser-native",
+        "qwen-asr",
+        "funasr-asr",
+        "lemonade-asr",
+        "azure-asr"
+      ],
+      "customExtension": true
+    },
+    "image": {
+      "source": "lib/media/types.ts",
+      "ids": [
+        "seedream",
+        "openai-image",
+        "qwen-image",
+        "nano-banana",
+        "minimax-image",
+        "grok-image",
+        "comfyui-image",
+        "openrouter-image",
+        "lemonade"
+      ],
+      "customExtension": false
+    },
+    "video": {
+      "source": "lib/media/types.ts",
+      "ids": [
+        "seedance",
+        "kling",
+        "veo",
+        "minimax-video",
+        "grok-video",
+        "openrouter-video",
+        "happyhorse"
+      ],
+      "customExtension": false
+    },
+    "search": {
+      "source": "lib/web-search/types.ts",
+      "ids": [
+        "tavily",
+        "exa",
+        "bocha",
+        "brave",
+        "baidu",
+        "claude",
+        "minimax",
+        "doubao",
+        "searxng"
+      ],
+      "customExtension": false
+    },
+    "pdf": {
+      "source": "lib/pdf/types.ts",
+      "ids": [
+        "unpdf",
+        "mineru",
+        "mineru-cloud",
+        "alidocmind"
+      ],
+      "customExtension": false
+    }
+  }
+}

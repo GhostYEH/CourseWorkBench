@@ -1,0 +1,155 @@
+/* 由 scripts/generate-theme-css.mjs 从 docs/设计令牌.json 生成，请勿手工编辑。 */
+
+:root {
+  --sew-titlebar-height: 44px;
+  --sew-activitybar-width: 64px;
+  --sew-tree-width: 240px;
+  --sew-tree-min: 180px;
+  --sew-tree-max: 360px;
+  --sew-tab-height: 36px;
+  --sew-right-width: 300px;
+  --sew-right-min: 260px;
+  --sew-right-max: 440px;
+  --sew-rail-width: 32px;
+  --sew-bottom-collapsed: 28px;
+  --sew-bottom-expanded: 200px;
+  --sew-statusbar-height: 24px;
+  --sew-card-radius: 8px;
+  --sew-control-radius: 5px;
+  --sew-space-1: 4px;
+  --sew-space-2: 8px;
+  --sew-space-3: 12px;
+  --sew-space-4: 16px;
+  --sew-space-5: 24px;
+  --sew-space-6: 32px;
+  --sew-wide-threshold: 1280px;
+  --sew-single-column: 800px;
+
+  --sew-ui-font-size: 14px;
+  --sew-reading-font-size: 18px;
+  --sew-reading-line-height: 1.8;
+  --sew-reading-max-width: 760px;
+  --sew-reading-padding: 32px;
+  --sew-zoom: 1;
+}
+
+:root, [data-theme='paper'] {
+  color-scheme: light;
+    --sew-surface-app: #F7F3E8;
+    --sew-surface-sidebar: #EFE9D9;
+    --sew-surface-document: #FFFDF7;
+    --sew-surface-card: #F3EDDD;
+    --sew-surface-control: #FFFCF3;
+    --sew-text-primary: #292720;
+    --sew-text-secondary: #625E54;
+    --sew-text-muted: #6B6558;
+    --sew-border-divider: #DDD5C4;
+    --sew-border-control: #8B806D;
+    --sew-action-accent: #B64532;
+    --sew-action-accentText: #FFFDF7;
+    --sew-action-focus: #B64532;
+    --sew-status-verified: #356B46;
+    --sew-status-pending: #88601A;
+    --sew-status-error: #A23232;
+    --sew-status-info: #365F82;
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+    --sew-surface-app: #F5F6F7;
+    --sew-surface-sidebar: #ECEFF1;
+    --sew-surface-document: #FFFFFF;
+    --sew-surface-card: #F7F8F9;
+    --sew-surface-control: #FFFFFF;
+    --sew-text-primary: #24282D;
+    --sew-text-secondary: #59636F;
+    --sew-text-muted: #626B75;
+    --sew-border-divider: #DDE1E6;
+    --sew-border-control: #76818D;
+    --sew-action-accent: #A93F2E;
+    --sew-action-accentText: #FFFFFF;
+    --sew-action-focus: #A93F2E;
+    --sew-status-verified: #2F6642;
+    --sew-status-pending: #805B16;
+    --sew-status-error: #A52F32;
+    --sew-status-info: #315F88;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+    --sew-surface-app: #202321;
+    --sew-surface-sidebar: #272B28;
+    --sew-surface-document: #1B1F1C;
+    --sew-surface-card: #292E29;
+    --sew-surface-control: #242A25;
+    --sew-text-primary: #EDEFE8;
+    --sew-text-secondary: #BAC3B8;
+    --sew-text-muted: #A2AD9F;
+    --sew-border-divider: #444C43;
+    --sew-border-control: #929D8F;
+    --sew-action-accent: #E09A83;
+    --sew-action-accentText: #241F1B;
+    --sew-action-focus: #E09A83;
+    --sew-status-verified: #9BC99E;
+    --sew-status-pending: #E4C077;
+    --sew-status-error: #EAA09B;
+    --sew-status-info: #A0C3E6;
+}
+
+:root[data-accent='cinnabar'], [data-theme='paper'][data-accent='cinnabar'] {
+  --sew-action-accent: #B64532;
+  --sew-action-accentText: #FFFDF7;
+  --sew-action-focus: #B64532;
+}
+
+[data-theme='light'][data-accent='cinnabar'] {
+  --sew-action-accent: #A93F2E;
+  --sew-action-accentText: #FFFFFF;
+  --sew-action-focus: #A93F2E;
+}
+
+[data-theme='dark'][data-accent='cinnabar'] {
+  --sew-action-accent: #E09A83;
+  --sew-action-accentText: #241F1B;
+  --sew-action-focus: #E09A83;
+}
+
+:root[data-accent='teal'], [data-theme='paper'][data-accent='teal'] {
+  --sew-action-accent: #25645A;
+  --sew-action-accentText: #FFFDF7;
+  --sew-action-focus: #25645A;
+}
+
+[data-theme='light'][data-accent='teal'] {
+  --sew-action-accent: #25645A;
+  --sew-action-accentText: #FFFFFF;
+  --sew-action-focus: #25645A;
+}
+
+[data-theme='dark'][data-accent='teal'] {
+  --sew-action-accent: #88C6B3;
+  --sew-action-accentText: #18251F;
+  --sew-action-focus: #88C6B3;
+}
+
+:root[data-accent='indigo'], [data-theme='paper'][data-accent='indigo'] {
+  --sew-action-accent: #48548C;
+  --sew-action-accentText: #FFFDF7;
+  --sew-action-focus: #48548C;
+}
+
+[data-theme='light'][data-accent='indigo'] {
+  --sew-action-accent: #48548C;
+  --sew-action-accentText: #FFFFFF;
+  --sew-action-focus: #48548C;
+}
+
+[data-theme='dark'][data-accent='indigo'] {
+  --sew-action-accent: #AAB9EB;
+  --sew-action-accentText: #1E2231;
+  --sew-action-focus: #AAB9EB;
+}
+
+[data-theme-choice='system'] {
+  /* 由渲染层在运行时解析为 light / dark，避免 CSS 与主进程判断不一致。 */
+}

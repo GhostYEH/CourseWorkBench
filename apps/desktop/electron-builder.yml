@@ -1,0 +1,43 @@
+appId: cn.sew.subject-exam-workbench
+productName: 学科备考工作台
+copyright: 本项目自行实现界面与领域机制；第三方来源见 docs/THIRD_PARTY_NOTICES.md
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - src/**/*
+  - package.json
+
+# 安装产物必须包含随包 Node 与组装好的本地服务。
+# standalone 嵌套产物、.next/static 与 server.mjs 由 scripts/prepare-learning-dist.mjs
+# 统一组装进 apps/learning/dist/service（junction 已物化、依赖已扁平化）。
+extraResources:
+  - from: ../../resources/node/runtime
+    to: node/runtime
+    filter: ['**/*']
+  - from: ../learning/dist/service
+    to: learning
+    filter: ['**/*']
+  # app-builder-lib skips a from-root named node_modules before evaluating
+  # extraResources filters. Copy it as a separate FileSet root so standalone
+  # runtime dependencies are preserved inside resources/learning/node_modules.
+  - from: ../learning/dist/service/node_modules
+    to: learning/node_modules
+    filter: ['**/*']
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: ${productName}-${version}-setup.${ext}
+
+nsis:
+  include: build/installer.nsh
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  # 卸载不主动删除用户项目与备份。
+  deleteAppDataOnUninstall: false

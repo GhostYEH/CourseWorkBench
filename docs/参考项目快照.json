@@ -1,0 +1,434 @@
+{
+  "schemaVersion": 1,
+  "capturedOn": "2026-10-03",
+  "scope": "selected local reference files; not a complete repository audit or actual copied-code inventory",
+  "hashAlgorithm": "SHA-256",
+  "projects": [
+    {
+      "name": "good-learning",
+      "localRoot": "F:/file/good-learning-skill-main",
+      "decision": "contract-adaptation",
+      "packageVersion": null,
+      "gitCommit": null,
+      "gitCommitNote": "Not asserted; local baseline tracked by file digests.",
+      "files": [
+        {
+          "relativePath": "LICENSE",
+          "exists": true,
+          "bytes": 1064,
+          "sha256": "ab76adc704d07a340163e889281a3946b368e02b4040d3ae83cd2766af555b92"
+        },
+        {
+          "relativePath": "SKILL.md",
+          "exists": true,
+          "bytes": 8972,
+          "sha256": "a573d1a7583ec79d75532905d3723d81787d2b359cb9c142c3ded683bc00759f"
+        },
+        {
+          "relativePath": "references/prepare-and-plan.md",
+          "exists": true,
+          "bytes": 4338,
+          "sha256": "f07351cf896d7dc4aae4114ede0da3ca13d79a3392478247e90e8f925f944c99"
+        },
+        {
+          "relativePath": "references/daily-study.md",
+          "exists": true,
+          "bytes": 5539,
+          "sha256": "49588860599294c7af096afa6999e4326c6e4466f2b0225d205d794645095ed0"
+        }
+      ]
+    },
+    {
+      "name": "AI-Novel-Writer",
+      "localRoot": "F:/file/AI-Novel-Writer-master",
+      "decision": "design-reference-no-source-copy",
+      "packageVersion": "1.1.0",
+      "gitCommit": null,
+      "gitCommitNote": "Not asserted; local baseline tracked by file digests.",
+      "files": [
+        {
+          "relativePath": "LICENSE",
+          "exists": true,
+          "bytes": 35149,
+          "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+        },
+        {
+          "relativePath": "package.json",
+          "exists": true,
+          "bytes": 5936,
+          "sha256": "a2b0c081f33f83d6077d15791f6b6b782fd36848897369017d29623351334ede"
+        },
+        {
+          "relativePath": "docs/adr/0008-agent-actions-use-domain-fact-and-workflow-seams.md",
+          "exists": true,
+          "bytes": 894,
+          "sha256": "8d0f0665d1e4a1d16cede7245c2009eaf6e176691e460a3e40c7b717a46d3a27"
+        },
+        {
+          "relativePath": "docs/adr/0017-source-bound-character-state-and-continuity.md",
+          "exists": true,
+          "bytes": 1561,
+          "sha256": "d6b350268c9006dc5b705eac99fc94317ddf4ce0f89974537499d1da0f1d26b4"
+        },
+        {
+          "relativePath": "docs/adr/0014-plot-tree-is-a-derived-snapshot.md",
+          "exists": true,
+          "bytes": 871,
+          "sha256": "6c34e8826abb1d4c770ca5959111c5e3e0e39826618b85b30c6a49f9744778a4"
+        },
+        {
+          "relativePath": "docs/adr/0009-preserve-explicit-dark-theme-intent.md",
+          "exists": true,
+          "bytes": 463,
+          "sha256": "ac4f783324ba8f5c44abfa751e7c4ee8fb0ffddb672a9986817bb0536f3f22a2"
+        },
+        {
+          "relativePath": "docs/adr/0002-user-mediated-external-file-capabilities.md",
+          "exists": true,
+          "bytes": 533,
+          "sha256": "1724071c7db262ae9ed61ae285ec729c569962bf064ed3ae205b9ba9742518a2"
+        },
+        {
+          "relativePath": "src/index.css",
+          "exists": true,
+          "bytes": 49913,
+          "sha256": "2ebc0b505fe8c1f1319f3e307f021279e33839b9ecf94f0b56db966c052c74cb"
+        },
+        {
+          "relativePath": "src/stores/theme-store.ts",
+          "exists": true,
+          "bytes": 9200,
+          "sha256": "2699b15163a284167e07eccbe1547b257ca10cb5ad68de98a70694019025e17e"
+        },
+        {
+          "relativePath": "src/stores/layout-store.ts",
+          "exists": true,
+          "bytes": 5431,
+          "sha256": "7ce7e7f3383d583024d1573004dd81a2c9bed5474a3f503a142be6c5ff9bd5a6"
+        },
+        {
+          "relativePath": "src/components/settings/AppearanceSettings.tsx",
+          "exists": true,
+          "bytes": 9633,
+          "sha256": "776d76604322223428814da36cb60ab8c8edd93085b2fb802547d02fb492ec4a"
+        },
+        {
+          "relativePath": "electron/main.ts",
+          "exists": true,
+          "bytes": 10688,
+          "sha256": "095bda5d7683c59129a4e1abf9dbaf49ec9780532d5dc78eda56edfa4834d244"
+        },
+        {
+          "relativePath": "electron/preload.ts",
+          "exists": true,
+          "bytes": 1619,
+          "sha256": "be4176320fc2e3239253c7e7338fdb55f48fd8cf8fea6adaea889cc9b6a4c4bf"
+        }
+      ]
+    },
+    {
+      "name": "OpenMAIC",
+      "localRoot": "F:/file/OpenMAIC-main",
+      "decision": "planned-classroom-source-reuse-with-desktop-and-evidence-adaptation",
+      "packageVersion": "1.1.1",
+      "gitCommit": null,
+      "gitCommitNote": "Not asserted; local baseline tracked by file digests.",
+      "files": [
+        {
+          "relativePath": "LICENSE",
+          "exists": true,
+          "bytes": 1065,
+          "sha256": "ba252563743227138231604c9138dd400faca5a10c3cf206b466e5466c565a19"
+        },
+        {
+          "relativePath": "package.json",
+          "exists": true,
+          "bytes": 7688,
+          "sha256": "390bd35e612fa4ed668a080a471fd16fe296268cadecfe692410f60cce8b9c29"
+        },
+        {
+          "relativePath": "pnpm-lock.yaml",
+          "exists": true,
+          "bytes": 960257,
+          "sha256": "790d746261a166ed5931a434ea4e3cf83ac70f6321242556c575765a8d164276"
+        },
+        {
+          "relativePath": "next.config.ts",
+          "exists": true,
+          "bytes": 3717,
+          "sha256": "69a2e25a39bfc0381c47543ce5c531c68078dbd7cbb4f8918efce12dd3783e4d"
+        },
+        {
+          "relativePath": "app/classroom/[id]/page.tsx",
+          "exists": true,
+          "bytes": 304,
+          "sha256": "5f60fdab3213f806233bcaebd05eb2b345c67f5029d711b81c33f03a0d073b5d"
+        },
+        {
+          "relativePath": "components/classroom/ClassroomSurface.tsx",
+          "exists": true,
+          "bytes": 21326,
+          "sha256": "2a07795151ca7c714ce7dc397ba649bb4fc01a9e0889dc593e4185b6041b4052"
+        },
+        {
+          "relativePath": "components/stage/scene-sidebar.tsx",
+          "exists": true,
+          "bytes": 27185,
+          "sha256": "2ae0c14caaa4cf903996a1b2a9057fa6f7006fcb9dc861f7720beb4fc08b9d2a"
+        },
+        {
+          "relativePath": "components/stage/scene-renderer.tsx",
+          "exists": true,
+          "bytes": 1807,
+          "sha256": "64a21911780eff7c570f727dbc4c91687b322502c2554c5f38e9fe2de28e4820"
+        },
+        {
+          "relativePath": "components/stage/header-controls.tsx",
+          "exists": true,
+          "bytes": 17294,
+          "sha256": "d0ea3886d1f041e00ab20c478a13e35a6370ed9dee0b9c7603213a154bd6a448"
+        },
+        {
+          "relativePath": "components/agent/agent-bar.tsx",
+          "exists": true,
+          "bytes": 38988,
+          "sha256": "aa418f3c12419ee74cfc7e905ac572950ea561255988ef5871097a28b2e92d31"
+        },
+        {
+          "relativePath": "components/agent/agent-config-panel.tsx",
+          "exists": true,
+          "bytes": 5816,
+          "sha256": "08c1751fb12131f119b2e22b6620f85c58ff3354dca6a7906a407f600e1b8eab"
+        },
+        {
+          "relativePath": "lib/orchestration/registry/types.ts",
+          "exists": true,
+          "bytes": 2949,
+          "sha256": "669adab5a2611a3a2c0ed83422622571ebfb2abf7dce1c8984f09d569728e568"
+        },
+        {
+          "relativePath": "lib/chat/pi/director-loop.ts",
+          "exists": true,
+          "bytes": 11835,
+          "sha256": "405eace0560a11030f17b93cb754ab2b8096a5c719e67c60cd7069d22057f3be"
+        },
+        {
+          "relativePath": "lib/chat/pi/tools/call-agent.ts",
+          "exists": true,
+          "bytes": 36617,
+          "sha256": "436b759797b3445f94438a316d32baaf23a6a83f7a87bb007dd74e774f20b8e3"
+        },
+        {
+          "relativePath": "lib/chat/pi/tools/native-whiteboard.ts",
+          "exists": true,
+          "bytes": 39410,
+          "sha256": "080b0f9d00275c68b27e6e9c31eea25052c37b21482e3a7dda3e7c3dc358c24d"
+        },
+        {
+          "relativePath": "lib/chat/pi/tools/native-spotlight.ts",
+          "exists": true,
+          "bytes": 3831,
+          "sha256": "5d47df5291cdc476e3c0c9e623e8d447a83341c45aa3736454048b32271d1b96"
+        },
+        {
+          "relativePath": "lib/whiteboard/runtime/store.ts",
+          "exists": true,
+          "bytes": 11320,
+          "sha256": "bc291fc5f242ca38da1041632d95230a74ccd41cca97d6cb9292188a60680c6d"
+        },
+        {
+          "relativePath": "lib/quiz/runtime.ts",
+          "exists": true,
+          "bytes": 22641,
+          "sha256": "4cb51423b5e7a55b8bbb45f0a1dcb14d402cf193cf5f7512864440cc34bab01f"
+        },
+        {
+          "relativePath": "components/scene-renderers/interactive-renderer.tsx",
+          "exists": true,
+          "bytes": 2810,
+          "sha256": "59a045241f80852703233f59dc104e2ad2507ad510311f9606b53ce9b7ccd0f0"
+        },
+        {
+          "relativePath": "lib/store/interactive-iframe-pool.ts",
+          "exists": true,
+          "bytes": 8428,
+          "sha256": "6f9b30785d6774dab76f92769c216d13d265204354ac11fac39bf51c574faef0"
+        },
+        {
+          "relativePath": "lib/utils/iframe.ts",
+          "exists": true,
+          "bytes": 17452,
+          "sha256": "2d5ab977bcb946d2b632c60111b17759a99d2b94c3d20ce692e7e43d8705a26f"
+        },
+        {
+          "relativePath": "lib/interactive/observation.ts",
+          "exists": true,
+          "bytes": 3930,
+          "sha256": "20018a1b86d638de41bf53618f3e8516b988dd61d3e270b039a03ed6935c24d0"
+        },
+        {
+          "relativePath": "lib/interactive/observation-bridge.ts",
+          "exists": true,
+          "bytes": 9015,
+          "sha256": "2cd2a8c1db685facb4f9beae5c334e584d2fc438214b6d9773b72e6b3e45f71f"
+        },
+        {
+          "relativePath": "lib/chat/pi/interactive-state-evidence.ts",
+          "exists": true,
+          "bytes": 15991,
+          "sha256": "5e1cb47ef1660e15df28b5c2bf870d67f95b247aa0821ea6e8c2911de255592e"
+        },
+        {
+          "relativePath": "packages/@openmaic/storage/src/document/types.ts",
+          "exists": true,
+          "bytes": 13993,
+          "sha256": "3fcdb9d165d7f03beb0f83233ad2382e2e63a5efe6fb3462560fd5a44b9ac640"
+        },
+        {
+          "relativePath": "packages/@openmaic/storage/src/runtime/types.ts",
+          "exists": true,
+          "bytes": 10706,
+          "sha256": "18d92c1f095cafb9de55af863df3943d1fe68daefb1cba86a2a26a33a9f67d5f"
+        },
+        {
+          "relativePath": "packages/@openmaic/storage/src/asset/types.ts",
+          "exists": true,
+          "bytes": 14756,
+          "sha256": "a5011725f397f5521491aabeaf6a6b36e148e96cbb320ad09f0bf9a461364e89"
+        },
+        {
+          "relativePath": "packages/@openmaic/storage/src/asset/byte-store.ts",
+          "exists": true,
+          "bytes": 6503,
+          "sha256": "b2c7566bddbf5742ad45be96dc465380d269a4fcdc972f046cb44911f7a31f15"
+        },
+        {
+          "relativePath": "packages/@openmaic/storage/src/kv/types.ts",
+          "exists": true,
+          "bytes": 5474,
+          "sha256": "16eacac25dae2361632999f494b2106c5dc2695b9d382cf782b2edb79282d1f2"
+        },
+        {
+          "relativePath": "packages/@openmaic/storage/src/agent-session/types.ts",
+          "exists": true,
+          "bytes": 21862,
+          "sha256": "5fe7649ca8335979168bf68b8786accd0e133aa9512d566c004ee0dd892a95c0"
+        },
+        {
+          "relativePath": "packages/@openmaic/dsl/package.json",
+          "exists": true,
+          "bytes": 1552,
+          "sha256": "e2088ac288fff79127d76f4cf96cee2df42626bc5028ce72a44ad3bb6d07b2a5"
+        },
+        {
+          "relativePath": "packages/@openmaic/renderer/package.json",
+          "exists": true,
+          "bytes": 3031,
+          "sha256": "ef6e80ad8b3391d9bbab3f0e845c291c3f3e5ff9dfe507526a5301379d8c8e19"
+        },
+        {
+          "relativePath": "packages/@openmaic/generation/package.json",
+          "exists": true,
+          "bytes": 1661,
+          "sha256": "575c7977dd5eb2ec94af07f344bc4696239ae6aa1ee5d5ddf33600f2d04b4be7"
+        },
+        {
+          "relativePath": "packages/@openmaic/storage/package.json",
+          "exists": true,
+          "bytes": 3736,
+          "sha256": "e9e3caff52676a62d33cd68e4d000d13b2f44946bf80ec8a737de4053ad5596c"
+        },
+        {
+          "relativePath": "packages/@openmaic/editor/package.json",
+          "exists": true,
+          "bytes": 2317,
+          "sha256": "8fb0cc1e357c706862a3af81a88299430beab83971405e547fe43466510b0f14"
+        },
+        {
+          "relativePath": "packages/@openmaic/importer/package.json",
+          "exists": true,
+          "bytes": 2432,
+          "sha256": "4f85029464fc2e156f2ab57cc2580584a6694ed8a5189f3ae733d9d5c10edd5e"
+        }
+      ]
+    },
+    {
+      "name": "deepseek-harness",
+      "localRoot": "F:/file/deepseek-harness-master",
+      "decision": "design-reference-no-runtime-embedding",
+      "packageVersion": "0.2.0-rc.2",
+      "gitCommit": null,
+      "gitCommitNote": "Not asserted; local baseline tracked by file digests.",
+      "files": [
+        {
+          "relativePath": "LICENSE",
+          "exists": true,
+          "bytes": 1065,
+          "sha256": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be"
+        },
+        {
+          "relativePath": "README.md",
+          "exists": true,
+          "bytes": 2673,
+          "sha256": "0f5516be2acde776f05572cbc8c3093c90549afe04ce118e11157d073d5d15f4"
+        },
+        {
+          "relativePath": "docs/architecture.md",
+          "exists": true,
+          "bytes": 18838,
+          "sha256": "925aee7c59d0929968698572266bbc3dba8edd38b0befe3f6875b4a7b554cfda"
+        }
+      ]
+    },
+    {
+      "name": "EvoFlow",
+      "localRoot": "F:/file/EvoFlow-main/EvoFlow-main",
+      "decision": "design-reference-no-source-copy",
+      "packageVersion": null,
+      "gitCommit": null,
+      "gitCommitNote": "Not asserted; local baseline tracked by file digests.",
+      "files": [
+        {
+          "relativePath": "LICENSE",
+          "exists": true,
+          "bytes": 4637,
+          "sha256": "1d65fb91a0d78ea900e47bd599ae7bb9e6238ff9b4f721e8e7ea13bd9bfc5383"
+        },
+        {
+          "relativePath": "README.md",
+          "exists": true,
+          "bytes": 6777,
+          "sha256": "add99562c55d184ed757462e39399aa3298df0effe442dab7126dad44600da88"
+        },
+        {
+          "relativePath": "docs/user/tutorials/multi-agent-collab.md",
+          "exists": true,
+          "bytes": 9423,
+          "sha256": "5c1df5bc904bbff9dcda4fff60c69379f192b26560f75e3288a2630bc5f2dfb8"
+        },
+        {
+          "relativePath": "docs/user/explanation/memory-system.md",
+          "exists": true,
+          "bytes": 6509,
+          "sha256": "cecf0ade062ea33089c0515119ac60c97eff323bc354f6015d10d1714b8ca46e"
+        }
+      ]
+    },
+    {
+      "name": "医学X光",
+      "localRoot": "F:/file/医学X光",
+      "decision": "excluded-no-relevant-classroom-or-desktop-module",
+      "packageVersion": null,
+      "gitCommit": null,
+      "gitCommitNote": "Not asserted; local baseline tracked by file digests.",
+      "files": [
+        {
+          "relativePath": "config.py",
+          "exists": true,
+          "bytes": 8064,
+          "sha256": "3d53484cf0e707c28bb809c194afb93a308c959d877374083edfac1b0843c1c8"
+        }
+      ]
+    }
+  ]
+}

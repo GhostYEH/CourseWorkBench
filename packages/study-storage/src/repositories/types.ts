@@ -1,0 +1,414 @@
+/**
+ * 存储层行类型与行映射。
+ *
+ * 这些是 `StudyStore` 门面向上暴露的稳定数据结构；repository 只负责 SQL，
+ * 行到领域对象的映射集中在这里，避免各 repository 各自解释 JSON 列。
+ */
+
+import type {
+  EvidenceUse,
+  MasteryStatus,
+  MechanicalCheckDto,
+  QuestionOrigin,
+  RecordScope,
+  ReviewProvenance,
+  ScopeStatus,
+  SourceStatus,
+} from '@sew/study-contracts';
+import { StudyError } from '@sew/study-contracts';
+import type { OriginRecord } from '@sew/study-domain';
+import { z } from 'zod';
+import {
+  decodeJson,
+  evidenceListSchema,
+  knowledgeIdsSchema,
+  mechanicalSchema,
+  originRecordSchema,
+  prerequisitesSchema,
+  frozenSchema,
+} from '../json-codec';
+
+export type Row = Record<string, unknown>;
+
+export const str = (value: unknown): string => (typeof value === 'string' ? value : '');
+export const num = (value: unknown): number => (typeof value === 'number' ? value : Number(value ?? 0));
+export const nullableStr = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+export const recordScope = (value: unknown): RecordScope => {
+  if (value === 'formal' || value === 'demo') return value;
+  throw new StudyError('INTERNAL', { reason: 'invalid_record_scope' });
+};
+export const reviewProvenance = (value: unknown): ReviewProvenance | null => {
+  if (value === null || value === undefined) return null;
+  if (value === 'user_semantic' || value === 'demo_author') return value;
+  throw new StudyError('INTERNAL', { reason: 'invalid_review_provenance' });
+};
+
+export interface ProjectRow {
+  projectId: string;
+  displayName: string;
+  subject: string;
+  goal: string;
+  examDate: string | null;
+  dailyMinutes: number;
+  learningMode: 'beginner' | 'review';
+  formatVersion: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MaterialRow {
+  materialId: string;
+  revision: number;
+  recordScope: RecordScope;
+  displayName: string;
+  materialType: 'txt' | 'md';
+  readableLocation: string | null;
+  importedAt: string;
+  normalizationVersion: string;
+  fingerprint: string;
+  segmentCount: number;
+  referencedByKnowledge: number;
+}
+
+export interface SegmentRow {
+  materialId: string;
+  revision: number;
+  segmentId: string;
+  ordinal: number;
+  text: string;
+  fingerprint: string;
+}
+
+export interface EvidenceStored {
+  materialId: string;
+  revision: number;
+  segmentId: string;
+  use: EvidenceUse;
+  fingerprint?: string;
+  excerpt?: string;
+}
+
+export interface ProposalRow {
+  proposalId: string;
+  name: string;
+  concept: string;
+  conditions: string;
+  scopeStatus: ScopeStatus;
+  recordScope: RecordScope;
+  prerequisites: string[];
+  evidence: EvidenceStored[];
+  acceptance: string;
+  priority: 'high' | 'medium' | 'low';
+  proposedBy: 'ai' | 'user';
+  status: 'pending' | 'approved' | 'rejected' | 'needs_material';
+  mechanical: MechanicalCheckDto;
+  reviewNote: string | null;
+  reviewProvenance: ReviewProvenance | null;
+  createdAt: string;
+  reviewedAt: string | null;
+  revision: number;
+}
+
+export interface KnowledgeRow {
+  knowledgeId: string;
+  name: string;
+  concept: string;
+  conditions: string;
+  sourceStatus: SourceStatus;
+  recordScope: RecordScope;
+  reviewProvenance: ReviewProvenance | null;
+  scopeStatus: ScopeStatus;
+  masteryStatus: MasteryStatus;
+  prerequisites: string[];
+  evidence: EvidenceStored[];
+  acceptance: string;
+  priority: 'high' | 'medium' | 'low';
+  originProposalId: string | null;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QuestionRow {
+  questionId: string;
+  stem: string;
+  answer: string;
+  solution: string;
+  knowledgeIds: string[];
+  recordScope: RecordScope;
+  origin: QuestionOrigin;
+  originLabel: string;
+  originDetail: string | null;
+  originRecord: OriginRecord | null;
+  /** 请求声明的身份（可能被降级），供评测区分合法新编题与被阻止的伪装题。 */
+  requestedOrigin: QuestionOrigin;
+  /** true 表示这是一次「新编题自称真题」的结构性伪装尝试。 */
+  forgedExamClaim: boolean;
+  revision: number;
+  createdAt: string;
+}
+
+export interface AttemptRow {
+  recordScope: RecordScope;
+  attemptId: string;
+  questionId: string;
+  kind: 'real' | 'simulation';
+  /** 请求声明的 kind（可能因主体非本人被强制为 simulation）。 */
+  requestedKind: 'real' | 'simulation';
+  actorType: string;
+  answerText: string;
+  processText: string;
+  masteryAfter: MasteryStatus | null;
+  attributionStatus: 'pending_process' | 'proposed';
+  idempotencyKey: string;
+  submittedAt: string;
+}
+
+export interface RunRow {
+  runId: string;
+  state: string;
+  frozen: Record<string, unknown>;
+  terminatedReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ImportMaterialInput {
+  projectId: string;
+  displayName: string;
+  materialType: 'txt' | 'md';
+  readableLocation?: string | undefined;
+  /** 已授权文件的原始文本内容。文件读取由本地服务在主进程授权后执行。 */
+  rawText: string;
+  /** Internal provisioning scope; HTTP import DTOs cannot set this field. */
+  recordScope?: RecordScope;
+}
+
+export interface CreateProposalInput {
+  projectId: string;
+  name: string;
+  concept: string;
+  conditions: string;
+  scopeStatus: ScopeStatus;
+  prerequisites: string[];
+  evidence: Array<{ materialId: string; revision: number; segmentId: string; use: EvidenceUse }>;
+  acceptance: string;
+  priority: 'high' | 'medium' | 'low';
+  proposedBy: 'ai' | 'user';
+  /** Internal provisioning scope; HTTP candidates default to formal. */
+  recordScope?: RecordScope;
+}
+
+export interface ReviewOutcome {
+  proposal: ProposalRow;
+  knowledgePoint: KnowledgeRow | null;
+  /** 审核结论为通过、但业务上仍需人工语义确认时为 true。 */
+  requiresSemanticReview: boolean;
+}
+
+export interface SubmitAttemptInput {
+  projectId: string;
+  questionId: string;
+  idempotencyKey: string;
+  actorType: 'human_learner' | 'teacher_ai' | 'peer_ai' | 'system';
+  answerText: string;
+  processText: string;
+  kind: 'real' | 'simulation';
+}
+
+export interface SubmitAttemptOutcome {
+  attempt: AttemptRow;
+  deduplicated: boolean;
+  /** 模拟作答被强制改写时为 true，服务层据此记录一次越权尝试。 */
+  forcedSimulation: boolean;
+}
+
+/**
+ * JSON 列解析策略。
+ *
+ * `authoritative` 为 true 时，该列是权威事实的必要输入（例如知识点的前置依赖与证据），
+ * 损坏数据不能被静默替换，调用方应抛出 `StudyError('INTERNAL')` 而不是继续。
+ */
+export interface JsonColumnPolicy {
+  warn: (error: string) => void;
+  onAuthoritativeFailure: (error: string) => never;
+}
+
+/** 默认策略：非权威列记录一行诊断并降级；权威列损坏时拒绝使用。 */
+export const defaultJsonPolicy: JsonColumnPolicy = {
+  warn: (error) => console.warn(`[study-storage] ${error}`),
+  onAuthoritativeFailure: (error): never => {
+    throw new StudyError('INTERNAL', { context: error });
+  },
+};
+
+/** 解析 JSON 列：损坏时按策略处理，并返回显式 fallback。 */
+export const readJsonColumn = <T>(
+  value: unknown,
+  schema: z.ZodType<T>,
+  fallback: T,
+  context: string,
+  policy: JsonColumnPolicy,
+): T => {
+  const decoded = decodeJson(value, schema, fallback, context);
+  if (!decoded.ok && decoded.error) {
+    policy.warn(decoded.error);
+  }
+  return decoded.value;
+};
+
+/** 权威 JSON 列：损坏即拒绝，避免用空值掩盖事实。 */
+export const readAuthoritativeJsonColumn = <T>(
+  value: unknown,
+  schema: z.ZodType<T>,
+  context: string,
+  policy: JsonColumnPolicy,
+): T => {
+  const decoded = decodeJson<T | undefined>(value, schema, undefined, context);
+  if (!decoded.ok) {
+    policy.onAuthoritativeFailure(decoded.error ?? `${context}: 权威 JSON 列不可用`);
+  }
+  const result = decoded.value;
+  if (result === undefined) {
+    policy.onAuthoritativeFailure(`${context}: 权威 JSON 列缺失，不能作为空值继续`);
+  }
+  return result;
+};
+
+export const mapProject = (row: Row): ProjectRow => ({
+  projectId: str(row['project_id']),
+  displayName: str(row['display_name']),
+  subject: str(row['subject']),
+  goal: str(row['goal']),
+  examDate: nullableStr(row['exam_date']),
+  dailyMinutes: num(row['daily_minutes']),
+  learningMode: str(row['learning_mode']) === 'review' ? 'review' : 'beginner',
+  formatVersion: num(row['format_version']),
+  createdAt: str(row['created_at']),
+  updatedAt: str(row['updated_at']),
+});
+
+export const mapMaterial = (row: Row): MaterialRow => ({
+  materialId: str(row['material_id']),
+  revision: num(row['revision']),
+  recordScope: recordScope(row['record_scope']),
+  displayName: str(row['display_name']),
+  materialType: str(row['material_type']) === 'md' ? 'md' : 'txt',
+  readableLocation: nullableStr(row['readable_location']),
+  importedAt: str(row['imported_at']),
+  normalizationVersion: str(row['normalization_version']),
+  fingerprint: str(row['fingerprint']),
+  segmentCount: num(row['segment_count']),
+  referencedByKnowledge: num(row['referenced']),
+});
+
+export const mapProposal = (row: Row, policy: JsonColumnPolicy): ProposalRow => ({
+  proposalId: str(row['proposal_id']),
+  name: str(row['name']),
+  concept: str(row['concept']),
+  conditions: str(row['conditions']),
+  scopeStatus: str(row['scope_status']) as ScopeStatus,
+  recordScope: recordScope(row['record_scope']),
+  prerequisites: readJsonColumn(row['prerequisites_json'], prerequisitesSchema, [], 'proposals.prerequisites_json', policy),
+  evidence: readJsonColumn(row['evidence_json'], evidenceListSchema, [], 'proposals.evidence_json', policy),
+  acceptance: str(row['acceptance']),
+  priority: (str(row['priority']) || 'medium') as ProposalRow['priority'],
+  proposedBy: str(row['proposed_by']) === 'user' ? 'user' : 'ai',
+  status: (str(row['status']) || 'pending') as ProposalRow['status'],
+  mechanical: readJsonColumn(
+    row['mechanical_json'],
+    mechanicalSchema,
+    { passed: false, checks: [] },
+    'proposals.mechanical_json',
+    policy,
+  ),
+  reviewNote: nullableStr(row['review_note']),
+  reviewProvenance: reviewProvenance(row['review_provenance']),
+  createdAt: str(row['created_at']),
+  reviewedAt: nullableStr(row['reviewed_at']),
+  revision: num(row['revision']),
+});
+
+export const mapKnowledge = (row: Row, policy: JsonColumnPolicy): KnowledgeRow => ({
+  knowledgeId: str(row['knowledge_id']),
+  name: str(row['name']),
+  concept: str(row['concept']),
+  conditions: str(row['conditions']),
+  sourceStatus: (str(row['source_status']) || 'pending') as SourceStatus,
+  recordScope: recordScope(row['record_scope']),
+  reviewProvenance: reviewProvenance(row['review_provenance']),
+  scopeStatus: str(row['scope_status']) as ScopeStatus,
+  masteryStatus: (str(row['mastery_status']) || 'untested') as MasteryStatus,
+  prerequisites: readAuthoritativeJsonColumn(
+    row['prerequisites_json'],
+    prerequisitesSchema,
+    'knowledge_points.prerequisites_json',
+    policy,
+  ),
+  evidence: readAuthoritativeJsonColumn(
+    row['evidence_json'],
+    evidenceListSchema,
+    'knowledge_points.evidence_json',
+    policy,
+  ),
+  acceptance: str(row['acceptance']),
+  priority: (str(row['priority']) || 'medium') as KnowledgeRow['priority'],
+  originProposalId: nullableStr(row['origin_proposal_id']),
+  revision: num(row['revision']),
+  createdAt: str(row['created_at']),
+  updatedAt: str(row['updated_at']),
+});
+
+export const mapQuestion = (row: Row, policy: JsonColumnPolicy): QuestionRow => ({
+  questionId: str(row['question_id']),
+  stem: str(row['stem']),
+  answer: str(row['answer']),
+  solution: str(row['solution']),
+  // knowledge_ids_json 是准入判断的输入；损坏即拒绝，不能降级为空数组绕过准入。
+  knowledgeIds: readAuthoritativeJsonColumn(
+    row['knowledge_ids_json'],
+    knowledgeIdsSchema,
+    'questions.knowledge_ids_json',
+    policy,
+  ),
+  recordScope: recordScope(row['record_scope']),
+  origin: str(row['origin']) as QuestionOrigin,
+  originLabel: str(row['origin_label']),
+  originDetail: nullableStr(row['origin_detail']),
+  originRecord: readJsonColumn<OriginRecord | null>(
+    row['origin_record_json'],
+    originRecordSchema.nullable(),
+    null,
+    'questions.origin_record_json',
+    policy,
+  ),
+  requestedOrigin: (str(row['requested_origin']) || 'ai_new') as QuestionOrigin,
+  forgedExamClaim: num(row['forged_exam_claim']) !== 0,
+  revision: num(row['revision']),
+  createdAt: str(row['created_at']),
+});
+
+export const mapAttempt = (row: Row): AttemptRow => ({
+  recordScope: recordScope(row['record_scope']),
+  attemptId: str(row['attempt_id']),
+  questionId: str(row['question_id']),
+  // 失败开放会把被改写的 kind 当成真实作答污染本人统计；只有严格 'real' 才是 real。
+  kind: str(row['kind']) === 'real' ? 'real' : 'simulation',
+  requestedKind: str(row['requested_kind']) === 'real' ? 'real' : 'simulation',
+  actorType: str(row['actor_type']),
+  answerText: str(row['answer_text']),
+  processText: str(row['process_text']),
+  masteryAfter: nullableStr(row['mastery_after']) as MasteryStatus | null,
+  attributionStatus: str(row['attribution_status']) === 'proposed' ? 'proposed' : 'pending_process',
+  idempotencyKey: str(row['idempotency_key']),
+  submittedAt: str(row['submitted_at']),
+});
+
+export const mapRun = (row: Row, policy: JsonColumnPolicy): RunRow => ({
+  runId: str(row['run_id']),
+  state: str(row['state']),
+  frozen: readJsonColumn<Record<string, unknown>>(row['frozen_json'], frozenSchema, {}, 'runs.frozen_json', policy),
+  terminatedReason: nullableStr(row['terminated_reason']),
+  createdAt: str(row['created_at']),
+  updatedAt: str(row['updated_at']),
+});

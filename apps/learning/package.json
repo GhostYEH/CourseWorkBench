@@ -1,0 +1,39 @@
+{
+  "name": "@sew/learning",
+  "version": "0.1.0",
+  "private": true,
+  "description": "工作台 + 学习空间：Electron 随包 Node 启动的本地 Next.js 服务",
+  "scripts": {
+    "dev": "node server.mjs --dev --project-root ../.dev-project",
+    "build": "next build",
+    "start": "node server.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@openmaic/dsl": "0.11.2",
+    "@openmaic/renderer": "0.1.11",
+    "@openmaic/storage": "0.35.1",
+    "@sew/study-contracts": "workspace:*",
+    "@sew/study-domain": "workspace:*",
+    "@sew/study-storage": "workspace:*",
+    "clsx": "^2.1.1",
+    "echarts": "^6.1.0",
+    "html-to-image": "^1.11.13",
+    "html2canvas-pro": "^2.5.0",
+    "katex": "^0.16.47",
+    "lucide-react": "^0.562.0",
+    "motion": "^12.43.0",
+    "next": "16.3.3",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "shiki": "^3.23.0",
+    "tailwind-merge": "^3.7.0",
+    "tinycolor2": "^1.6.0",
+    "zod": "^3.25.76",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0"
+  }
+}

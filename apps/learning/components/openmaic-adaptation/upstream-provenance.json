@@ -1,0 +1,189 @@
+{
+  "upstream": {
+    "name": "OpenMAIC",
+    "sourceRoot": "F:/file/OpenMAIC-main",
+    "applicationVersion": "1.1.1",
+    "license": "MIT",
+    "licenseCopyright": "Copyright (c) 2026 THU-MAIC",
+    "licenseFile": "F:/file/OpenMAIC-main/LICENSE"
+  },
+  "copiedAndAdapted": [
+    {
+      "source": "lib/playback/engine.ts",
+      "sha256": "01FCDDFEB41DB2140C2B5083F095D8E9D765ED805370CA45032C7DDE9E371506",
+      "destination": "playback-engine.ts",
+      "retained": [
+        "PlaybackEngine state machine",
+        "start/pause/resume/stop",
+        "scene/action cursor",
+        "progress and completion callbacks",
+        "speech reading-time fallback",
+        "timer and action cleanup"
+      ],
+      "adapted": [
+        "Zustand canvas/settings, AudioPlayer and ActionEngine replaced with narrow M0 ports",
+        "scene/action types bound to published DSL",
+        "legacy browser TTS and media are disabled",
+        "M0 executors refuse unsupported upstream actions"
+      ]
+    },
+    {
+      "source": "lib/playback/types.ts",
+      "sha256": "793DD97388230AB0B77EB35088E80E985F03030C330663E8CB8A9B94BC82C58C",
+      "destination": "playback-types.ts",
+      "retained": [
+        "playback snapshot, modes, trigger, and callback contracts"
+      ]
+    },
+    {
+      "source": "lib/playback/action-navigation.ts",
+      "sha256": "A4CB84F28B20FFCEA1152020709397C8E0C39C07B239DA6B76AE33CC203AC612",
+      "destination": "action-navigation.ts",
+      "retained": [
+        "safe action-prefix navigation rules"
+      ],
+      "adapted": [
+        "DSL type import",
+        "unchecked array reads guarded under strict indexed access"
+      ]
+    },
+    {
+      "source": "lib/choreography/cursor.ts",
+      "sha256": "9D06618DA91638BB5F0D88206C928040FB5B1DA743F9D42F4EE8B7455B2472CD",
+      "destination": "cursor.ts",
+      "retained": [
+        "scene/action cursor advancement",
+        "empty scene dwell behavior"
+      ],
+      "adapted": [
+        "guarded array access under strict indexed access"
+      ]
+    },
+    {
+      "source": "lib/choreography/timing.ts",
+      "sha256": "A036DA843B40F70AA6D3496BF901496FDE59F9FB8074932F367DC35A26FC52BF",
+      "destination": "timing.ts",
+      "retained": [
+        "upstream reading duration and playback timing constants"
+      ]
+    }
+  ],
+  "sourceReviewedForAdaptation": [
+    {
+      "source": "components/classroom/ClassroomSurface.tsx",
+      "sha256": "2A07795151CA7C714CE7DC397BA649BB4FC01A9E0889DC593E4185B6041B4052",
+      "destination": "../classroom-surface.tsx",
+      "retained": [
+        "load epoch/cancellation",
+        "load error vs positive absence",
+        "resource and document load before Stage mount"
+      ],
+      "replaced": [
+        "IndexedDB-first restoration and generation/media resume",
+        "ownership sidecars and agent-generation controls",
+        "server-only classroom fetch with HttpDocumentStore scoped read"
+      ]
+    },
+    {
+      "source": "components/stage.tsx",
+      "sha256": "CFF947D24B7C727F0BD735480B40E003022C370242445D42521327BA32EC029F",
+      "destination": "Stage.tsx",
+      "retained": [
+        "stage-level playback dispatch boundary"
+      ],
+      "replaced": [
+        "edit/pro workspace/agent/ownership/feature-flag graph with explicit M0 playback-only dispatch"
+      ]
+    },
+    {
+      "source": "components/edit/PlaybackChromeRoot.tsx",
+      "sha256": "8466A2A2BD5896F4C63F289E43845CE0C83DF257E4B8FAF96DD22335E11632E2",
+      "destination": "PlaybackChromeRoot.tsx",
+      "retained": [
+        "playback engine mount/unmount lifecycle and user playback controls"
+      ],
+      "replaced": [
+        "chat/Director/whiteboard/editor chrome with a narrow M0 control surface"
+      ]
+    },
+    {
+      "source": "components/stage/scene-renderer.tsx",
+      "sha256": "64A21911780EFF7C570F727DBC4C91687B322502C2554C5F38E9FE2DE28E4820",
+      "destination": "SceneRenderer.tsx",
+      "retained": [
+        "DSL discriminant-based scene dispatch",
+        "upstream SlideCanvas",
+        "quiz lifecycle component boundary",
+        "interactive scene boundary"
+      ],
+      "replaced": [
+        "upstream editor, local browser grader, PBL renderer and privileged integrations"
+      ]
+    },
+    {
+      "source": "components/scene-renderers/quiz-view.tsx",
+      "sha256": "51BE53A8A55AB12332D54279528952614B18DC68EABE9F6E3EB764D4EC63524C",
+      "destination": "QuizSceneView.tsx",
+      "retained": [
+        "loading/answering/submitting/reviewing/retry concepts",
+        "session and scene keyed attempt recovery",
+        "ordered draft then submit then review lifecycle"
+      ],
+      "replaced": [
+        "IndexedDB/localStorage recovery authority and browser-side grading with HttpRuntimeStore and atomic service review"
+      ]
+    },
+    {
+      "source": "lib/quiz/runtime.ts",
+      "sha256": "4CB51423B5E7A55B8BBB45F0A1DCB14D402CF193CF5F7512864440CC34BAB01F",
+      "destination": "QuizSceneView.tsx",
+      "retained": [
+        "learner/stage/scene partition, immutable ordered phases, CAS tail, completed attempt recovery"
+      ],
+      "replaced": [
+        "browser learner key, legacy browser-state migration and client-authored reviewed records"
+      ]
+    },
+    {
+      "source": "lib/classroom/load-classroom.ts",
+      "sha256": "E744030F19DFACBD449D02682D6888F095FBD41471A95AF58C1B7A1A48978CB7",
+      "destination": "classroom-load-lifecycle.ts",
+      "retained": [
+        "positive absence vs unavailable distinction",
+        "async load token checks before applying document state",
+        "apply-after-load outcome ordering"
+      ],
+      "replaced": [
+        "IndexedDB hydration, media migration, agent registry and generator recovery with one scoped HttpDocumentStore read"
+      ],
+      "implementation": "Independently authored narrow adapter in classroom-load-lifecycle.ts; no upstream function body copied. IndexedDB/fallback/media/agent pipeline is replaced with scoped HttpDocumentStore."
+    },
+    {
+      "source": "components/scene-renderers/InteractiveIframeHost.tsx",
+      "sha256": "8778FDC03025BE16057CF84CC18DF8E88BD2B2C138D2A291B58583E5EEF2E351",
+      "destination": "SceneRenderer.tsx:InteractiveScene",
+      "retained": [
+        "event.source must match active iframe",
+        "onLoad marks the iframe ready",
+        "__maicErrorReplayRequest replays early runtime-error messages",
+        "__maicInteractive=true runtime-error schema"
+      ],
+      "replaced": [
+        "iframe pool/store, editor pickers, portals, and error UI with scoped iframe component"
+      ],
+      "heartbeat": "Upstream host has no periodic heartbeat protocol."
+    },
+    {
+      "source": "lib/utils/iframe.ts",
+      "sha256": "2D5AB977BCB946D2B632C60111B17759A99D2B94C3D20CE692E7E43D8705A26F",
+      "destination": "SceneRenderer.tsx:InteractiveScene",
+      "retained": [
+        "error reports use __maicInteractive=true and kind=runtime-error",
+        "buffer/replay request uses __maicErrorReplayRequest"
+      ],
+      "replaced": [
+        "upstream injected storage and picker shims are not included"
+      ]
+    }
+  ]
+}

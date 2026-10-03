@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": { "jsx": "preserve", "lib": ["ES2023", "DOM", "DOM.Iterable"] },
+  "include": ["packages/**/*.ts", "tests/**/*.ts", "scripts/**/*.mjs", "vitest.config.ts"],
+  "exclude": ["node_modules", "**/dist/**", "**/.next/**"]
+}

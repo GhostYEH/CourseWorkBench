@@ -1,0 +1,25 @@
+node_modules/
+dist/
+out/
+release/
+apps/desktop/release/
+.next/
+.next-build/
+*.tsbuildinfo
+.turbo/
+coverage/
+tmp/
+.playwright-mcp/
+.workbuddy/
+.workbuddy-ai/
+.electron-user-data/
+.sew-user-data/
+
+# 项目数据目录（用户项目由原生目录选择器创建，不进仓库）
+**/.study/
+**/project.json
+
+# 随包 Node 运行时由脚本落盘，不进仓库
+resources/node/runtime/
+resources/node/node-v*.zip
+resources/node/node-v*.tar.gz

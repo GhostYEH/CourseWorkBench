@@ -1,0 +1,18 @@
+{
+  "serviceReady": "sew:service-ready",
+  "serviceStatus": "sew:service-status",
+  "projectCreate": "sew:project:create",
+  "projectOpen": "sew:project:open",
+  "projectClose": "sew:project:close",
+  "projectRecent": "sew:project:recent",
+  "materialsPickFiles": "sew:materials:pick-files",
+  "exportsPickTarget": "sew:exports:pick-target",
+  "exportsBackupProject": "sew:exports:backup-project",
+  "preferencesRead": "sew:preferences:read",
+  "preferencesSave": "sew:preferences:save",
+  "modelsConfigure": "sew:models:configure",
+  "modelsTest": "sew:models:test",
+  "windowMinimize": "sew:window:minimize",
+  "windowToggleMaximize": "sew:window:toggle-maximize",
+  "windowClose": "sew:window:close"
+}

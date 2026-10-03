@@ -1,0 +1,44 @@
+{
+  "name": "subject-exam-workbench",
+  "version": "0.1.0",
+  "private": true,
+  "description": "学科备考工作台——具有来源约束与多智能体互动课堂的 Electron 桌面学习系统",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "gen:theme": "node scripts/generate-theme-css.mjs",
+    "gen:preload": "node scripts/generate-preload.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p apps/learning/tsconfig.json --noEmit && tsc -p apps/desktop/tsconfig.json --noEmit",
+    "check:code": "node scripts/check-code-quality.mjs && node scripts/check-public-boundaries.mjs && node --test scripts/freshness-check.mjs",
+    "check": "pnpm typecheck && pnpm check:code && pnpm test",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev:learning": "pnpm --filter @sew/learning dev",
+    "build:learning": "node scripts/build-learning.mjs",
+    "start:learning": "pnpm --filter @sew/learning start",
+    "dev:desktop": "pnpm --filter @sew/desktop dev",
+    "build:desktop": "pnpm --filter @sew/desktop build",
+    "package:desktop": "pnpm --filter @sew/desktop package",
+    "verify:desktop": "node scripts/verify-packaged-desktop.mjs --app-dir apps/desktop/release/win-unpacked",
+    "verify:classroom": "node scripts/verify-classroom-desktop.mjs",
+    "dist:desktop": "pnpm --filter @sew/desktop dist",
+    "prepare:learning-dist": "pnpm build:learning && node scripts/prepare-learning-dist.mjs",
+    "verify:service": "node scripts/verify-learning-dist.mjs"
+  },
+  "devDependencies": {
+    "@openmaic/dsl": "0.11.2",
+    "@openmaic/storage": "0.35.1",
+    "@types/node": "^22.18.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron"
+    ]
+  }
+}
