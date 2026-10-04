@@ -1,6 +1,9 @@
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { createRequire } from 'node:module';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
@@ -155,5 +158,100 @@ describe('desktop local service lifecycle status', () => {
     expect(afterCrash).toEqual({ status, ready: null });
     await expect(getState(event('file:///index.html'))).rejects.toThrow('本地应用');
     await expect(getState(event('http://127.0.0.1:43127/frame', {}))).rejects.toThrow('主框架');
+  });
+});
+
+describe('desktop 打开归档原文副本', () => {
+  const invokeHandlers = (fixture: {
+    projectRoot: string;
+    serviceReply: () => unknown;
+    opened: string[];
+    generation?: number;
+  }) => {
+    const webContents = { id: 11 };
+    const window = { webContents };
+    const handlers = new Map<string, (event: unknown, ...args: unknown[]) => Promise<unknown>>();
+    const grants: number[] = [];
+    registerNativeHandlers({
+      ipcMain: {
+        handle: (channel: string, handler: (event: unknown, ...args: unknown[]) => Promise<unknown>) => handlers.set(channel, handler),
+        on: () => {},
+      },
+      dialog: {},
+      channels,
+      getWindow: () => window,
+      service: {
+        getReady: () => ({ origin: 'http://127.0.0.1:43127' }),
+        getKnownOrigin: () => 'http://127.0.0.1:43127',
+        getStatus: () => ({ state: 'ready' }),
+        request: async () => fixture.serviceReply(),
+      },
+      projects: {
+        current: () => ({
+          projectId: 'proj_1', generation: fixture.generation ?? 4, displayPath: fixture.projectRoot,
+        }),
+        scopeOf: () => ({ projectId: 'proj_1', generation: fixture.generation ?? 4 }),
+        sameScope: (left: { projectId: string; generation: number }, right: { projectId: string; generation: number }) =>
+          left.projectId === right.projectId && left.generation === right.generation,
+        beginGrant: () => {
+          grants.push(1);
+          return () => grants.pop();
+        },
+      },
+      settings: {},
+      shell: { openPath: async (target: string) => { fixture.opened.push(target); return ''; } },
+    });
+    const call = (request: unknown, ...extra: unknown[]) =>
+      handlers.get(channels.materialsOpenOriginal)!({ sender: webContents, senderFrame: { url: 'http://127.0.0.1:43127/workbench', parent: null } }, request, ...extra);
+    return { call, grants };
+  };
+
+  const temporaryProject = (): string => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'sew-original-')));
+    mkdirSync(join(root, 'exports', 'originals'), { recursive: true });
+    roots.push(root);
+    return root;
+  };
+  const roots: string[] = [];
+  afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+
+  it('打开服务返回且仍在项目内的副本', async () => {
+    const root = temporaryProject();
+    const copy = join(root, 'exports', 'originals', '原文.md');
+    writeFileSync(copy, '原文', 'utf8');
+    const opened: string[] = [];
+    const { call } = invokeHandlers({ projectRoot: root, opened, serviceReply: () => ({ path: copy, displayName: 'source.md', lineStart: 3, lineEnd: 4 }) });
+
+    await expect(call({ scope: { projectId: 'proj_1', generation: 4 }, materialId: 'mat_1', revision: 1, segmentId: 'S002' }))
+      .resolves.toEqual({ displayName: 'source.md', lineStart: 3, lineEnd: 4 });
+    expect(opened).toEqual([copy]);
+  });
+
+  it('拒绝越出项目根、旧代次与畸形入参', async () => {
+    const root = temporaryProject();
+    const outsideDir = realpathSync(mkdtempSync(join(tmpdir(), 'sew-outside-')));
+    const outside = join(outsideDir, 'elsewhere.md');
+    writeFileSync(outside, '别的项目', 'utf8');
+    roots.push(outsideDir);
+    const opened: string[] = [];
+
+    const escaping = invokeHandlers({ projectRoot: root, opened, serviceReply: () => ({ path: outside }) });
+    await expect(escaping.call({ scope: { projectId: 'proj_1', generation: 4 }, materialId: 'mat_1', revision: 1 }))
+      .rejects.toThrow('不在当前项目内');
+    expect(opened).toEqual([]);
+
+    const stale = invokeHandlers({ projectRoot: root, opened, serviceReply: () => ({ path: root }), generation: 5 });
+    await expect(stale.call({ scope: { projectId: 'proj_1', generation: 4 }, materialId: 'mat_1', revision: 1 }))
+      .rejects.toThrow('项目已切换');
+
+    const noScope = invokeHandlers({ projectRoot: root, opened, serviceReply: () => ({ path: root }) });
+    await expect(noScope.call({ materialId: 'mat_1', revision: 1 })).rejects.toThrow('项目身份');
+    await expect(noScope.call({ scope: { projectId: 'proj_1', generation: 4 }, materialId: '', revision: 1 })).rejects.toThrow('材料标识');
+    await expect(noScope.call({ scope: { projectId: 'proj_1', generation: 4 }, materialId: 'mat_1', revision: 0 })).rejects.toThrow('材料版本');
+    await expect(noScope.call({ scope: { projectId: 'proj_1', generation: 4 }, materialId: 'mat_1', revision: 1, segmentId: 7 }))
+      .rejects.toThrow('段落标识');
+    await expect(noScope.call({ scope: { projectId: 'proj_1', generation: 4 }, materialId: 'mat_1', revision: 1 }, 'extra'))
+      .rejects.toThrow('只接受一个参数');
+    expect(opened).toEqual([]);
   });
 });

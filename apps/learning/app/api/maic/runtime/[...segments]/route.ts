@@ -19,6 +19,7 @@ import {
   runtimeRouteError,
 } from '../../../../../lib/server/runtime-storage';
 import { loadRenderableDocument } from '../../../../../lib/server/classroom-service';
+import { INTERACTION_SESSION_KIND, INTERACTION_SESSION_PREFIX } from '../../../../../lib/server/interaction-service';
 import { toAttemptDto } from '../../../../../lib/server/dto';
 import type { RuntimeRecordRow, RuntimeSessionRow } from '@sew/study-storage';
 
@@ -125,6 +126,7 @@ const dispatch = async (request: Request, context: RouteContext): Promise<NextRe
   }
   if (segments.length === 1 && segments[0] === 'sessions' && method === 'POST') {
     const input = await parseJson(request, createSessionSchema, scope);
+    if (input.kind === INTERACTION_SESSION_KIND || input.id.startsWith(INTERACTION_SESSION_PREFIX)) error(403, 'INTERACTION_WRITE_FORBIDDEN', 'Personal interaction observations are committed only by the interaction service');
     const current = revalidateRuntimeScope(scope);
     if (!current.store.getClassroomDocument(current.projectId, input.stageId)) {
       error(404, 'STAGE_NOT_FOUND', `Classroom stage ${JSON.stringify(input.stageId)} was not found`);
@@ -162,6 +164,7 @@ const dispatch = async (request: Request, context: RouteContext): Promise<NextRe
     if (segments.length === 2 && method === 'DELETE') {
       const current = revalidateRuntimeScope(scope);
       const owned = runtime.getSession(current.projectId, sessionId);
+      if (owned?.kind === INTERACTION_SESSION_KIND) error(403, 'INTERACTION_WRITE_FORBIDDEN', 'Saved personal observations cannot be deleted');
       if (owned?.learnerKey === CLASSROOM_OWNER_LEARNER_KEY && owned.kind === 'quizAttempt' && owned.status === 'completed') {
         error(403, 'SESSION_DELETE_FORBIDDEN', 'A completed scored quiz attempt cannot be deleted');
       }
@@ -176,6 +179,7 @@ const dispatch = async (request: Request, context: RouteContext): Promise<NextRe
       }
       const current = revalidateRuntimeScope(scope);
       const owned = getOwnedSession(current, sessionId);
+      if (owned.kind === INTERACTION_SESSION_KIND) error(403, 'INTERACTION_WRITE_FORBIDDEN', 'Saved personal observation sessions cannot be archived');
       if (owned.kind === 'quizAttempt' && owned.status === 'completed') {
         error(403, 'SESSION_ARCHIVE_FORBIDDEN', 'A completed scored quiz attempt must keep its review receipt linked');
       }
@@ -195,6 +199,7 @@ const dispatch = async (request: Request, context: RouteContext): Promise<NextRe
       if (input.sessionTransition) error(403, 'REVIEW_REQUIRES_SERVER_SCORING', 'Session transitions are only allowed with server-scored records');
       const current = revalidateRuntimeScope(scope);
       const owned = getOwnedSession(current, sessionId);
+      if (owned.kind === INTERACTION_SESSION_KIND) error(403, 'INTERACTION_WRITE_FORBIDDEN', 'Personal interaction records are written only by the interaction service');
       validateQuizAppend(owned, input.payload);
       const init = {
         id: input.id,
@@ -230,7 +235,7 @@ const dispatch = async (request: Request, context: RouteContext): Promise<NextRe
     if (segments[3] !== CLASSROOM_OWNER_LEARNER_KEY) error(403, 'FORBIDDEN_LEARNER', 'Runtime learner partition is assigned by the service');
     const current = revalidateRuntimeScope(scope);
     const sessions = runtime.listSessions(current.projectId, segments[1] ?? '', CLASSROOM_OWNER_LEARNER_KEY);
-    if (sessions.some((session) => session.kind === 'quizAttempt' && session.status === 'completed')) {
+    if (sessions.some((session) => session.kind === INTERACTION_SESSION_KIND || (session.kind === 'quizAttempt' && session.status === 'completed'))) {
       error(403, 'FORBIDDEN', 'Completed quiz evidence and receipts cannot be removed by the learner');
     }
     runtime.deleteLearnerRuntime(current.projectId, segments[1] ?? '', CLASSROOM_OWNER_LEARNER_KEY);

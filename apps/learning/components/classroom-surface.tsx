@@ -14,7 +14,7 @@ import { Notice } from './ui';
  * - 播放位置写入 SQLite，浏览器缓存不作为恢复来源。
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { HttpAssetStore } from '@openmaic/storage/asset/http';
 import { HttpDocumentStore } from '@openmaic/storage/document/http';
@@ -24,6 +24,8 @@ import { apiFetch, getSessionToken } from '../lib/client';
 import { Stage } from './openmaic-adaptation/Stage';
 import { SceneRenderer } from './openmaic-adaptation/SceneRenderer';
 import { runClassroomLoad } from './openmaic-adaptation/classroom-load-lifecycle';
+import { createClassroomLifecycle, type ClassroomLifecycleLease } from './openmaic-adaptation/host-lifecycle';
+import { useOpenMaicClassroomLoad, type OpenMaicHostLoadResult } from './openmaic-adaptation/useOpenMaicClassroomLoad';
 import {
   DEMO_ASSET_SCENE_ID,
   DEMO_FONT_REF,
@@ -93,9 +95,9 @@ export const ClassroomSurface = ({
 }) => {
   const [scenes, setScenes] = useState<LessonScene[] | null>(null);
   const [sceneId, setSceneId] = useState(initialSceneId);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [loadRetry, setLoadRetry] = useState(0);
-  const loadEpochRef = useRef(0);
+  const releaseLoadRef = useRef<(() => void) | null>(null);
+  const lifecycleRef = useRef(createClassroomLifecycle());
+  const activeLeaseRef = useRef<ClassroomLifecycleLease | null>(null);
   const positionSaving = useRef(false);
   const [positionState, setPositionState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
   const [positionError, setPositionError] = useState<string | null>(null);
@@ -118,11 +120,22 @@ export const ClassroomSurface = ({
     [projectId, generation],
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    const loadEpoch = loadEpochRef.current + 1;
-    loadEpochRef.current = loadEpoch;
-    const isCurrent = () => !cancelled && loadEpochRef.current === loadEpoch;
+  const releaseDocumentAndAssets = useCallback(() => {
+    releaseLoadRef.current?.();
+    releaseLoadRef.current = null;
+  }, []);
+
+  const loadDocumentAndAssets = useCallback(async (hostIsCurrent: () => boolean): Promise<OpenMaicHostLoadResult> => {
+    releaseDocumentAndAssets();
+    const lease = lifecycleRef.current.claim();
+    activeLeaseRef.current = lease;
+    // Dispose the prior Stage before loading another project/document or retry.
+    // Playback and scene-local async work must not survive a new load epoch.
+    setScenes(null);
+    setPositionError(null);
+    setPositionState('idle');
+    positionSaving.current = false;
+    const isCurrent = () => hostIsCurrent() && lease.isCurrent();
     const assetStore = new HttpAssetStore({
       baseUrl: '/api/maic',
       headers: (): HeadersInit => {
@@ -143,7 +156,11 @@ export const ClassroomSurface = ({
       }
       await Promise.all(ownedRefs.splice(0).map((assetId) => assetStore.release(assetId)));
     };
-    (async () => {
+    releaseLoadRef.current = () => {
+      lease.cancel();
+      void releaseAssets();
+      void assetStore.close();
+    };
       try {
         await waitForSessionToken();
         const assetResult = await apiFetch<{
@@ -152,7 +169,7 @@ export const ClassroomSurface = ({
         }>(`/api/maic/demo-assets/${encodeURIComponent(stageId)}`, {
           headers: { 'x-sew-project-id': projectId, 'x-sew-generation': String(generation) },
         });
-        if (!isCurrent()) return;
+        if (!isCurrent()) return { outcome: 'cancelled' };
         const expected = new Map([[DEMO_IMAGE_REF, DEMO_IMAGE_SHA256], [DEMO_FONT_REF, DEMO_FONT_SHA256]]);
         const urls = new Map<string, string>();
         for (const asset of assetResult.assets) {
@@ -163,9 +180,9 @@ export const ClassroomSurface = ({
           ownedRefs.push(asset.assetId);
           const url = await assetStore.resolve(asset.assetId);
           if (!url) throw new Error(`课堂资源缺失（${asset.symbolicRef}）。请检查项目资源或从备份恢复后重试。`);
-          if (!isCurrent()) return;
+          if (!isCurrent()) return { outcome: 'cancelled' };
           const actualHash = await hashUrlBytes(url);
-          if (!isCurrent()) return;
+          if (!isCurrent()) return { outcome: 'cancelled' };
           if (actualHash !== expectedHash) {
             throw new Error(`课堂资源完整性校验失败（${asset.symbolicRef}）。已停止课堂渲染，请检查项目资源或从备份恢复后重试。`);
           }
@@ -177,19 +194,19 @@ export const ClassroomSurface = ({
           throw new Error('审核课件图片或字体绑定缺失。请检查项目资源或从备份恢复后重试。');
         }
         await waitForImage(imageUrl);
-        if (!isCurrent()) return;
+        if (!isCurrent()) return { outcome: 'cancelled' };
         loadedFont = new FontFace(
           DEMO_FORMULA_FONT_FAMILY,
           `url(${JSON.stringify(fontUrl)}) format("woff2")`,
           { style: 'normal', weight: '400' },
         );
         await loadedFont.load();
-        if (!isCurrent()) return;
+        if (!isCurrent()) return { outcome: 'cancelled' };
         document.fonts.add(loadedFont);
         if (!document.fonts.check(`16px "${DEMO_FORMULA_FONT_FAMILY}"`)) {
           throw new Error('公式字体未能在浏览器中加载。请检查课堂资源后重试。');
         }
-        if (!isCurrent()) return;
+        if (!isCurrent()) return { outcome: 'cancelled' };
         const loadResult = await runClassroomLoad({
           isCurrent,
           loadFromAuthoritativeStore: async () => (await store.loadDocument(stageId)) ?? undefined,
@@ -204,53 +221,57 @@ export const ClassroomSurface = ({
             image.src = imageUrl;
             const next = orderedScenes(lessonDocument as unknown as LoadedDocument);
             setScenes(next);
-            setLoadError(null);
             if (next.length > 0 && !next.some((scene) => scene.id === sceneIdRef.current)) {
               setSceneId(next[0]!.id);
             }
           },
         });
-        if (loadResult.outcome === 'cancelled') return;
+        if (loadResult.outcome === 'cancelled') return { outcome: 'cancelled' };
         if (loadResult.outcome === 'unavailable' || loadResult.outcome === 'failed') throw loadResult.error;
         if (loadResult.outcome === 'absent') {
-          setLoadError('课堂文档不存在：课件未落到当前项目。');
-          setScenes([]);
-          return;
-        }
-      } catch (caught) {
-        if (cancelled) {
           await releaseAssets();
-          return;
+          if (!isCurrent()) return { outcome: 'cancelled' };
+          setScenes([]);
+          return { outcome: 'absent' };
+        }
+        return { outcome: 'ready', classroomId: stageId };
+      } catch (caught) {
+        if (!isCurrent()) {
+          await releaseAssets();
+          return { outcome: 'cancelled' };
         }
         await releaseAssets();
-        setLoadError(caught instanceof Error ? caught.message : String(caught));
+        if (!isCurrent()) return { outcome: 'cancelled' };
         setScenes([]);
+        return { outcome: 'failed', error: caught instanceof Error ? caught.message : String(caught) };
       }
-    })();
-    return () => {
-      cancelled = true;
-      if (loadEpochRef.current === loadEpoch) loadEpochRef.current += 1;
-      void releaseAssets();
-      void assetStore.close();
-    };
     // 文档按 stage 身份加载一次；场景切换不重新拉取，避免覆盖本地交互状态。
-  }, [generation, loadRetry, projectId, store, stageId]);
+  }, [generation, projectId, store, stageId, releaseDocumentAndAssets]);
+
+  const host = useOpenMaicClassroomLoad({
+    classroomId: stageId,
+    identity: `${projectId}:${generation}:${stageId}`,
+    loadDocumentAndAssets,
+    releaseDocumentAndAssets,
+  });
+  const loadError = host.error ?? (host.notFound ? '课堂文档不存在：课件未落到当前项目。' : null);
 
   const current = scenes?.find((scene) => scene.id === sceneId) ?? scenes?.[0] ?? null;
   const currentBinding = bindings.find((binding) => binding.sceneId === current?.id) ?? null;
 
   const persistPosition = useCallback(
     async (nextSceneId: string) => {
+      const lease = activeLeaseRef.current;
+      if (!lease?.isCurrent()) return false;
       setPositionState('saving');
       try {
         await apiFetch<{ currentSceneId: string }>('/api/maic/state', {
           method: 'PUT',
           body: JSON.stringify({ scope: { projectId, generation }, stageId, sceneId: nextSceneId }),
         });
-        setPositionState('saved');
-        return true;
+        return lease.applyIfCurrent(() => setPositionState('saved'));
       } catch {
-        setPositionState('failed');
+        lease.applyIfCurrent(() => setPositionState('failed'));
         return false;
       }
     },
@@ -258,17 +279,21 @@ export const ClassroomSurface = ({
   );
 
   const selectScene = async (nextSceneId: string): Promise<void> => {
-    if (positionSaving.current) return;
+    if (positionSaving.current || !scenes?.some((scene) => scene.id === nextSceneId)) return;
+    const lease = activeLeaseRef.current;
+    if (!lease?.isCurrent()) return;
     positionSaving.current = true;
     setPositionError(null);
     try {
-      if (await persistPosition(nextSceneId)) {
+      const saved = await persistPosition(nextSceneId);
+      if (!lease.isCurrent()) return;
+      if (saved) {
         setSceneId(nextSceneId);
       } else {
         setPositionError('播放位置未能写入当前项目；此场景暂不能继续，请检查项目会话后重试。');
       }
     } finally {
-      positionSaving.current = false;
+      if (lease.isCurrent()) positionSaving.current = false;
     }
   };
 
@@ -309,17 +334,17 @@ export const ClassroomSurface = ({
           {loadError ? (
             <Notice tone="error" role="alert">
               课堂文档读取失败：{loadError}
-              <button type="button" className="btn" onClick={() => { setLoadError(null); setLoadRetry((retry) => retry + 1); }}>
+              {!host.notFound ? <button type="button" className="btn" onClick={host.retryClassroom}>
                 重试加载课堂
-              </button>
+              </button> : <Link className="btn" href="/workbench/study">返回工作台</Link>}
             </Notice>
           ) : null}
-          {!scenes && !loadError ? (
+          {host.loading && !loadError ? (
             <Notice tone="pending" role="status">
               正在加载课堂文档与资源…
             </Notice>
           ) : null}
-          {scenes && current ? (
+          {host.ready && scenes && current ? (
             <>
               <div className="tabs" style={{ background: 'transparent' }}>
                 {scenes.map((scene) => (

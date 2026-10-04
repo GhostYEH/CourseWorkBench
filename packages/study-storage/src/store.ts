@@ -20,10 +20,14 @@ import {
 } from '@sew/study-contracts';
 import {
   computeInvalidation,
+  computeSyllabusCoverage,
   decideAttempt,
   resolveQuestionOrigin,
   type MaterialChangeImpact,
   type OriginRecord,
+  type SyllabusCoverageResult,
+  type SyllabusItemRecord,
+  type SyllabusMappingRecord,
 } from '@sew/study-domain';
 import { createNodeSqliteDriver, type SqlDatabase, type SqliteDriver } from './driver';
 import { MIGRATIONS } from './schema';
@@ -44,6 +48,8 @@ import { ProjectsRepository } from './repositories/projects';
 import { ProposalsRepository } from './repositories/proposals';
 import { QuestionsRepository } from './repositories/questions';
 import { RunsRepository } from './repositories/runs';
+import { SyllabusRepository } from './repositories/syllabus';
+import type { CreateSyllabusItemInput, SyllabusItemRow } from './repositories/syllabus';
 import type {
   AttemptRow,
   CreateProposalInput,
@@ -71,6 +77,7 @@ export type { DocumentFolderRow } from './repositories/document-organization';
 export { DocumentOrganizationError } from './repositories/document-organization';
 export type { ClassroomAssetBindingRow, ClassroomAssetInfo, ClassroomAssetRow } from './repositories/classroom-assets';
 export { ClassroomAssetReferencedError } from './repositories/classroom-assets';
+export type { CreateSyllabusItemInput, SyllabusItemRow } from './repositories/syllabus';
 export type {
   RuntimeAppendOptions,
   RuntimeRecordInput,
@@ -85,6 +92,7 @@ export type {
   EvidenceStored,
   ImportMaterialInput,
   KnowledgeRow,
+  MaterialRawArchiveRow,
   MaterialRow,
   ProjectRow,
   ProposalRow,
@@ -117,6 +125,7 @@ export class StudyStore {
   private readonly runs: RunsRepository;
   private readonly preferences: PreferencesRepository;
   private readonly plans: PlansRepository;
+  private readonly syllabus: SyllabusRepository;
   private readonly classroom: ClassroomRepository;
   private readonly documentOrganization: DocumentOrganizationRepository;
   private readonly classroomAssets: ClassroomAssetsRepository;
@@ -135,6 +144,7 @@ export class StudyStore {
     this.runs = new RunsRepository(db);
     this.preferences = new PreferencesRepository(db);
     this.plans = new PlansRepository(db);
+    this.syllabus = new SyllabusRepository(db);
     this.classroom = new ClassroomRepository(db);
     this.documentOrganization = new DocumentOrganizationRepository(db);
     this.classroomAssets = new ClassroomAssetsRepository(db);
@@ -268,8 +278,27 @@ export class StudyStore {
     return this.materials.getMaterial(materialId, revision, scope);
   }
 
+  listMaterialVersions(materialId: string, scope: RecordScope = 'formal'): MaterialRow[] {
+    return this.materials.listMaterialVersions(materialId, scope);
+  }
+
   getSegments(materialId: string, revision: number): SegmentRow[] {
     return this.materials.getSegments(materialId, revision);
+  }
+
+  /** 读取归档的原始字节：未归档或摘要不符都按明确错误失败，不返回无法核对的原文。 */
+  readMaterialRaw(materialId: string, revision: number, scope: RecordScope = 'formal') {
+    return this.materials.readMaterialRaw(materialId, revision, scope);
+  }
+
+  /** 段落在归档原文中的字节区间与行号；段落不属于该版本或范围不符时明确失败。 */
+  getSegmentSpan(
+    materialId: string,
+    revision: number,
+    segmentId: string,
+    scope: RecordScope = 'formal',
+  ): SegmentRow {
+    return this.materials.getSegmentSpan(materialId, revision, segmentId, scope);
   }
 
   currentRevisions(scope: RecordScope = 'formal'): Record<string, number> {
@@ -322,6 +351,7 @@ export class StudyStore {
     expectedRevision: number;
     semanticReviewed: boolean;
     note?: string;
+    syllabus?: SyllabusMappingRecord | null;
   }): ReviewOutcome {
     return this.proposals.applyReview(input, {
       lookupSegment: (m, r, s) => this.materials.lookupSegment(m, r, s, 'formal'),
@@ -329,21 +359,80 @@ export class StudyStore {
       currentRevisions: this.materials.currentRevisions('formal'),
       knownKnowledgeIds: new Set(this.knowledge.listKnowledge().map((k) => k.knowledgeId)),
       insertKnowledgePoint: (fields) => this.knowledge.insertKnowledgePoint(fields),
+      syllabusItem: (itemId, scope) => this.syllabusRecord(itemId, scope),
+      syllabusItemsRegistered: (scope) => this.syllabus.countItems(scope) > 0,
     });
   }
 
-  applyDemoAuthorReview(input: { proposalId: string; decision: ReviewDecision; expectedRevision: number; semanticReviewed: boolean; note?: string }): ReviewOutcome {
+  applyDemoAuthorReview(input: {
+    proposalId: string;
+    decision: ReviewDecision;
+    expectedRevision: number;
+    semanticReviewed: boolean;
+    note?: string;
+    syllabus?: SyllabusMappingRecord | null;
+  }): ReviewOutcome {
     return this.proposals.applyDemoAuthorReview(input, {
       scope: 'demo',
       lookupSegment: (m, r, s) => this.materials.lookupSegment(m, r, s, 'demo'),
       currentRevisions: this.materials.currentRevisions('demo'),
       knownKnowledgeIds: new Set(this.knowledge.listKnowledge('demo').map((k) => k.knowledgeId)),
       insertKnowledgePoint: (fields) => this.knowledge.insertKnowledgePoint(fields),
+      syllabusItem: (itemId, scope) => this.syllabusRecord(itemId, scope),
+      syllabusItemsRegistered: (scope) => this.syllabus.countItems(scope) > 0,
     });
+  }
+
+  /** 审核映射校验用的最简条目形状；范围不符按不存在处理，不泄露另一范围的数据。 */
+  private syllabusRecord(itemId: string, scope: RecordScope): SyllabusItemRecord | null {
+    const item = this.syllabus.getItem(itemId, scope);
+    if (!item) return null;
+    return {
+      itemId: item.itemId,
+      code: item.code,
+      label: item.label,
+      recordScope: item.recordScope,
+      requirements: item.requirements,
+    };
   }
 
   getProposal(proposalId: string, scope: RecordScope = 'formal'): ProposalRow | null {
     return this.proposals.getProposal(proposalId, scope);
+  }
+
+  /** 登记考纲原子项：来源段落必须可定位，同范围内编号重复会被拒绝。 */
+  createSyllabusItem(input: CreateSyllabusItemInput): SyllabusItemRow {
+    return this.syllabus.createItem(input);
+  }
+
+  listSyllabusItems(scope: RecordScope = 'formal'): SyllabusItemRow[] {
+    return this.syllabus.listItems(scope);
+  }
+
+  /**
+   * 考纲覆盖（《规划书》8.1）。
+   *
+   * 分母是登记的条目数，分子只算必要要素全部被覆盖的条目；准入判断与课堂、出题等
+   * 入口共用同一实现，不给统计开第二条判定路径。
+   */
+  syllabusCoverage(scope: RecordScope = 'formal'): SyllabusCoverageResult {
+    const points = this.knowledge.listKnowledge(scope);
+    const admission = this.knowledge.checkAdmission(
+      points.map((point) => point.knowledgeId),
+      this.materials.currentRevisions(scope),
+      scope,
+    );
+    return computeSyllabusCoverage({
+      items: this.syllabus.recordsForCoverage(scope),
+      points: points.map((point) => ({
+        knowledgeId: point.knowledgeId,
+        scopeStatus: point.scopeStatus,
+        sourceStatus: point.sourceStatus,
+        syllabusItemId: point.syllabusItemId,
+        syllabusRequirementKey: point.syllabusRequirementKey,
+      })),
+      admittedIds: new Set(admission.admitted),
+    });
   }
 
   listKnowledge(scope: RecordScope = 'formal'): KnowledgeRow[] {

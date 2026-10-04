@@ -66,6 +66,35 @@
       "retained": [
         "upstream reading duration and playback timing constants"
       ]
+    },
+    {
+      "source": "components/classroom/ClassroomSurface.tsx",
+      "sha256": "2A07795151CA7C714CE7DC397BA649BB4FC01A9E0889DC593E4185B6041B4052",
+      "destination": "useOpenMaicClassroomLoad.ts and classroom-host-load.ts",
+      "retained": [
+        "loadClassroom page-mode positive absence, unavailable, cancelled, failed and defensive classroom identity branches, lines 103-187",
+        "retryClassroom epoch increment, presentation reset and stale-result guard, lines 189-215",
+        "page-mode load effect, loading fence, loadUntilAvailable and unmount cancellation, lines 217-297"
+      ],
+      "adapted": [
+        "page-only React hook with scoped document/assets load and release ports",
+        "service project-generation and source admission replaces remote ownership sidecar before ready",
+        "project identity added to original epoch/classroom guards and Stage mount fence",
+        "pane availability probing, IndexedDB fallback, agent registry, narration adoption, generation and editing ports excluded from M0",
+        "external exceptions shown as a safe retryable error instead of their raw path-bearing message"
+      ],
+      "implementation": "Actual host control-flow extraction with copied/adapted branch and retry/effect bodies; does not claim the original M2 generator/media/roster/editor graph."
+    },
+    {
+      "source": "lib/classroom/progressive-load-policy.ts",
+      "sha256": "F70713AE3DCF944A1B11CF59CC7218DEC6BEA47A4B2B4F8B77754C64BC62DA07",
+      "destination": "classroom-host-load.ts:resolveOpenMaicClassroomView",
+      "retained": [
+        "resolveClassroomSurfaceView terminal-state ordering and stale-stage fence, lines 15-37"
+      ],
+      "adapted": [
+        "page host also applies the project/classroom identity fence; pane generation scheduling excluded"
+      ]
     }
   ],
   "sourceReviewedForAdaptation": [
@@ -82,7 +111,8 @@
         "IndexedDB-first restoration and generation/media resume",
         "ownership sidecars and agent-generation controls",
         "server-only classroom fetch with HttpDocumentStore scoped read"
-      ]
+      ],
+      "implementation": "App chrome and asset port remain independently authored; load/retry/effect orchestration now uses the copied/adapted hook recorded in copiedAndAdapted."
     },
     {
       "source": "components/stage.tsx",
@@ -156,7 +186,21 @@
       "replaced": [
         "IndexedDB hydration, media migration, agent registry and generator recovery with one scoped HttpDocumentStore read"
       ],
-      "implementation": "Independently authored narrow adapter in classroom-load-lifecycle.ts; no upstream function body copied. IndexedDB/fallback/media/agent pipeline is replaced with scoped HttpDocumentStore."
+      "implementation": "M0 load/apply port: cancellation guards and ready/absent/failed branch snippets retained from runClassroomLoad lines 157-212 and 279-287; generic load/apply ports and error payloads independently authored. IndexedDB/fallback/media/agent graph replaced with scoped HttpDocumentStore. This does not copy or claim the full host pipeline."
+    },
+    {
+      "source": "lib/store/stage.ts",
+      "sha256": "A53B936A9F582D02B18E477608D479D573523F6FBBDAFA5E2D0CAF055FF1773E",
+      "destination": "host-lifecycle.ts",
+      "retained": [
+        "claimStageSceneLoadToken increment and return body, lines 255-258",
+        "isCurrentStageSceneLoadToken equality body, lines 260-262"
+      ],
+      "replaced": [
+        "global singleton counter scoped to each mounted classroom host",
+        "independently authored lease cancellation and guarded UI commit for load, position and cleanup races"
+      ],
+      "implementation": "Only two numeric token function bodies copied and adapted; the stage store and its IndexedDB/persistence graph are not copied."
     },
     {
       "source": "components/scene-renderers/InteractiveIframeHost.tsx",

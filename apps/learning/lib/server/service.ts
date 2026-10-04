@@ -6,15 +6,16 @@
  * - 本地服务是唯一数据库写入者，写操作串行执行。
  */
 
-import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
-import { MAX_MATERIAL_BYTES, StudyError, newId, type ProjectScope } from '@sew/study-contracts';
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { GENERATED_ID_PATTERN, MAX_MATERIAL_BYTES, StudyError, newId, type ProjectScope } from '@sew/study-contracts';
 import {
   PROJECT_FORMAT_VERSION,
   StudyStore,
   assertManifestCompatible,
   ensureProjectLayout,
   isDirectory,
+  projectPaths,
   readManifest,
   writeManifest,
   type ProjectManifest,
@@ -234,8 +235,15 @@ export const assertMaterialSize = (bytes: number): void => {
   }
 };
 
-/** 读取已授权文件内容。未授权路径一律拒绝，不做静默兜底。 */
-export const readAuthorizedFile = (session: Session, filePath: string): string => {
+/**
+ * 读取已授权文件的内容与原样字节。未授权路径一律拒绝，不做静默兜底。
+ *
+ * 原样字节（含 BOM 与原换行风格）随文本一起返回，导入时才能归档并核对来源身份。
+ */
+export const readAuthorizedFile = (
+  session: Session,
+  filePath: string,
+): { text: string; bytes: Uint8Array; originalName: string } => {
   if (holder.current !== session || holder.current.generation !== session.generation) {
     throw new StudyError('PROJECT_GENERATION_STALE', {
       expected: holder.current?.generation ?? null,
@@ -254,5 +262,51 @@ export const readAuthorizedFile = (session: Session, filePath: string): string =
     throw new StudyError('MATERIAL_NOT_FOUND', { path: filePath, reason: 'not_a_file' });
   }
   assertMaterialSize(stat.size);
-  return readFileSync(/* turbopackIgnore: true */ canonical, 'utf8');
+  const read = readFileSync(/* turbopackIgnore: true */ canonical);
+  // Recheck the actual bytes: a selected file may have grown after stat.
+  assertMaterialSize(read.byteLength);
+  try {
+    // Buffer.toString('utf8') silently replaces invalid bytes with U+FFFD.
+    // A fatal decoder preserves the evidence boundary by rejecting corruption.
+    // ignoreBOM keeps the leading BOM in the text so it matches the archived bytes
+    // character for character; normalization removes it before fingerprinting.
+    return {
+      text: new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(read),
+      bytes: new Uint8Array(read),
+      originalName: basename(canonical),
+    };
+  } catch {
+    throw new StudyError('MATERIAL_TYPE_UNSUPPORTED', { reason: 'invalid_utf8' }, '材料不是有效的 UTF-8 文本，请转换编码后重新导入');
+  }
+};
+
+/** 原文副本的落盘目录：项目内的 `exports/originals`，随项目一起备份与迁移。 */
+const originalCopyDir = (session: Session): string =>
+  join(projectPaths(session.displayPath).exportsDir, 'originals');
+
+/**
+ * 把归档的原始字节写成项目内的只读副本，返回路径给主进程校验归属后打开。
+ *
+ * 文件名由材料标识、版本与内容摘要拼成，不含任何调用方提交的字符串；
+ * 同内容重复物化是幂等的，内容不同则摘要不同、不会互相覆盖。
+ */
+export const materializeOriginalCopy = (
+  session: Session,
+  materialId: string,
+  revision: number,
+): { path: string; displayName: string | null } => {
+  if (!GENERATED_ID_PATTERN.test(materialId)) {
+    throw new StudyError('INVALID_ARGUMENT', { reason: 'malformed_material_id' });
+  }
+  const { archive, bytes } = session.store.readMaterialRaw(materialId, revision);
+  const extension = archive.mediaType === 'text/markdown' ? 'md' : 'txt';
+  const dir = originalCopyDir(session);
+  mkdirSync(/* turbopackIgnore: true */ dir, { recursive: true });
+  const target = join(dir, `原文-${materialId}-r${revision}-${archive.sha256.slice(0, 12)}.${extension}`);
+  try {
+    writeFileSync(/* turbopackIgnore: true */ target, bytes, { flag: 'wx' });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
+  return { path: target, displayName: archive.originalName };
 };

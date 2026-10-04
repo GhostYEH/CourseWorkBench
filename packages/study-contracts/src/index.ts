@@ -1,6 +1,6 @@
 /** Stable public contracts; internal additions must be exported explicitly. */
 export {
-  asId, newId,
+  asId, newId, GENERATED_ID_PATTERN, SEGMENT_ID_PATTERN, SYLLABUS_REQUIREMENT_KEY_PATTERN,
 } from './ids';
 export type {
   ProjectId, RunId, SessionId, MaterialId, SegmentId, KnowledgeId, ProposalId, ReviewId,
@@ -36,6 +36,7 @@ export {
 export type {
   IpcChannel, ServiceReadyPayload, ServiceStatusPayload, OpenedProjectPayload,
   PickedFilesPayload, ServiceStatePayload, IpcContract, IpcMethod, IpcHandlerMap,
+  OpenMaterialOriginalRequest, OpenMaterialOriginalResult,
   NativeBridge,
 } from './ipc';
 export {
@@ -45,6 +46,8 @@ export {
 export type {
   MaterialType,
 } from './fingerprint';
+export { modelConnectionInputSchema, modelTestResultSchema, modelConnectionStatusSchema } from './model-connection';
+export type { ModelConnectionInput, ModelTestResult, ModelConnectionStatus } from './model-connection';
 export {
   THEME_IDS, ACCENT_PRESETS, STATUS_TOKEN_KEYS,
 } from './tokens';
@@ -59,7 +62,13 @@ export {
   questionCreateSchema, questionListItemSchema, questionSchema, questionDetailQuerySchema,
   attemptSubmitSchema, attemptSchema, workbenchStateSchema, preferencesSchema,
   teachingPreferenceSchema, preferencesWriteSchema, materialExamVerificationSchema,
+  materialRawArchiveSchema, materialRawQuerySchema, materialRawViewSchema,
+  materialOriginalOpenSchema,
+  syllabusRequirementSchema, syllabusMappingSchema, syllabusItemCreateSchema,
+  syllabusItemSchema, syllabusCoverageItemSchema, syllabusCoverageSchema,
   recentProjectSchema, classroomSceneBindingSchema,
+  interactionDirectionSchema, interactionSubmitSchema, interactionPayloadSchema,
+  interactionSubmissionSchema, interactionStateSchema,
 } from './api';
 export type {
   ProjectScope, ProjectSettingsPatchInput, MaterialImportFileInput, MaterialImportTextInput,
@@ -68,5 +77,9 @@ export type {
   AdmissionResultDto, QuestionCreateInput, QuestionListItemDto, QuestionDto,
   QuestionDetailQuery, AttemptSubmitInput, AttemptDto, WorkbenchStateDto, PreferencesDto,
   TeachingPreferenceDto, PreferencesWriteInput, MaterialExamVerificationInput,
+  MaterialRawArchiveDto, MaterialRawQuery, MaterialRawViewDto, MaterialOriginalOpenInput,
+  SyllabusRequirementInput, SyllabusMappingInput, SyllabusItemCreateInput, SyllabusItemDto,
+  SyllabusCoverageItemDto, SyllabusCoverageDto,
   RecentProjectDto, ClassroomSceneBinding, ApiSuccess, ApiFailure, ApiEnvelope,
+  InteractionSubmitInput, InteractionSubmissionDto, InteractionStateDto,
 } from './api';

@@ -8,8 +8,9 @@
  * 全局配置只由主进程写入，本地服务负责阅读/主题/课堂视图偏好。
  */
 
-const { mkdirSync, readFileSync, writeFileSync } = require('node:fs');
+const { mkdirSync, readFileSync, writeFileSync, renameSync, unlinkSync } = require('node:fs');
 const { join } = require('node:path');
+const { validateModelConfig } = require('./model-config.cjs');
 
 const EMPTY_STATE = Object.freeze({ window: null, recentProjects: [] });
 
@@ -65,17 +66,38 @@ const createSettings = ({ app, safeStorage }) => {
   let sessionModelCredentials = null;
 
   const saveModelCredentials = (value) => {
+    const validated = validateModelConfig(value);
     if (!safeStorage.isEncryptionAvailable()) {
-      sessionModelCredentials = value;
+      sessionModelCredentials = validated;
       return { persisted: false };
     }
     mkdirSync(userDataDir(), { recursive: true });
-    writeFileSync(credentialFile(), safeStorage.encryptString(JSON.stringify(value)), { mode: 0o600 });
+    const temporary = `${credentialFile()}.tmp`;
+    const ciphertext = safeStorage.encryptString(JSON.stringify(validated));
+    writeFileSync(temporary, ciphertext, { mode: 0o600 });
+    try {
+      renameSync(temporary, credentialFile());
+    } catch (error) {
+      // Some redirected Windows user-data volumes reject rename with EXDEV.
+      // The fallback writes encrypted bytes only; invalid/partial ciphertext is
+      // rejected by readModelCredentials, never consumed as configuration.
+      if (error.code !== 'EXDEV') throw error;
+      writeFileSync(credentialFile(), ciphertext, { mode: 0o600 });
+      unlinkSync(temporary);
+    }
     sessionModelCredentials = null;
     return { persisted: true };
   };
 
   const readSessionModelCredentials = () => sessionModelCredentials;
+  const readModelCredentials = () => {
+    if (sessionModelCredentials) return { config: validateModelConfig(sessionModelCredentials), persisted: false };
+    if (!safeStorage.isEncryptionAvailable()) return null;
+    try {
+      const decoded = safeStorage.decryptString(readFileSync(credentialFile()));
+      return { config: validateModelConfig(JSON.parse(decoded)), persisted: true };
+    } catch { return null; }
+  };
 
   return {
     userDataDir,
@@ -89,6 +111,7 @@ const createSettings = ({ app, safeStorage }) => {
     persistWindowGeometry,
     saveModelCredentials,
     readSessionModelCredentials,
+    readModelCredentials,
   };
 };
 

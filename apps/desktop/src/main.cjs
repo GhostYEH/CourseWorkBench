@@ -76,6 +76,7 @@ const bootstrap = async () => {
     service,
     projects,
     settings,
+    shell,
   });
   const window = windows.create();
 
@@ -88,6 +89,12 @@ const bootstrap = async () => {
   }
 
   const ready = service.getReady();
+  const savedModel = settings.readModelCredentials();
+  if (savedModel) {
+    await service.request('POST', '/internal/models', { action: 'configure', ...savedModel }).catch(() => {
+      console.error('[desktop] unable to restore model configuration');
+    });
+  }
   // 只加载已握手的准确本地 origin。
   await window.loadURL(`${ready.origin}/workbench`);
   // 下发前剥掉控制凭据：渲染层只拿到会话凭据。

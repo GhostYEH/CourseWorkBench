@@ -13,6 +13,15 @@ export const STUDY_ERROR_CODES = [
   'SOURCE_REVISION_STALE',
   'MATERIAL_NOT_FOUND',
   'MATERIAL_TYPE_UNSUPPORTED',
+  'MATERIAL_RAW_ABSENT',
+  'MATERIAL_RAW_UNVERIFIED',
+
+  // —— 考纲原子项与映射 ——
+  'SYLLABUS_ITEM_NOT_FOUND',
+  'SYLLABUS_REQUIREMENT_NOT_FOUND',
+  'SYLLABUS_MAPPING_NOT_ALLOWED',
+  'SYLLABUS_CODE_DUPLICATE',
+  'SYLLABUS_SOURCE_NOT_LOCATABLE',
 
   // —— 生成准入层 ——
   'KNOWLEDGE_NOT_VERIFIED',
@@ -57,6 +66,14 @@ export const STUDY_ERROR_MESSAGE: Record<StudyErrorCode, string> = {
   SOURCE_REVISION_STALE: '材料已更新，引用指向旧版本，请重新核实',
   MATERIAL_NOT_FOUND: '找不到该材料版本',
   MATERIAL_TYPE_UNSUPPORTED: '暂不支持该材料类型（首版支持 txt / md）',
+  MATERIAL_RAW_ABSENT: '该材料版本没有归档原始文件，只能查看已保存的规范化段落',
+  MATERIAL_RAW_UNVERIFIED: '归档的原始文件与登记摘要不一致，已拒绝按原文使用',
+
+  SYLLABUS_ITEM_NOT_FOUND: '考纲条目不存在，请先登记条目或重新选择',
+  SYLLABUS_REQUIREMENT_NOT_FOUND: '该条目下没有这个必要要素编号，请重新核对考纲划分',
+  SYLLABUS_MAPPING_NOT_ALLOWED: '只有「考纲内」的知识点才能绑定考纲条目',
+  SYLLABUS_CODE_DUPLICATE: '同一考纲编号已登记，不能重复计入覆盖分母',
+  SYLLABUS_SOURCE_NOT_LOCATABLE: '考纲条目的来源段落不可定位，不能登记为条目',
 
   KNOWLEDGE_NOT_VERIFIED: '该知识点尚未核实，暂不能用于生成课程或出题',
   KNOWLEDGE_INVALIDATED: '关联来源已失效，该知识点暂停教学准入',

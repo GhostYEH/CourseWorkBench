@@ -23,6 +23,9 @@ export interface InsertKnowledgePointInput {
   concept: string;
   conditions: string;
   scopeStatus: KnowledgeRow['scopeStatus'];
+  /** 人工审核时确认的考纲条目映射；未映射为 null。 */
+  syllabusItemId: string | null;
+  syllabusRequirementKey: string | null;
   prerequisites: string[];
   evidence: EvidenceStored[];
   acceptance: string;
@@ -80,8 +83,8 @@ export class KnowledgeRepository {
   insertKnowledgePoint(input: InsertKnowledgePointInput): KnowledgeRow {
     this.db
       .prepare(
-        `INSERT INTO knowledge_points (knowledge_id, name, concept, conditions, source_status, scope_status, mastery_status, prerequisites_json, evidence_json, acceptance, priority, origin_proposal_id, revision, created_at, updated_at, record_scope, review_provenance)
-         VALUES (?, ?, ?, ?, 'verified', ?, 'untested', ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+        `INSERT INTO knowledge_points (knowledge_id, name, concept, conditions, source_status, scope_status, mastery_status, syllabus_item_id, syllabus_requirement_key, prerequisites_json, evidence_json, acceptance, priority, origin_proposal_id, revision, created_at, updated_at, record_scope, review_provenance)
+         VALUES (?, ?, ?, ?, 'verified', ?, 'untested', ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
       )
       .run(
         input.knowledgeId,
@@ -89,6 +92,8 @@ export class KnowledgeRepository {
         input.concept,
         input.conditions,
         input.scopeStatus,
+        input.syllabusItemId,
+        input.syllabusRequirementKey,
         encodeJson(input.prerequisites),
         encodeJson(input.evidence),
         input.acceptance,

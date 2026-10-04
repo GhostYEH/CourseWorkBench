@@ -1,9 +1,13 @@
 /**
- * Independently authored M0 extraction of the load/apply boundary in
- * OpenMAIC lib/classroom/load-classroom.ts::runClassroomLoad. It keeps the
- * upstream positive-absence vs unavailable distinction, token checks before
- * applying loaded data, and explicit outcomes; its broad IndexedDB/fallback/
- * hydration pipeline is deliberately replaced by scoped HttpDocumentStore.
+ * M0 load/apply port of OpenMAIC
+ * lib/classroom/load-classroom.ts::runClassroomLoad.
+ * Copyright (c) 2026 THU-MAIC. MIT; see ./LICENSE.
+ *
+ * The cancellation guards and ready/absent/failed branches are retained from
+ * upstream lines 157-212 and 279-287. The load ports, generic result payload,
+ * and unavailable error retention are independently authored. The upstream
+ * IndexedDB/server fallback/media/roster graph is replaced by one scoped
+ * HttpDocumentStore read into SQLite authority; this is not the full host.
  */
 export type ClassroomLoadOutcome<T> =
   | { outcome: 'ready'; document: T }
@@ -35,7 +39,6 @@ export async function runClassroomLoad<T>({
     if (!isCurrent()) return { outcome: 'cancelled' };
     return { outcome: 'ready', document };
   } catch (error) {
-    if (!isCurrent()) return { outcome: 'cancelled' };
-    return { outcome: 'failed', error };
+    return isCurrent() ? { outcome: 'failed', error } : { outcome: 'cancelled' };
   }
 }

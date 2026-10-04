@@ -11,8 +11,11 @@ import type { RecordScope } from '@sew/study-contracts';
 import {
   decideProposal,
   runMechanicalCheck,
+  validateSyllabusMapping,
   type MechanicalCheckResult,
   type RegisteredSegment,
+  type SyllabusItemRecord,
+  type SyllabusMappingRecord,
 } from '@sew/study-domain';
 import type { SqlDatabase } from '../driver';
 import { encodeJson } from '../json-codec';
@@ -37,6 +40,10 @@ export interface ProposalWriteDeps {
 
 export interface ApplyReviewDeps extends ProposalWriteDeps {
   insertKnowledgePoint: (input: InsertKnowledgePointInput) => KnowledgeRow;
+  /** 按记录范围提供考纲条目形状；审核只需要要素清单，不暴露整表。 */
+  syllabusItem: (itemId: string, scope: RecordScope) => SyllabusItemRecord | null;
+  /** 该范围内是否已登记考纲条目：登记后「考纲内」候选必须完成映射才能批准。 */
+  syllabusItemsRegistered: (scope: RecordScope) => boolean;
 }
 
 export interface ApplyReviewInput {
@@ -45,6 +52,8 @@ export interface ApplyReviewInput {
   expectedRevision: number;
   semanticReviewed: boolean;
   note?: string;
+  /** 审核时确认的考纲条目映射；null 表示本次不映射。 */
+  syllabus?: SyllabusMappingRecord | null;
 }
 
 export class ProposalsRepository {
@@ -166,6 +175,17 @@ export class ProposalsRepository {
     const now = new Date().toISOString();
     let created: KnowledgeRow | null = null;
 
+    // 考纲映射在写库前校验：条目不存在、要素不属于该条目或范围不符都不产生部分写入。
+    const mapping = decision.createsKnowledgePoint
+      ? validateSyllabusMapping({
+          scopeStatus: proposal.scopeStatus,
+          recordScope: scope,
+          mapping: input.syllabus ?? null,
+          item: input.syllabus ? deps.syllabusItem(input.syllabus.itemId, scope) : null,
+          mappingRequired: deps.syllabusItemsRegistered(scope),
+        })
+      : null;
+
     this.db.transaction(() => {
       this.db
         .prepare(
@@ -198,6 +218,8 @@ export class ProposalsRepository {
         concept: proposal.concept,
         conditions: proposal.conditions,
         scopeStatus: proposal.scopeStatus,
+        syllabusItemId: mapping?.itemId ?? null,
+        syllabusRequirementKey: mapping?.requirementKey ?? null,
         prerequisites: proposal.prerequisites,
         evidence,
         acceptance: proposal.acceptance,

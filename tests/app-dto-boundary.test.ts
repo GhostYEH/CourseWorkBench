@@ -65,6 +65,8 @@ describe('A1 候选 DTO 边界', () => {
       reviewProvenance: 'user_semantic',
       scopeStatus: 'in_syllabus',
       masteryStatus: 'untested',
+      syllabusItemId: 'syl1',
+      syllabusRequirementKey: 'def-1',
       prerequisites: [],
       evidence: [],
       acceptance: '',

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedOn": "2026-10-03",
+  "recordedOn": "2026-10-04",
   "baseline": {
     "root": "F:/file/OpenMAIC-main",
     "version": "1.1.1",
@@ -425,7 +425,7 @@
       "acceptance": "ClassroomSurface实际运行，slide/quiz/interactive/pbl可进入",
       "evidence": [
         "apps/learning/components/classroom-surface.tsx 以 @openmaic/storage 的 HttpDocumentStore 读文档并按 order 导航 slide/quiz/interactive",
-        "固定课堂采用上游 PlaybackEngine/游标/导航/时序代码、SlideCanvas 和 HttpRuntimeStore；ClassroomSurface/Stage/加载与分派为独立编写的窄适配，完整原宿主、教师/白板/Director/PBL未接入，不证明完整课堂能力。",
+      "固定课堂采用上游 PlaybackEngine/游标/导航/时序代码、SlideCanvas 和 HttpRuntimeStore；原 ClassroomSurface 的页面加载、重试、effect/退出取消及 progressive 显示策略实际复制到 useOpenMaicClassroomLoad/classroom-host-load，服务准入与资产释放端口实际接线。tests/classroom-upstream-adaptation.test.ts 17 项通过；Stage 视图仍是窄适配，教师/白板/Director/PBL未接入，不证明全部四类场景。",
         "实际目录包 UI 验收已覆盖原生选择器、鼠标作答、离线失败/手动重试、答案与过程整应用重启读回、iframe 无 Node/preload、服务崩溃恢复和凭据轮换；独立干净 Windows 验收仍待完成。",
         "tests/classroom-read-guards.test.ts：页面读取无权威写入；演示导入需明确确认；下发前重算内容摘要、复验来源；来源失效保留历史并拒绝下发。"
       ]
@@ -652,7 +652,8 @@
       "acceptance": "脚本可运行且无法访问preload/项目文件/主凭据",
       "evidence": [
         "互动内容为 DSL InteractiveContent.html，经 srcDoc 注入 sandbox=\"allow-scripts\" 的 iframe",
-        "scripts/smoke-electron-boundary.cjs：父框架读不到该 frame 的 DOM，帧内 typeof sewNative 与 typeof require 均为 undefined；上游 InteractiveIframeHost 消息协议与保活尚未接入"
+      "scripts/smoke-electron-boundary.cjs：父框架读不到该 frame 的 DOM，帧内 typeof sewNative 与 typeof require 均为 undefined；上游 InteractiveIframeHost 消息协议与保活尚未接入",
+      "InteractiveSceneView 在首段 widget 脚本前装入错误诊断；观察消息不隐式提交。父页明确提交参数/预测/解释，服务绑定本人/demo 身份、核验参数并以不可变 SQLite 收据去重，重启可读；tests/classroom-interaction.test.ts 7 项通过。生成式互动及通用组件恢复仍未完成。"
       ]
     },
     {
@@ -844,7 +845,9 @@
         "app/api/parse-pdf"
       ],
       "acceptance": "保留原件、原始位置和规范化版本，提取后不自动核实",
-      "evidence": []
+      "evidence": [
+        "M1 txt/md 导入使用已授权路径和严格 UTF-8 解码，空正文拒绝；材料历史版本不可变，来源链接固定 materialId/revision/segment。tests/material-import-source.test.ts 11 项通过。当前保存规范化文本，原始字节归档及 PDF/Office 等抽取仍待实现。"
+      ]
     },
     {
       "id": "OMA-051",

@@ -5,8 +5,8 @@ import { CandidateReview } from '../../../components/candidate-review';
 import { ProposalForm } from '../../../components/proposal-form';
 import { Empty, MasteryPill, SourcePill } from '../../../components/ui';
 import { bootstrapFromEnvironment, getSession } from '../../../lib/server/service';
-import { readWorkbenchKnowledge, readWorkbenchMaterials, readWorkbenchProposals } from '../../../lib/server/workbench-data';
-import { toProposalDto, toSegmentDto } from '../../../lib/server/dto';
+import { readSegmentChoices, readSyllabusItems, readWorkbenchKnowledge, readWorkbenchProposals } from '../../../lib/server/workbench-data';
+import { toProposalDto } from '../../../lib/server/dto';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,14 +21,9 @@ export default async function KnowledgePage({ searchParams }: PageProps): Promis
   const knowledge = view.rows;
   const proposals = readWorkbenchProposals(session).map(toProposalDto);
   const pending = proposals.filter((p) => p.status === 'pending' || p.status === 'needs_material');
-  const materials = readWorkbenchMaterials(session);
-  const segments = materials[0]
-    ? session.store.getSegments(materials[0].materialId, materials[0].revision).map((segment) => ({
-        ...toSegmentDto(segment),
-        materialId: segment.materialId,
-        revision: segment.revision,
-      }))
-    : [];
+  const segments = readSegmentChoices(session);
+  const syllabusItems = readSyllabusItems(session);
+  const syllabusCodes = new Map(syllabusItems.map((item) => [item.itemId, item.code]));
 
   return (
     <div className="page-wide">
@@ -67,6 +62,7 @@ export default async function KnowledgePage({ searchParams }: PageProps): Promis
                 proposal={proposal}
                 projectId={session.projectId}
                 generation={session.generation}
+                syllabusItems={syllabusItems}
               />
             ))
           )}
@@ -126,6 +122,7 @@ export default async function KnowledgePage({ searchParams }: PageProps): Promis
                   <th>名称与陈述</th>
                   <th>来源状态</th>
                   <th>范围</th>
+                  <th>考纲关联</th>
                   <th>掌握</th>
                   <th>来源</th>
                 </tr>
@@ -145,6 +142,13 @@ export default async function KnowledgePage({ searchParams }: PageProps): Promis
                         <SourcePill status={point.sourceStatus} />
                       </td>
                       <td className="muted">{point.scopeStatus}</td>
+                      <td className="mono">
+                        {point.syllabusItemId === null
+                          ? point.scopeStatus === 'in_syllabus'
+                            ? <span className="pill" data-tone="pending">未映射</span>
+                            : '—'
+                          : `${syllabusCodes.get(point.syllabusItemId) ?? point.syllabusItemId} · ${point.syllabusRequirementKey}`}
+                      </td>
                       <td>
                         <MasteryPill status={point.masteryStatus} />
                       </td>
@@ -153,7 +157,7 @@ export default async function KnowledgePage({ searchParams }: PageProps): Promis
                           <div key={`${item.materialId}-${item.segmentId}-${index}`} style={{ marginBottom: 'var(--sew-space-2)' }}>
                             <Link
                               className="mono"
-                              href={`/workbench/materials?materialId=${item.materialId}&segment=${item.segmentId}`}
+                              href={`/workbench/materials?materialId=${encodeURIComponent(item.materialId)}&revision=${item.revision}&segment=${encodeURIComponent(item.segmentId)}#source-${encodeURIComponent(item.segmentId)}`}
                             >
                               {item.materialId} r{item.revision} · {item.segmentId}
                             </Link>

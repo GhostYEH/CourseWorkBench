@@ -10,12 +10,16 @@
  * - 控制凭据只留在主进程与服务，绝不在此下发渲染层。
  */
 
+const { realpathSync } = require('node:fs');
+const { isAbsolute, relative, resolve, sep } = require('node:path');
+
 const INVOKE_METHODS = [
   'projectCreate',
   'projectOpen',
   'projectClose',
   'projectRecent',
   'materialsPickFiles',
+  'materialsOpenOriginal',
   'exportsPickTarget',
   'exportsBackupProject',
   'preferencesRead',
@@ -28,12 +32,31 @@ const INVOKE_METHODS = [
 const SEND_METHODS = ['windowMinimize', 'windowToggleMaximize', 'windowClose'];
 
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const { validateModelConfig } = require('./model-config.cjs');
+
+/**
+ * 解析真实路径后要求候选确实落在项目根内。
+ *
+ * 主进程不默认信任本地服务返回的路径：服务被绕过或目录被替换时，
+ * 越出项目根的候选一律拒绝打开。
+ */
+const resolveWithinProject = (projectRoot, candidate) => {
+  if (typeof candidate !== 'string' || candidate.length === 0) throw new Error('原文副本路径无效');
+  const root = realpathSync(resolve(projectRoot));
+  const target = realpathSync(resolve(candidate));
+  const relativePath = relative(root, target);
+  if (!relativePath || relativePath === '..' || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
+    throw new Error('原文副本不在当前项目内，已拒绝打开');
+  }
+  return target;
+};
 
 const assertNoArgs = (args, method) => {
   if (args.length !== 0) throw new Error(`${method} 不接受参数`);
 };
 
-const registerNativeHandlers = ({ ipcMain, dialog, channels, getWindow, service, projects, settings }) => {
+const registerNativeHandlers = ({ ipcMain, dialog, channels, getWindow, service, projects, settings, shell }) => {
+  let configureQueue = Promise.resolve();
   /** 只接受来自本窗口主框架的调用；内层 iframe 与外部页不能调用。 */
   const assertTrustedCaller = (event) => {
     const window = getWindow();
@@ -127,6 +150,57 @@ const registerNativeHandlers = ({ ipcMain, dialog, channels, getWindow, service,
       return { files };
     },
 
+    /**
+     * 打开某材料版本归档的原文副本。
+     *
+     * 渲染层只提交标识、版本与打开代次；副本由本地服务写在项目内，路径由服务返回，
+     * 主进程复验归属后才交给系统打开。原文未归档时服务返回明确错误，这里不静默成功。
+     */
+    materialsOpenOriginal: async (value, ...rest) => {
+      if (rest.length > 0) throw new Error('materialsOpenOriginal 只接受一个参数');
+      if (!isPlainObject(value)) throw new Error('打开原文的请求必须是一个对象');
+      const scope = value.scope;
+      if (!isPlainObject(scope) || typeof scope.projectId !== 'string' || !scope.projectId) {
+        throw new Error('打开原文需要有效的项目身份');
+      }
+      if (!Number.isSafeInteger(scope.generation)) throw new Error('打开原文需要有效的项目代次');
+      if (typeof value.materialId !== 'string' || !value.materialId) throw new Error('材料标识无效');
+      if (!Number.isSafeInteger(value.revision) || value.revision < 1) throw new Error('材料版本无效');
+      if (value.segmentId !== undefined && (typeof value.segmentId !== 'string' || !value.segmentId)) {
+        throw new Error('段落标识无效');
+      }
+
+      const project = projects.current();
+      if (!project) throw new Error('尚未打开项目，无法打开原文');
+      if (!projects.sameScope(project, scope)) throw new Error('项目已切换或已重新打开，请重新选择材料');
+
+      const selectedFor = projects.scopeOf();
+      // 与材料导入同样的在途保护：打开过程中切换项目不能把副本写进新项目。
+      const finishGrant = projects.beginGrant();
+      let result;
+      try {
+        result = await service.request('POST', '/internal/project', {
+          action: 'materialize-original',
+          scope: selectedFor,
+          materialId: value.materialId,
+          revision: value.revision,
+          ...(value.segmentId === undefined ? {} : { segmentId: value.segmentId }),
+        });
+      } finally {
+        finishGrant();
+      }
+      if (!isPlainObject(result)) throw new Error('本地服务未返回原文副本信息');
+
+      const target = resolveWithinProject(project.displayPath, result.path);
+      const failure = await shell.openPath(target);
+      if (failure) throw new Error('系统未能打开原文副本，请检查文件关联程序');
+      return {
+        displayName: typeof result.displayName === 'string' ? result.displayName : null,
+        lineStart: Number.isSafeInteger(result.lineStart) ? result.lineStart : null,
+        lineEnd: Number.isSafeInteger(result.lineEnd) ? result.lineEnd : null,
+      };
+    },
+
     exportsPickTarget: async (defaultName, ...rest) => {
       if (rest.length > 0) throw new Error('exportsPickTarget 只接受一个参数');
       if (defaultName !== undefined && typeof defaultName !== 'string') {
@@ -171,12 +245,19 @@ const registerNativeHandlers = ({ ipcMain, dialog, channels, getWindow, service,
     modelsConfigure: async (value, ...rest) => {
       if (rest.length > 0) throw new Error('modelsConfigure 只接受一个参数');
       if (!isPlainObject(value)) throw new Error('模型配置必须是一个对象');
-      settings.saveModelCredentials(value);
+      const config = validateModelConfig(value);
+      const saved = configureQueue.catch(() => undefined).then(async () => {
+        const { persisted } = settings.saveModelCredentials(config);
+        await service.request('POST', '/internal/models', { action: 'configure', config, persisted });
+      });
+      configureQueue = saved;
+      await saved;
     },
 
     modelsTest: async (...args) => {
       assertNoArgs(args, 'modelsTest');
-      return { ok: false, message: '尚未配置模型连接' };
+      await configureQueue.catch(() => undefined);
+      return service.request('POST', '/internal/models', { action: 'test' }, 45000);
     },
 
     getServiceState: async (...args) => {

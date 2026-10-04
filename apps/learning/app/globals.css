@@ -576,6 +576,27 @@ tbody tr:hover {
   background: color-mix(in srgb, var(--sew-action-accent) 8%, var(--sew-surface-document));
 }
 
+/* 归档原文视图：保留原始换行与空白，高亮的是登记过指纹的那一段。 */
+.raw-source {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--sew-border-divider);
+  border-radius: var(--sew-control-radius);
+  background: var(--sew-surface-document);
+  padding: var(--sew-space-3);
+  margin: var(--sew-space-2) 0;
+  font-size: 13px;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.raw-source mark {
+  background: color-mix(in srgb, var(--sew-action-accent) 14%, var(--sew-surface-document));
+  color: inherit;
+  border-bottom: 2px solid var(--sew-action-accent);
+  font-weight: 600;
+}
+
 .field {
   display: flex;
   flex-direction: column;

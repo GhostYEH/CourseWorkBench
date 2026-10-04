@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('sewNative', {
   projectRecent: () => ipcRenderer.invoke(channels.projectRecent),
 
   pickMaterials: () => ipcRenderer.invoke(channels.materialsPickFiles),
+  openMaterialOriginal: (request) => ipcRenderer.invoke(channels.materialsOpenOriginal, request),
 
   pickExportTarget: (defaultName) => ipcRenderer.invoke(channels.exportsPickTarget, defaultName),
   backupProject: () => ipcRenderer.invoke(channels.exportsBackupProject),

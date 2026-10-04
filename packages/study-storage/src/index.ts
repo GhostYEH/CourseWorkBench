@@ -5,8 +5,9 @@ export { StudyStore } from './store';
 export type {
   AttemptRow, ClassroomAssetBindingRow, ClassroomAssetInfo, ClassroomAssetRow,
   ClassroomDocumentRow, ClassroomSceneSourceRow, ClassroomStateRow, DocumentFolderRow,
-  CreateProposalInput, EvidenceStored, ImportMaterialInput, KnowledgeRow,
-  MaterialRow, ProjectRow, ProposalRow, QuestionRow, ReviewOutcome, RunRow, SegmentRow,
+  CreateProposalInput, CreateSyllabusItemInput, EvidenceStored, ImportMaterialInput, KnowledgeRow,
+  MaterialRawArchiveRow, MaterialRow, ProjectRow, ProposalRow, QuestionRow, ReviewOutcome, RunRow, SegmentRow,
+  SyllabusItemRow,
   StoreOptions, SubmitAttemptInput, SubmitAttemptOutcome,
 } from './store';
 export { DocumentOrganizationError } from './repositories/document-organization';

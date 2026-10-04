@@ -1,5 +1,6 @@
 param(
-  [string]$Installer
+  [string]$Installer,
+  [string]$ReportDirectory
 )
 
 # Installs only a new test copy. An existing installation stops the run before
@@ -21,6 +22,25 @@ foreach ($taskRegistryRoot in $taskRegistryRoots) {
   }
 }
 $taskInstallerPath = (Resolve-Path -LiteralPath $Installer).Path
+$taskTimestamp = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH-mm-ssZ')
+if (-not $ReportDirectory) {
+  $taskRepositoryRelease = Join-Path $PSScriptRoot '../apps/desktop/release'
+  $ReportDirectory = if (Test-Path -LiteralPath $taskRepositoryRelease) { $taskRepositoryRelease } else { Join-Path $PSScriptRoot 'reports' }
+}
+New-Item -ItemType Directory -Path $ReportDirectory -Force | Out-Null
+$taskReportDirectory = (Resolve-Path -LiteralPath $ReportDirectory).Path
+$taskOs = Get-CimInstance Win32_OperatingSystem
+$taskEnvironment = [ordered]@{
+  osCaption = $taskOs.Caption
+  osVersion = $taskOs.Version
+  osBuild = $taskOs.BuildNumber
+  osArchitecture = $taskOs.OSArchitecture
+  developerNodeDetected = [bool](Get-Command node.exe -ErrorAction SilentlyContinue)
+  repositoryPresent = Test-Path -LiteralPath (Join-Path $PSScriptRoot '../package.json')
+  independentCleanEnvironmentVerified = $false
+  note = 'Observed environment facts only; a clean Windows acceptance requires independent operator/environment evidence.'
+}
+$taskEnvironment | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskReportDirectory ('m0-environment-' + $taskTimestamp + '.json')) -Encoding UTF8
 $taskTempRoot = (Resolve-Path -LiteralPath ([IO.Path]::GetTempPath())).Path
 $taskRunRoot = Join-Path $taskTempRoot ('sew-m0-' + [guid]::NewGuid().ToString('N'))
 $taskInstallDir = Join-Path $taskRunRoot ($taskProductName + ' installed app')
@@ -37,7 +57,11 @@ $taskUiScript = Join-Path $PSScriptRoot 'verify-classroom-desktop.mjs'
 $taskReport = Join-Path $taskRunRoot 'installed-classroom-ui.json'
 Write-Output 'Running the installed classroom with bundled Node'
 & $taskBundledNode $taskUiScript --installed-app $taskInstallDir --project-dir $taskProjectDir --report $taskReport
-if ($LASTEXITCODE -ne 0) { throw "Installed classroom check failed; test installation retained at $taskInstallDir" }
+$taskUiExitCode = $LASTEXITCODE
+if (Test-Path -LiteralPath $taskReport -PathType Leaf) {
+  Copy-Item -LiteralPath $taskReport -Destination (Join-Path $taskReportDirectory ('m0-installed-classroom-' + $taskTimestamp + '.json'))
+}
+if ($taskUiExitCode -ne 0) { throw "Installed classroom check failed; test installation retained at $taskInstallDir" }
 $taskProjectManifest = Join-Path $taskProjectDir 'project.json'
 if (-not (Test-Path -LiteralPath $taskProjectManifest -PathType Leaf)) { throw 'Project manifest was not created' }
 $taskManifestHash = (Get-FileHash -LiteralPath $taskProjectManifest -Algorithm SHA256).Hash
@@ -63,7 +87,8 @@ if (-not (Test-Path -LiteralPath $taskDatabase) -or
 }
 $taskSummary = [ordered]@{
   date = [DateTime]::UtcNow.ToString('o')
-  environment = 'developer Windows; isolated installation and profile, not an independent clean Windows environment'
+  environment = 'isolated installed application; environment facts recorded, independent clean Windows acceptance not certified by this script'
+  environmentFacts = $taskEnvironment
   installerSha256 = (Get-FileHash -LiteralPath $taskInstallerPath -Algorithm SHA256).Hash
   classroomReport = $taskReport
   installExitCode = $taskInstallerProcess.ExitCode
@@ -73,4 +98,5 @@ $taskSummary = [ordered]@{
   projectDatabaseSha256 = $taskDatabaseHash
 }
 $taskSummary | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskRunRoot 'installation-verification.json') -Encoding UTF8
+$taskSummary | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $taskReportDirectory ('m0-install-uninstall-' + $taskTimestamp + '.json')) -Encoding UTF8
 Write-Output "PASS installed application and uninstall; project and verification report retained at $taskRunRoot"

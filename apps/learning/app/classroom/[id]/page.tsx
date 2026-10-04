@@ -60,6 +60,7 @@ export default async function ClassroomPage({ params }: PageProps): Promise<Reac
 
   return (
     <ClassroomSurface
+      key={`${session.projectId}:${session.generation}:${document.stageId}`}
       lessonId={id}
       projectId={session.projectId}
       generation={session.generation}

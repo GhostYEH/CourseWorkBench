@@ -8,6 +8,7 @@
 import type {
   EvidenceUse,
   MasteryStatus,
+  MaterialRawArchiveDto,
   MechanicalCheckDto,
   QuestionOrigin,
   RecordScope,
@@ -33,6 +34,8 @@ export type Row = Record<string, unknown>;
 export const str = (value: unknown): string => (typeof value === 'string' ? value : '');
 export const num = (value: unknown): number => (typeof value === 'number' ? value : Number(value ?? 0));
 export const nullableStr = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+export const intOrNull = (value: unknown): number | null =>
+  value === null || value === undefined ? null : Number(value);
 export const recordScope = (value: unknown): RecordScope => {
   if (value === 'formal' || value === 'demo') return value;
   throw new StudyError('INTERNAL', { reason: 'invalid_record_scope' });
@@ -68,6 +71,23 @@ export interface MaterialRow {
   fingerprint: string;
   segmentCount: number;
   referencedByKnowledge: number;
+  /** 原始文件字节的归档状态；未归档时不能按原文打开。 */
+  rawArchive: MaterialRawArchiveDto;
+  /** 人工核实「该版本可作为考试真题来源」的记录；未核实时为 null。 */
+  examVerification: { verifiedAt: string; note: string } | null;
+}
+
+/** `source_raw_archives` 的一行（不含字节），供服务端核对与打开原文副本使用。 */
+export interface MaterialRawArchiveRow {
+  materialId: string;
+  revision: number;
+  storageMode: 'archived';
+  absentReason: null;
+  originalName: string | null;
+  mediaType: 'text/plain' | 'text/markdown';
+  sha256: string;
+  byteLength: number;
+  archivedAt: string;
 }
 
 export interface SegmentRow {
@@ -77,6 +97,11 @@ export interface SegmentRow {
   ordinal: number;
   text: string;
   fingerprint: string;
+  /** 段落在归档原文中的 UTF-8 字节区间与行号；原文未归档时为 null。 */
+  rawStartByte: number | null;
+  rawEndByte: number | null;
+  rawLineStart: number | null;
+  rawLineEnd: number | null;
 }
 
 export interface EvidenceStored {
@@ -119,6 +144,9 @@ export interface KnowledgeRow {
   reviewProvenance: ReviewProvenance | null;
   scopeStatus: ScopeStatus;
   masteryStatus: MasteryStatus;
+  /** 考纲条目映射；未映射为 null，覆盖统计按缺口单列而不是按已完成计。 */
+  syllabusItemId: string | null;
+  syllabusRequirementKey: string | null;
   prerequisites: string[];
   evidence: EvidenceStored[];
   acceptance: string;
@@ -180,6 +208,13 @@ export interface ImportMaterialInput {
   readableLocation?: string | undefined;
   /** 已授权文件的原始文本内容。文件读取由本地服务在主进程授权后执行。 */
   rawText: string;
+  /**
+   * 原生选择器读到的原样字节（含 BOM 与原换行风格）。粘贴导入没有原文件，为 null，
+   * 此时归档记录明确写成 absent，不伪装成可打开的原文。
+   */
+  rawBytes?: Uint8Array | null;
+  /** 选择器文件名字面，仅用于展示与人工核对；不作为路径参与任何文件操作。 */
+  originalName?: string | null;
   /** Internal provisioning scope; HTTP import DTOs cannot set this field. */
   recordScope?: RecordScope;
 }
@@ -288,6 +323,38 @@ export const mapProject = (row: Row): ProjectRow => ({
   updatedAt: str(row['updated_at']),
 });
 
+export const mapSegment = (row: Row): SegmentRow => ({
+  materialId: str(row['material_id']),
+  revision: num(row['revision']),
+  segmentId: str(row['segment_id']),
+  ordinal: num(row['ordinal']),
+  text: str(row['text']),
+  fingerprint: str(row['fingerprint']),
+  rawStartByte: intOrNull(row['raw_start_byte']),
+  rawEndByte: intOrNull(row['raw_end_byte']),
+  rawLineStart: intOrNull(row['raw_line_start']),
+  rawLineEnd: intOrNull(row['raw_line_end']),
+});
+
+export const mapRawArchive = (row: Row): MaterialRawArchiveDto => {
+  const mode = str(row['raw_storage_mode']);
+  if (mode === 'archived') {
+    return {
+      state: 'archived',
+      sha256: str(row['raw_sha256']),
+      byteLength: num(row['raw_byte_length']),
+      mediaType: str(row['raw_media_type']) === 'text/markdown' ? 'text/markdown' : 'text/plain',
+      originalName: nullableStr(row['raw_original_name']),
+      archivedAt: str(row['raw_archived_at']),
+    };
+  }
+  if (mode === 'absent') {
+    return { state: 'absent', reason: str(row['raw_absent_reason']) === 'text_import' ? 'text_import' : 'legacy_import' };
+  }
+  // 每个材料版本都必须有一条归档记录：缺行说明不变量被破坏，不能当作未归档降级。
+  throw new StudyError('INTERNAL', { reason: 'raw_archive_row_missing' });
+};
+
 export const mapMaterial = (row: Row): MaterialRow => ({
   materialId: str(row['material_id']),
   revision: num(row['revision']),
@@ -300,6 +367,11 @@ export const mapMaterial = (row: Row): MaterialRow => ({
   fingerprint: str(row['fingerprint']),
   segmentCount: num(row['segment_count']),
   referencedByKnowledge: num(row['referenced']),
+  rawArchive: mapRawArchive(row),
+  examVerification:
+    typeof row['exam_verified_at'] === 'string'
+      ? { verifiedAt: row['exam_verified_at'], note: str(row['exam_note']) }
+      : null,
 });
 
 export const mapProposal = (row: Row, policy: JsonColumnPolicy): ProposalRow => ({
@@ -339,6 +411,8 @@ export const mapKnowledge = (row: Row, policy: JsonColumnPolicy): KnowledgeRow =
   reviewProvenance: reviewProvenance(row['review_provenance']),
   scopeStatus: str(row['scope_status']) as ScopeStatus,
   masteryStatus: (str(row['mastery_status']) || 'untested') as MasteryStatus,
+  syllabusItemId: nullableStr(row['syllabus_item_id']),
+  syllabusRequirementKey: nullableStr(row['syllabus_requirement_key']),
   prerequisites: readAuthoritativeJsonColumn(
     row['prerequisites_json'],
     prerequisitesSchema,

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { redirect } from 'next/navigation';
 import { Stat } from '../../components/ui';
 import { bootstrapFromEnvironment, getSession } from '../../lib/server/service';
 import { readWorkbenchState } from '../../lib/server/workbench-data';
@@ -7,7 +8,8 @@ import { readWorkbenchState } from '../../lib/server/workbench-data';
 export const dynamic = 'force-dynamic';
 
 export default function WorkbenchOverview(): ReactNode {
-  const session = (getSession() ?? bootstrapFromEnvironment())!;
+  const session = getSession() ?? bootstrapFromEnvironment();
+  if (!session) redirect('/no-project');
   const state = readWorkbenchState(session);
 
   return (

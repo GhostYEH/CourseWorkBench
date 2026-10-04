@@ -28,8 +28,13 @@ export const POST = route(async (request: Request) => {
   // 两种导入模式共用同一字节上限：file 在读取前按磁盘大小拦截，
   // text 按 UTF-8 字节数拦截，超限返回可判定错误而不是写入巨型材料。
   let rawText: string;
+  let rawBytes: Uint8Array | null = null;
+  let originalName: string | null = null;
   if (body.mode === 'file') {
-    rawText = readAuthorizedFile(session, body.sourcePath);
+    const picked = readAuthorizedFile(session, body.sourcePath);
+    rawText = picked.text;
+    rawBytes = picked.bytes;
+    originalName = picked.originalName;
   } else {
     assertMaterialSize(Buffer.byteLength(body.rawText, 'utf8'));
     rawText = body.rawText;
@@ -41,6 +46,9 @@ export const POST = route(async (request: Request) => {
     materialType: body.type,
     readableLocation: body.readableLocation,
     rawText,
+    // 粘贴导入没有原文件可归档：传 null 让存储层明确记为未归档，而不是伪造一份。
+    rawBytes,
+    originalName,
   });
 
   return ok({

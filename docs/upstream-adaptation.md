@@ -22,7 +22,7 @@
 | 上游 `DocumentFolderStore` 与 `/api/folders` | `app/api/folders/**`、`repositories/document-organization.ts`、schema v8 | 项目分区创建/重命名/成员归组与取消分组；摘要可选 folderId。删除仅支持 ungroup，remove 明确拒绝，不能通过组织操作级联删除受审课件；课程库 UI 未接入 |
 | `@openmaic/storage` `AssetStore`/`HttpAssetStore` | `apps/learning/app/api/maic/assets/**` + `packages/study-storage/src/repositories/classroom-assets.ts` | SQLite 保存项目分区的字节、内部 SHA-256、元数据、修订与场景绑定；客户端按会话/项目代次下载并生成对象 URL。演示图片与公式字体使用实际字节；跨课程引用保护、离线回收和大媒体仍需补齐 |
 | `@openmaic/storage` `HttpRuntimeStore`、`HttpAccountKV` | `app/api/maic/runtime/[...segments]/route.ts`、`app/api/maic/kv/[...segments]/route.ts` + SQLite runtime/KV repositories | 已实现原始客户端合同、服务绑定 learner、追加序号与版本冲突、项目代次复验。测验提交由服务原子保存本人作答、review 与收据；`AgentSessionStore` 和教师编排仍未接入 |
-| OpenMAIC PlaybackEngine、课堂加载与场景分派 | `components/openmaic-adaptation/`、`components/classroom-surface.tsx` | 播放引擎、类型、游标、导航和时序代码复制后适配；ClassroomSurface/Stage/场景分派为参考上游语义独立实现的窄适配。没有复制完整原宿主、Director、编辑器或教师/白板管线；相同组件名称不能证明完整接入 |
+| OpenMAIC PlaybackEngine、课堂加载与场景分派 | `components/openmaic-adaptation/`、`components/classroom-surface.tsx` | 播放引擎、类型、游标、导航、时序及原 ClassroomSurface 页面加载/重试/退出流程实际复制后适配；Stage 视图与场景分派为窄适配。M0 通过服务加载/资源释放端口接线；Director、编辑器、教师/白板及生成媒体管线按后续里程碑接入 |
 | OpenMAIC `ROLE_ACTIONS` 与角色运行时 | 课堂角色桥接 | 上游 student/assistant 可能默认拥有白板动作；本项目首版同学仅发言，需显式收窄权限 |
 | OpenMAIC 前端 HTTP adapter | `apps/learning/app/api/maic/*` | 渲染端使用上游 `HttpDocumentStore`；文档 body 保持原始合同，额外项目身份/代次头由本地适配添加并在服务端复验 |
 | 互动 iframe 与资源加载协议 | `openmaic-adaptation/SceneRenderer.tsx` | 保留沙箱、当前窗口与实例检查、onLoad 就绪、上游 runtime-error/早期错误重放协议。上游没有周期心跳；本适配没有声称实现心跳。编辑器/资源选择器与 iframe 池未采用 |
@@ -95,6 +95,14 @@ pnpm add -D -w @openmaic/dsl@0.11.2 @openmaic/storage@0.35.1   # 供根目录用
 | `@openmaic/renderer` | 0.1.11 | MIT（包内 `LICENSE`） | `SlideCanvas`/`SlideElement` 渲染 PPTist 风格幻灯片 | 零改动直接使用；随包传递依赖 `clsx tailwind-merge tinycolor2 motion lucide-react katex html-to-image html2canvas-pro echarts shiki` 按 1.1.1 快照声明的同版本一并登记 |
 | `@openmaic/storage` | 0.35.1 | MIT | `HttpDocumentStore`、`HttpAssetStore`、`HttpRuntimeStore`、`HttpAccountKV` 及错误语义 | 客户端零改动使用；服务端按同一合同实现。固定 0.35.1 贴合锁定基线；本项目复合提交和 learner 查询使用独立 API 信封，不混入上游 raw response |
 
+M0 的 SET-01 采用固定已发布包及锁文件完整性路线，不依赖 exFAT 上游快照的源码级构建。包的下载字节由 `pnpm-lock.yaml` 中 SHA-512 校验，生产实际使用由当前构建输入、服务文件 SHA-256 清单和目录包验证共同核对；上游自带测试的 NTFS 源码构建仍属于后续验证，不以本项目测试代替。
+
+| 固定包 | lockfile integrity |
+| --- | --- |
+| `@openmaic/dsl@0.11.2` | `sha512-5XSktj2Yl7CoSUH+UPX7ptCuaS1pKnvgLl7ekIKMatso1pknouM28biRyFTRihgTwLCypK7mSCuxsyT007kNMQ==` |
+| `@openmaic/renderer@0.1.11` | `sha512-o7uS+/F72VPpJsLEiF1waVeYMec3E1qfeJ9ObKU7RQ7UvcXBKqA2Agp5HoL6uBCWvW7P8WS73+fPiXcBLcJzCw==` |
+| `@openmaic/storage@0.35.1` | `sha512-ikNDOtcHl37ekiLSTB1V6uSH122hVTl+zkO8dQelXJ9p2ZGxFa5z6Sjx+ls7EK64H54sPa8mrKFbEjHYdYaHCQ==` |
+
 ### 7.2 本项目为承接上游合同所写的适配（非复制上游代码）
 
 | 本项目文件 | 承担的上游语义 | 与上游的差异及原因 |
@@ -139,13 +147,18 @@ pnpm add -D -w @openmaic/dsl@0.11.2 @openmaic/storage@0.35.1   # 供根目录用
 
 `apps/learning/components/openmaic-adaptation/upstream-provenance.json` 保存每个源文件的 SHA-256、保留语义与替换范围。直接复制并适配的是 `lib/playback/engine.ts`、`lib/playback/types.ts`、`lib/playback/action-navigation.ts`、`lib/choreography/cursor.ts`、`lib/choreography/timing.ts`。完整 MIT 许可放在该目录 `LICENSE`，产物准备脚本复制到服务 `third-party/openmaic/`。
 
-ClassroomSurface、Stage、PlaybackChromeRoot、SceneRenderer、QuizSceneView 与加载协调器为独立编写的窄适配，来源记录归入 `sourceReviewedForAdaptation`，不得描述为复制了上游完整组件。M0 固定课件没有教师动作；执行端明确拒绝未支持动作，TTS/媒体、Director、白板、AI 同学与生成流程尚未启用。多课程引用保护已在仓库约束层实现，离线回收、大媒体和完整宿主能力继续跟踪。
+原 `ClassroomSurface.tsx:103–297` 的页面加载、重试、effect 与卸载取消分支实际复制并适配到 `useOpenMaicClassroomLoad.ts` / `classroom-host-load.ts`；显示策略复制自 `progressive-load-policy.ts:15–37`，加载 token 来自原 stage store。来源摘要与替换边界登记于 `copiedAndAdapted`。生产 `classroom-surface.tsx` 实际调用该 hook，由服务端项目/代次/来源准入替代远端所有权存储，并通过清理端口释放图片、字体与旧实例；Stage 在宿主 ready 后才挂载。
+
+Stage、PlaybackChromeRoot、SceneRenderer 与 QuizSceneView 的视图胶水仍为独立窄适配，不描述为整体复制原组件。M0 固定课件没有教师动作；执行端明确拒绝未支持动作，TTS/媒体、Director、白板、AI 同学、编辑与生成流程尚未启用，完整功能仍按 M2 及 A—F 跟踪。多课程引用保护已在仓库约束层实现，离线回收与大媒体继续跟踪。
 
 ### 7.6 当前分发验证与已知边界（2026-10-04）
 
-当前构建 `u6AjtQbqYubZRebF64PDB` 的目录包验证为 [30/30](../apps/desktop/release/pack01-verification-2026-10-03T16-09-02.045Z.json)，随包服务试验为 14/14；完整 `pnpm check` 为 35 个文件、193 项测试通过。安装态 [32 项课堂验证](../apps/desktop/release/m0-installed-classroom-verification-2026-10-04.json) 使用真实原生选择器和鼠标，覆盖图像/字体、作答和过程重启读回、互动参数操作、离线提交失败后的手动重试、服务崩溃恢复、会话轮换与项目切换。随后卸载，外部项目清单和数据库 SHA-256 保持不变，见 [安装/卸载验证](../apps/desktop/release/m0-install-uninstall-verification-2026-10-04.json)。这些是本机安装态证据，不能替代独立干净 Windows 验收。
+当前构建 `49ENHGnGrzqlR_fZx8HK1` 的目录包验证为 [30/30](../apps/desktop/release/pack01-verification-2026-10-03T23-46-26.290Z.json)，随包服务为 14/14；完整 `pnpm check` 为 37 个文件、226 项通过且无跳过。安装态 [50 项课堂及 M1 来源界面验证](../apps/desktop/release/m0-installed-classroom-2026-10-03T23-46-57Z-retry.json) 使用真实原生选择器和鼠标，覆盖图片/字体、测验与解题过程、互动明确提交/去重/重启读回、初始化脚本错误诊断、离线手动重试、服务崩溃、会话轮换和项目切换；还验证空正文不写样例、二次导入建立新版本、历史段落定位。
 
-第一次安装比目录包缺少 1,090 个文件（包含 265 个 JS/CJS/MJS），路径集中在 256—378 字符；失败报告保留，未把缺失视为成功。修复采用确定的根版本选择和最近祖先依赖解析，避免无差别深层复制；版本冲突仍在消费者局部保留。无法安全纯物化的跨版本循环明确报错，不能无限展开或默默解析到错误版本。最终服务清单含 12,015 个文件，最长相对路径 132 字符。
+安装态首轮滑块操作因脚本未等待滚动后坐标稳定而超时，[失败报告](../apps/desktop/release/m0-installed-classroom-2026-10-03T23-47-06Z.json) 保留。改为瞬时滚动、等待两帧、验证可见 iframe 命中并拖动滑块后，同一已安装应用重新通过；复测从便携验收包运行脚本，使用安装后的随包 Node。打包工具全局缓存曾报跨卷 rename EXDEV，下载归档经字节复制和摘要复验后使用任务本地缓存构建成功。没有更改课堂功能以回避失败。
+
+随后卸载成功，两份外部项目清单与数据库 SHA-256 均不变，见 [安装/卸载验证](../apps/desktop/release/m0-install-uninstall-2026-10-04-final.json)。安装包为 `学科备考工作台-0.1.0-setup.exe`，194,237,536 字节，SHA-256 `43A79A98669E5D90BC5A39539D0E41E00806F49C1FF8D5C569997968A489FF0A`。[外部验收包](../apps/desktop/release/m0-acceptance-kit/README.md) 已生成，输入摘要与安装包/脚本一同保存。本机证据不能替代 PACK-02；用户已确认暂无独立环境，先完成代码与本机验收。
+
+第一次安装比目录包缺少 1,090 个文件（包含 265 个 JS/CJS/MJS），路径集中在 256—378 字符；失败报告保留，未把缺失视为成功。修复采用确定的根版本选择和最近祖先依赖解析，避免无差别深层复制；版本冲突仍在消费者局部保留。无法安全纯物化的跨版本循环明确报错，不能无限展开或默默解析到错误版本。最终服务清单含 12,024 个文件，最长相对路径 132 字符。
 
 准备脚本据实际清单生成 NSIS 路径预算；当前完整安装目录预算为 98 字符，交互目录页另预留 builder 可能追加的目录后缀。超过预算的静默安装以 code 2 拒绝，实测 149 字符目录未解压资源。目录包支持 Node 长路径不意味着 NSIS 解压器具有相同能力；新增依赖须重新组装和计算预算，不能只换安装位置绕过完整性检查。
-

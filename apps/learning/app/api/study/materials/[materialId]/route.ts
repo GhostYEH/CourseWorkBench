@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { StudyError } from '@sew/study-contracts';
 import { parseQuery, route, ok } from '../../../../../lib/server/http';
-import { requireSession } from '../../../../../lib/server/service';
+import { assertScope, requireSession } from '../../../../../lib/server/service';
 import { toMaterialDto, toSegmentDto } from '../../../../../lib/server/dto';
 
 export const dynamic = 'force-dynamic';
@@ -16,9 +16,10 @@ const querySchema = z.object({
 });
 
 /** 读取指定材料版本的段落原文，用于来源定位与审核。 */
-export const GET = route(async (request: Request, context: { params: Promise<{ materialId: string }> }) => {
+const readMaterial = route(async (request: Request, context: { params: Promise<{ materialId: string }> }) => {
   const session = requireSession();
   const { materialId } = await context.params;
+  assertScope({ projectId: session.projectId, generation: session.generation });
   const query = parseQuery(request, querySchema);
 
   const material = session.store.getMaterial(materialId, query.revision);
@@ -26,8 +27,15 @@ export const GET = route(async (request: Request, context: { params: Promise<{ m
 
   return ok({
     material: toMaterialDto(material),
+    versions: session.store.listMaterialVersions(materialId).map(toMaterialDto),
     segments: session.store
       .getSegments(material.materialId, material.revision)
       .map(toSegmentDto),
   });
 });
+
+export const GET = async (...args: Parameters<typeof readMaterial>) => {
+  const response = await readMaterial(...args);
+  response.headers.set('cache-control', 'no-store');
+  return response;
+};

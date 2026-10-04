@@ -5,7 +5,7 @@
  * AI 返回的「真题」文字不具有分类权限；讲义中的出处文字也由模板统一渲染。
  */
 
-import type { AdmissionResultDto, QuestionOrigin } from '@sew/study-contracts';
+import type { QuestionOrigin } from '@sew/study-contracts';
 import { QUESTION_ORIGIN_LABEL } from '@sew/study-contracts';
 
 export interface OriginRecord {
@@ -109,11 +109,4 @@ export const resolveQuestionOrigin = (
     default:
       return finish('ai_new', null, false, null);
   }
-};
-
-/** 发布检查：正式讲义与题目只能使用当前准入知识点。 */
-export const assertPublishable = (admission: AdmissionResultDto): void => {
-  if (admission.allowed) return;
-  const first = admission.blocked[0];
-  throw new Error(`KNOWLEDGE_NOT_VERIFIED:${first?.knowledgeId ?? 'unknown'}`);
 };

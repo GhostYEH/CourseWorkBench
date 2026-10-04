@@ -13,6 +13,7 @@ export default function EvalPage(): ReactNode {
   const questions = session.store.listQuestions();
   const attemptsReal = session.store.listAttempts('real');
   const attemptsSimulation = session.store.listAttempts('simulation');
+  const coverage = session.store.syllabusCoverage();
 
   // 分子 = 被服务端检出并降级的伪装题；分母 = 全部自报真题（requestedOrigin=exam_original）。
   const forgedExam = questions.filter((q) => q.forgedExamClaim).length;
@@ -48,9 +49,13 @@ export default function EvalPage(): ReactNode {
           <tbody>
             <tr>
               <td>对考纲的知识点覆盖率</td>
-              <td className="mono">{knowledge.filter((k) => k.sourceStatus === 'verified').length}</td>
-              <td className="mono">待冻结考纲条目数</td>
-              <td className="muted">需要先把考纲拆成可检查的原子条目；必要前置不计入分子</td>
+              <td className="mono">{coverage.coveredItems}</td>
+              <td className="mono">{coverage.totalItems === 0 ? '考纲条目尚未登记' : coverage.totalItems}</td>
+              <td className="muted">
+                分子为必要要素全部被覆盖的条目数；部分覆盖 {coverage.partialItems} 条、未覆盖 {coverage.uncoveredItems} 条、
+                已核实但未映射条目的知识点 {coverage.unmappedKnowledge} 条另报。必要前置不计入分子。
+                当前覆盖率 {coverage.coverageRate === null ? 'N/A（分母未建立）' : `${Math.round(coverage.coverageRate * 100)}%`}
+              </td>
             </tr>
             <tr>
               <td>来源可追溯率（机械层）</td>

@@ -10,7 +10,7 @@
  */
 
 import { z } from 'zod';
-import { EVIDENCE_USE } from '@sew/study-contracts';
+import { EVIDENCE_USE, SYLLABUS_REQUIREMENT_KEY_PATTERN } from '@sew/study-contracts';
 
 export interface DecodeResult<T> {
   value: T;
@@ -109,6 +109,22 @@ export const originRecordSchema = z.object({
 
 /** knowledge_ids_json。 */
 export const knowledgeIdsSchema = z.array(z.string());
+
+/**
+ * syllabus_items.requirements_json：条目内的必要要素清单。
+ *
+ * 覆盖统计按要素计数，编号重复会让同一条目被虚增，因此按权威列拒绝。
+ */
+export const syllabusRequirementItemSchema = z.object({
+  key: z.string().regex(SYLLABUS_REQUIREMENT_KEY_PATTERN),
+  text: z.string().min(1),
+});
+export const syllabusRequirementsSchema = z
+  .array(syllabusRequirementItemSchema)
+  .min(1)
+  .refine((items) => new Set(items.map((item) => item.key)).size === items.length, {
+    message: '必要要素编号不能重复',
+  });
 
 /** runs.frozen_json：根形状必须是对象。 */
 export const frozenSchema = z.record(z.unknown());

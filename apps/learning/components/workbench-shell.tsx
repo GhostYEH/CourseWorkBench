@@ -6,6 +6,7 @@ import { useEffect, useMemo, type ReactNode } from 'react';
 import type { KnowledgePointDto, MaterialDto, PreferencesDto, ProposalDto, WorkbenchStateDto } from '@sew/study-contracts';
 import { applyThemeToDocument, useAppStore } from '../lib/client';
 import { ProjectActions } from './project-actions';
+import { ModelConnectionIndicator } from './model-connection-settings';
 
 interface ShellProps {
   state: WorkbenchStateDto;
@@ -36,6 +37,7 @@ const SECTION_TABS: Record<string, Array<{ label: string; href: string }>> = {
   knowledge: [
     { label: '已确认知识', href: '/workbench/knowledge' },
     { label: '生成准入自检', href: '/workbench/knowledge?tab=admission' },
+    { label: '考纲条目与覆盖', href: '/workbench/syllabus' },
   ],
   review: [
     { label: '独立来源审核', href: '/workbench/review' },
@@ -56,6 +58,7 @@ const SECTION_TABS: Record<string, Array<{ label: string; href: string }>> = {
 const sectionOf = (pathname: string): string => {
   const segment = pathname.split('/')[2] ?? '';
   if (['materials', 'settings', 'appearance'].includes(segment)) return 'project';
+  if (segment === 'syllabus') return 'knowledge';
   if (['knowledge', 'review', 'plan', 'study', 'mistakes', 'eval'].includes(segment)) return segment;
   return 'project';
 };
@@ -333,7 +336,7 @@ export const WorkbenchShell = ({ state, materials, proposals, knowledge, prefere
           学习状态：{state.counts.attemptsReal > 0 ? `本人已提交 ${state.counts.attemptsReal} 次` : '尚未开始'}
         </span>
         <span className="spacer" />
-        <span>模型连接：未配置</span>
+        <ModelConnectionIndicator />
       </footer>
     </div>
   );

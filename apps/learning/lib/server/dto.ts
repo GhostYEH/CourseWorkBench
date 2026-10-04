@@ -13,6 +13,7 @@ import type {
   QuestionDto,
   QuestionListItemDto,
   SegmentDto,
+  SyllabusItemDto,
 } from '@sew/study-contracts';
 import type {
   AttemptRow,
@@ -21,6 +22,7 @@ import type {
   ProposalRow,
   QuestionRow,
   SegmentRow,
+  SyllabusItemRow,
 } from '@sew/study-storage';
 
 export const toMaterialDto = (row: MaterialRow): MaterialDto => ({
@@ -35,6 +37,8 @@ export const toMaterialDto = (row: MaterialRow): MaterialDto => ({
   normalizationVersion: row.normalizationVersion,
   fingerprint: row.fingerprint,
   referencedByKnowledge: row.referencedByKnowledge,
+  rawArchive: row.rawArchive,
+  examVerification: row.examVerification,
 });
 
 export const toSegmentDto = (row: SegmentRow): SegmentDto => ({
@@ -42,6 +46,10 @@ export const toSegmentDto = (row: SegmentRow): SegmentDto => ({
   ordinal: row.ordinal,
   text: row.text,
   fingerprint: row.fingerprint,
+  rawStartByte: row.rawStartByte,
+  rawEndByte: row.rawEndByte,
+  rawLineStart: row.rawLineStart,
+  rawLineEnd: row.rawLineEnd,
 });
 
 export const toProposalDto = (row: ProposalRow): ProposalDto => ({
@@ -83,6 +91,8 @@ export const toKnowledgePointDto = (row: KnowledgeRow): KnowledgePointDto => ({
   reviewProvenance: row.reviewProvenance,
   scopeStatus: row.scopeStatus,
   masteryStatus: row.masteryStatus,
+  syllabusItemId: row.syllabusItemId,
+  syllabusRequirementKey: row.syllabusRequirementKey,
   prerequisites: row.prerequisites,
   evidence: row.evidence.map((item) => ({
     materialId: item.materialId,
@@ -96,6 +106,17 @@ export const toKnowledgePointDto = (row: KnowledgeRow): KnowledgePointDto => ({
   acceptance: row.acceptance,
   priority: row.priority,
   revision: row.revision,
+});
+
+export const toSyllabusItemDto = (row: SyllabusItemRow): SyllabusItemDto => ({
+  itemId: row.itemId,
+  code: row.code,
+  label: row.label,
+  recordScope: row.recordScope,
+  requirements: row.requirements,
+  source: row.source,
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
 });
 
 /** 列表项：不含答案与解析，供未授权列表与客户端缓存使用。 */

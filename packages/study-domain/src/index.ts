@@ -5,15 +5,25 @@
  * 由 study-storage 负责事务落库、由本地服务负责调用编排。
  */
 
-export { normalizeText, fingerprintOf, splitSegments, normalizeMaterial } from './normalize';
-export type { RawSegment, NormalizedMaterial } from './normalize';
+export {
+  normalizeText, fingerprintOf, splitSegments, normalizeMaterial,
+  locateRawSegments, normalizeMaterialWithRawSpans,
+} from './normalize';
+export type {
+  RawSegment, NormalizedMaterial, RawSegmentSpan, LocatedSegment, MaterialWithRawSpans,
+} from './normalize';
 export { runMechanicalCheck, assertMechanicalPassed } from './source';
 export type { RegisteredSegment, MechanicalCheckInput, MechanicalCheckResult } from './source';
 export { decideProposal, computeInvalidation } from './knowledge';
 export type { ReviewDecisionInput, ReviewDecisionResult, MaterialChangeImpact } from './knowledge';
 export { checkAdmission } from './admission';
 export type { KnowledgeRecord, AdmissionInput } from './admission';
-export { resolveQuestionOrigin, assertPublishable } from './question';
+export { validateSyllabusMapping, computeSyllabusCoverage } from './syllabus';
+export type {
+  SyllabusRequirementRecord, SyllabusItemRecord, SyllabusMappingRecord,
+  SyllabusCoveragePointRecord, SyllabusCoverageItemResult, SyllabusCoverageResult,
+} from './syllabus';
+export { resolveQuestionOrigin } from './question';
 export type { OriginRecord, TrustedOriginFacts, OriginResolution } from './question';
 export { normalizeAnswer, judgeAnswer, decideAttempt, assertRealWriteAllowed, buildStepKey } from './attempt';
 export type { AttemptRequest, AttemptDecision, AnswerVerdict } from './attempt';

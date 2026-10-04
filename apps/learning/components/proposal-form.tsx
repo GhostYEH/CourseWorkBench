@@ -7,6 +7,12 @@ import { useRouter } from 'next/navigation';
 import type { SegmentDto } from '@sew/study-contracts';
 import { apiFetch, describeApiError } from '../lib/client';
 
+type SelectableSegment = SegmentDto & { materialId: string; revision: number; materialName: string };
+
+/** 段落编号只在单个材料版本内唯一，跨材料选择必须用复合键。 */
+const segmentKey = (segment: SelectableSegment): string =>
+  `${segment.materialId}|${segment.revision}|${segment.segmentId}`;
+
 /**
  * 提出知识点候选。AI 与用户共用该入口，但都只能写候选。
  * 不提供「无来源提交」的便捷路径：引用段落是必填项。
@@ -18,19 +24,20 @@ export const ProposalForm = ({
 }: {
   projectId: string;
   generation: number;
-  segments: Array<SegmentDto & { materialId: string; revision: number }>;
+  segments: SelectableSegment[];
 }) => {
   const router = useRouter();
   const [name, setName] = useState('');
   const [concept, setConcept] = useState('');
   const [conditions, setConditions] = useState('');
-  const [segmentId, setSegmentId] = useState(segments[0]?.segmentId ?? '');
+  const first = segments[0];
+  const [selectedKey, setSelectedKey] = useState(first ? segmentKey(first) : '');
   const [use, setUse] = useState<'scope_basis' | 'concept_basis' | 'method_basis'>('concept_basis');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const selected = segments.find((segment) => segment.segmentId === segmentId);
+  const selected = segments.find((segment) => segmentKey(segment) === selectedKey);
 
   const submit = async (withEvidence: boolean) => {
     setBusy(true);
@@ -89,14 +96,14 @@ export const ProposalForm = ({
           <label htmlFor="proposal-segment">引用段落</label>
           <select
             id="proposal-segment"
-            value={segmentId}
-            onChange={(event) => setSegmentId(event.target.value)}
+            value={selectedKey}
+            onChange={(event) => setSelectedKey(event.target.value)}
             disabled={segments.length === 0}
           >
             {segments.length === 0 ? <option value="">请先导入材料</option> : null}
             {segments.map((segment) => (
-              <option key={segment.segmentId} value={segment.segmentId}>
-                {segment.segmentId} · {segment.text.slice(0, 24)}…
+              <option key={segmentKey(segment)} value={segmentKey(segment)}>
+                {segment.materialName} r{segment.revision} · {segment.segmentId} · {segment.text.slice(0, 24)}…
               </option>
             ))}
           </select>

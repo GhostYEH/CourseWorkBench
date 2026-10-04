@@ -1,7 +1,7 @@
 /**
  * 原生 IPC 合同（《Electron 开发设计》第 5 节）。
  *
- * 只暴露白名单方法：窗口、目录/文件选择、授权、凭据配置与服务控制。
+ * 只暴露白名单方法：窗口、目录/文件选择、授权、原文副本打开、凭据配置与服务控制。
  * 知识/审核/计划/课程等业务通过同源 HTTP 领域接口进入，不注册进 IPC。
  *
  * 通道名放在同目录的 `ipc-channels.json`。主进程与渲染层从此合同读取，
@@ -10,7 +10,7 @@
  */
 
 import channels from '../ipc-channels.json';
-import type { RecentProjectDto } from './api';
+import type { MaterialOriginalOpenInput, RecentProjectDto } from './api';
 
 export const IPC = channels;
 
@@ -50,6 +50,21 @@ export interface PickedFilesPayload {
   files: Array<{ path: string; name: string; size: number }>;
 }
 
+/**
+ * 打开材料版本原文副本的请求。与本地服务的内部入口共用同一形状（含 scope）：
+ * 渲染层只提交标识与版本，不能提交磁盘路径；副本位置由服务决定，
+ * 主进程复验归属后才交给系统打开。
+ */
+export type OpenMaterialOriginalRequest = MaterialOriginalOpenInput;
+
+export interface OpenMaterialOriginalResult {
+  /** 归档时记录的文件名字面，仅用于展示；未登记时为 null。 */
+  displayName: string | null;
+  /** 指定段落在原文中的行号范围；未指定段落时为 null。 */
+  lineStart: number | null;
+  lineEnd: number | null;
+}
+
 export interface ServiceStatePayload {
   status: ServiceStatusPayload;
   /** 会话凭据只在已 ready 时返回，controlToken 永远不属于 renderer 契约。 */
@@ -69,6 +84,7 @@ export interface IpcContract {
   projectClose: { args: []; result: void };
   projectRecent: { args: []; result: RecentProjectDto[] };
   materialsPickFiles: { args: []; result: PickedFilesPayload };
+  materialsOpenOriginal: { args: [request: OpenMaterialOriginalRequest]; result: OpenMaterialOriginalResult };
   exportsPickTarget: { args: [defaultName: string]; result: string | null };
   exportsBackupProject: { args: []; result: string | null };
   preferencesRead: { args: []; result: unknown };
@@ -95,6 +111,7 @@ export const IPC_METHOD_CHANNEL: Record<IpcMethod, IpcChannel> = {
   projectClose: channels.projectClose,
   projectRecent: channels.projectRecent,
   materialsPickFiles: channels.materialsPickFiles,
+  materialsOpenOriginal: channels.materialsOpenOriginal,
   exportsPickTarget: channels.exportsPickTarget,
   exportsBackupProject: channels.exportsBackupProject,
   preferencesRead: channels.preferencesRead,
@@ -120,6 +137,9 @@ export interface NativeBridge {
   projectRecent(): Promise<RecentProjectDto[]>;
 
   pickMaterials(): Promise<PickedFilesPayload>;
+
+  /** 打开项目内归档的材料原文副本；原文未归档时返回明确错误而不是静默无操作。 */
+  openMaterialOriginal(request: OpenMaterialOriginalRequest): Promise<OpenMaterialOriginalResult>;
 
   pickExportTarget(defaultName: string): Promise<string | null>;
   backupProject(): Promise<string | null>;

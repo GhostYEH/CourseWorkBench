@@ -90,6 +90,7 @@ const apiChannels = [
   ['projectClose', expectedChannels.projectClose],
   ['projectRecent', expectedChannels.projectRecent],
   ['pickMaterials', expectedChannels.materialsPickFiles],
+  ['openMaterialOriginal', expectedChannels.materialsOpenOriginal],
   ['pickExportTarget', expectedChannels.exportsPickTarget],
   ['backupProject', expectedChannels.exportsBackupProject],
   ['readPreferences', expectedChannels.preferencesRead],
@@ -173,6 +174,7 @@ const JSON_PARSE_ALLOWLIST = new Set([
   'packages/study-storage/src/project-layout.ts',
   'apps/learning/lib/attempt-submission.ts',
   'apps/learning/lib/server/global-preferences.ts',
+  'apps/learning/lib/server/model-connection.ts',
   'apps/desktop/src/service-lifecycle.cjs',
   'apps/desktop/src/settings.cjs',
 ]);

@@ -19,6 +19,8 @@ export const POST = route(async (request: Request) => {
     expectedRevision: body.expectedRevision,
     semanticReviewed: body.semanticReviewed,
     note: body.note,
+    // 考纲映射由人工在审核时确认；条目或要素不存在时整笔审核被拒绝，不写部分结果。
+    syllabus: body.syllabus,
   });
 
   // 审核结果同样经 DTO 边界输出：不暴露 KnowledgeRow 的 originProposalId 等内部字段。

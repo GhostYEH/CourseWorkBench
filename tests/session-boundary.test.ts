@@ -73,7 +73,8 @@ describe('session and disk authorization boundaries', () => {
     symlinkSync(outside, junction, 'junction');
 
     const session = openProjectFromDisk(root);
-    expect(readAuthorizedFile(session, source)).toBe('lesson text');
+    expect(readAuthorizedFile(session, source).text).toBe('lesson text');
+    expect(readAuthorizedFile(session, source).originalName).toBe('lesson.md');
     expectStudyError(() => readAuthorizedFile(session, join(root, '..', basename(outside), 'secret.md')), 'PROJECT_NOT_AUTHORIZED');
     expectStudyError(() => readAuthorizedFile(session, join(junction, 'secret.md')), 'PROJECT_NOT_AUTHORIZED');
     expectStudyError(() => readAuthorizedFile(session, root), 'MATERIAL_NOT_FOUND');
@@ -86,7 +87,7 @@ describe('session and disk authorization boundaries', () => {
     writeFileSync(nativeFile, 'picked text', 'utf8');
     const sessionA = openProjectFromDisk(rootA);
     authorizePaths([nativeFile]);
-    expect(readAuthorizedFile(sessionA, nativeFile)).toBe('picked text');
+    expect(readAuthorizedFile(sessionA, nativeFile).text).toBe('picked text');
 
     const sessionB = openProjectFromDisk(rootB);
     expect(sessionB.generation).toBeGreaterThan(sessionA.generation);

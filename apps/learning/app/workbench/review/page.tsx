@@ -4,8 +4,8 @@ import { CandidateReview } from '../../../components/candidate-review';
 import { ProposalForm } from '../../../components/proposal-form';
 import { Empty } from '../../../components/ui';
 import { getSession } from '../../../lib/server/service';
-import { readWorkbenchMaterials, readWorkbenchProposals } from '../../../lib/server/workbench-data';
-import { toProposalDto, toSegmentDto } from '../../../lib/server/dto';
+import { readSegmentChoices, readSyllabusItems, readWorkbenchProposals } from '../../../lib/server/workbench-data';
+import { toProposalDto } from '../../../lib/server/dto';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,15 +17,9 @@ export default function SourceReviewPage(): ReactNode {
   const proposals = readWorkbenchProposals(session).map(toProposalDto);
   const pending = proposals.filter((proposal) => proposal.status === 'pending' || proposal.status === 'needs_material');
   const reviewed = proposals.filter((proposal) => proposal.status === 'approved' || proposal.status === 'rejected');
-  const materials = readWorkbenchMaterials(session);
-  const currentMaterial = materials[0];
-  const segments = currentMaterial
-    ? session.store.getSegments(currentMaterial.materialId, currentMaterial.revision).map((segment) => ({
-        ...toSegmentDto(segment),
-        materialId: segment.materialId,
-        revision: segment.revision,
-      }))
-    : [];
+  const syllabusItems = readSyllabusItems(session);
+  // 候选可以从任一已登记材料的最新版本选取，不固定在第一条材料上。
+  const segments = readSegmentChoices(session);
 
   return (
     <div className="page-wide">
@@ -45,11 +39,14 @@ export default function SourceReviewPage(): ReactNode {
 
       <div className="card">
         <h2>提出来源候选</h2>
-        {currentMaterial ? (
+        {segments.length > 0 ? (
           <ProposalForm projectId={session.projectId} generation={session.generation} segments={segments} />
         ) : (
           <p className="muted">请先<Link href="/workbench/materials">导入材料</Link>，再从原文提出候选。</p>
         )}
+        <p className="hint">
+          考纲条目在<Link href="/workbench/syllabus">考纲条目</Link>页登记；条目一经登记，「考纲内」候选必须映射到条目要素才能批准。
+        </p>
       </div>
 
       <div className="card">
@@ -63,6 +60,7 @@ export default function SourceReviewPage(): ReactNode {
               proposal={proposal}
               projectId={session.projectId}
               generation={session.generation}
+              syllabusItems={syllabusItems}
             />
           ))
         )}

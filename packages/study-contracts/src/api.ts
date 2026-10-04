@@ -19,6 +19,7 @@ import {
   SOURCE_STATUS,
 } from './status';
 import { SUPPORTED_MATERIAL_TYPES } from './fingerprint';
+import { GENERATED_ID_PATTERN, SEGMENT_ID_PATTERN, SYLLABUS_REQUIREMENT_KEY_PATTERN } from './ids';
 
 /** 所有领域请求都携带项目身份；服务端据此校验打开代次。 */
 export const projectScopeSchema = z.object({
@@ -82,6 +83,29 @@ export const materialImportSchema = z.discriminatedUnion('mode', [
 ]);
 export type MaterialImportInput = z.infer<typeof materialImportSchema>;
 
+/**
+ * 原始文件归档状态。
+ *
+ * 只有原生选择器导入的材料才有归档字节；粘贴导入与升级前的历史版本明确标记为
+ * `absent`，界面与文档都不得把它们说成可打开原文。
+ */
+export const materialRawArchiveSchema = z.discriminatedUnion('state', [
+  z.object({
+    state: z.literal('archived'),
+    sha256: z.string().min(1),
+    byteLength: z.number().int().nonnegative(),
+    mediaType: z.enum(['text/plain', 'text/markdown']),
+    /** 选择器的文件名字面，仅用于展示；磁盘路径不下发给渲染层。 */
+    originalName: z.string().nullable(),
+    archivedAt: z.string(),
+  }),
+  z.object({
+    state: z.literal('absent'),
+    reason: z.enum(['text_import', 'legacy_import']),
+  }),
+]);
+export type MaterialRawArchiveDto = z.infer<typeof materialRawArchiveSchema>;
+
 export const materialSchema = z.object({
   materialId: z.string(),
   displayName: z.string(),
@@ -95,6 +119,12 @@ export const materialSchema = z.object({
   fingerprint: z.string(),
   /** 引用该材料的已核实知识点数量，用于删除前引用检查。 */
   referencedByKnowledge: z.number().int().nonnegative(),
+  /** 原始文件字节的归档状态；未归档时不能宣称可打开原文。 */
+  rawArchive: materialRawArchiveSchema,
+  /** 人工核实「该版本可作为考试真题来源」的记录；题目身份据此派生，请求方不能自报。 */
+  examVerification: z
+    .object({ verifiedAt: z.string(), note: z.string() })
+    .nullable(),
 });
 export type MaterialDto = z.infer<typeof materialSchema>;
 
@@ -103,8 +133,70 @@ export const segmentSchema = z.object({
   ordinal: z.number().int().positive(),
   text: z.string(),
   fingerprint: z.string(),
+  /** 段落在归档原文中的定位；未归档原文时为 null。 */
+  rawStartByte: z.number().int().nonnegative().nullable(),
+  rawEndByte: z.number().int().nonnegative().nullable(),
+  rawLineStart: z.number().int().positive().nullable(),
+  rawLineEnd: z.number().int().positive().nullable(),
 });
 export type SegmentDto = z.infer<typeof segmentSchema>;
+
+/** 读取归档原文：必须给出材料版本，段落可选用于定位。 */
+export const materialRawQuerySchema = z.object({
+  revision: z.coerce.number().int().positive(),
+  segmentId: z.string().regex(SEGMENT_ID_PATTERN).optional(),
+});
+export type MaterialRawQuery = z.infer<typeof materialRawQuerySchema>;
+
+export const materialRawViewSchema = z.object({
+  materialId: z.string(),
+  revision: z.number().int().positive(),
+  archive: materialRawArchiveSchema,
+  /** 归档的原始文本，保留 BOM 与原始换行风格；未归档为 null。 */
+  rawText: z.string().nullable(),
+  segment: z
+    .object({
+      segmentId: z.string(),
+      text: z.string(),
+      startByte: z.number().int().nonnegative(),
+      endByte: z.number().int().nonnegative(),
+      lineStart: z.number().int().positive(),
+      lineEnd: z.number().int().positive(),
+      /** 同一区间在解码后原文中的字符偏移，界面高亮用；权威定位仍是字节区间。 */
+      startChar: z.number().int().nonnegative(),
+      endChar: z.number().int().nonnegative(),
+    })
+    .nullable(),
+});
+export type MaterialRawViewDto = z.infer<typeof materialRawViewSchema>;
+
+/**
+ * 请主进程打开某材料版本的原文副本。
+ *
+ * 只接受标识与版本：渲染层不能提交磁盘路径，主进程也不能凭字符串获得读盘权限。
+ * 副本路径由本地服务在项目内生成，主进程复验路径归属后才交给系统打开。
+ */
+export const materialOriginalOpenSchema = z.object({
+  scope: projectScopeSchema,
+  materialId: z.string().regex(GENERATED_ID_PATTERN),
+  revision: z.number().int().positive(),
+  segmentId: z.string().regex(SEGMENT_ID_PATTERN).optional(),
+});
+export type MaterialOriginalOpenInput = z.infer<typeof materialOriginalOpenSchema>;
+
+/** 条目内的一个必要要素；只有全部要素都被覆盖，条目才计入分子。 */
+export const syllabusRequirementSchema = z.object({
+  key: z.string().regex(SYLLABUS_REQUIREMENT_KEY_PATTERN),
+  text: z.string().min(2).max(500),
+});
+export type SyllabusRequirementInput = z.infer<typeof syllabusRequirementSchema>;
+
+/** 知识点绑定到某条目的某个必要要素；同一要素被多个知识点命中只计一次。 */
+export const syllabusMappingSchema = z.object({
+  itemId: z.string().min(1),
+  requirementKey: z.string().regex(SYLLABUS_REQUIREMENT_KEY_PATTERN),
+});
+export type SyllabusMappingInput = z.infer<typeof syllabusMappingSchema>;
 
 // —— 知识点候选与证据 ——
 
@@ -176,6 +268,8 @@ export const reviewApplySchema = z.object({
   note: z.string().max(1000).default(''),
   /** 审核者必须已读过原文并作出语义判断；机械通过不等于语义通过。 */
   semanticReviewed: z.boolean(),
+  /** 人工审核时确定的考纲条目映射；只有「考纲内」候选可以携带。 */
+  syllabus: syllabusMappingSchema.nullable().default(null),
 });
 export type ReviewApplyInput = z.infer<typeof reviewApplySchema>;
 
@@ -189,6 +283,9 @@ export const knowledgePointSchema = z.object({
   reviewProvenance: z.enum(REVIEW_PROVENANCE).nullable(),
   scopeStatus: z.enum(SCOPE_STATUS),
   masteryStatus: z.enum(MASTERY_STATUS),
+  /** 考纲条目映射；未映射时为 null，覆盖统计把它当缺口而不是已完成。 */
+  syllabusItemId: z.string().nullable(),
+  syllabusRequirementKey: z.string().nullable(),
   prerequisites: z.array(z.string()),
   evidence: z.array(
     z.object({
@@ -206,6 +303,72 @@ export const knowledgePointSchema = z.object({
   revision: z.number().int().nonnegative(),
 });
 export type KnowledgePointDto = z.infer<typeof knowledgePointSchema>;
+
+// —— 考纲原子项与覆盖（《规划书》8.1）——
+
+export const syllabusItemCreateSchema = z
+  .object({
+    scope: projectScopeSchema,
+    /** 考纲原文中的条目编号：同一范围内重复登记会被拒绝，避免虚增分母。 */
+    code: z.string().min(1).max(60),
+    label: z.string().min(2).max(200),
+    requirements: z.array(syllabusRequirementSchema).min(1).max(40),
+    /** 条目出自哪个已登记材料版本段落；来源不可定位时拒绝登记。 */
+    source: z.object({
+      materialId: z.string().min(1),
+      revision: z.number().int().positive(),
+      segmentId: z.string().regex(SEGMENT_ID_PATTERN),
+    }),
+  })
+  .refine(
+    (value) => new Set(value.requirements.map((item) => item.key)).size === value.requirements.length,
+    { message: '必要要素编号不能重复' },
+  );
+export type SyllabusItemCreateInput = z.infer<typeof syllabusItemCreateSchema>;
+
+export const syllabusItemSchema = z.object({
+  itemId: z.string(),
+  code: z.string(),
+  label: z.string(),
+  recordScope: z.enum(RECORD_SCOPE),
+  requirements: z.array(syllabusRequirementSchema),
+  source: z.object({
+    materialId: z.string(),
+    revision: z.number().int().positive(),
+    segmentId: z.string(),
+    use: z.enum(EVIDENCE_USE),
+    fingerprint: z.string(),
+    excerpt: z.string(),
+    /** 材料已更新到更新版本：条目仍指向旧版本，需人工重新核对。 */
+    sourceStale: z.boolean(),
+  }),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type SyllabusItemDto = z.infer<typeof syllabusItemSchema>;
+
+export const syllabusCoverageItemSchema = z.object({
+  itemId: z.string(),
+  code: z.string(),
+  label: z.string(),
+  totalRequirements: z.number().int().positive(),
+  coveredRequirements: z.number().int().nonnegative(),
+  state: z.enum(['covered', 'partial', 'uncovered']),
+});
+export type SyllabusCoverageItemDto = z.infer<typeof syllabusCoverageItemSchema>;
+
+export const syllabusCoverageSchema = z.object({
+  totalItems: z.number().int().nonnegative(),
+  coveredItems: z.number().int().nonnegative(),
+  partialItems: z.number().int().nonnegative(),
+  uncoveredItems: z.number().int().nonnegative(),
+  /** 完整覆盖条目数 / 考纲条目总数；未登记条目时为 null，不显示为 0%。 */
+  coverageRate: z.number().min(0).max(1).nullable(),
+  /** 已核实但未绑定任何考纲条目的「考纲内」知识点数：作为缺口单列。 */
+  unmappedKnowledge: z.number().int().nonnegative(),
+  items: z.array(syllabusCoverageItemSchema),
+});
+export type SyllabusCoverageDto = z.infer<typeof syllabusCoverageSchema>;
 
 // —— 生成准入 ——
 
@@ -316,6 +479,42 @@ export const classroomSceneBindingSchema = z.object({
   reviewNote: z.string(),
 });
 export type ClassroomSceneBinding = z.infer<typeof classroomSceneBindingSchema>;
+
+// Explicit personal observations; these never represent grading or mastery.
+export const interactionDirectionSchema = z.enum(['increasing', 'decreasing', 'constant']);
+const interactionFields = {
+  stageId: z.string().min(1).max(200),
+  sceneId: z.string().min(1).max(200),
+  a: z.number().min(-3).max(3).refine((value) => Math.abs(value * 10 - Math.round(value * 10)) < 1e-9, '参数须为 0.1 的整数倍'),
+  prediction: interactionDirectionSchema,
+  explanation: z.string().max(2000),
+};
+export const interactionSubmitSchema = z.object({
+  scope: projectScopeSchema.strict(),
+  ...interactionFields,
+}).strict();
+export type InteractionSubmitInput = z.infer<typeof interactionSubmitSchema>;
+export const interactionPayloadSchema = z.object({
+  payloadVersion: z.literal(1),
+  projectId: z.string().min(1),
+  documentDigest: z.string().min(1),
+  actorType: z.literal('human_learner'),
+  recordScope: z.literal('demo'),
+  ...interactionFields,
+  direction: interactionDirectionSchema,
+}).strict();
+export const interactionSubmissionSchema = z.object({
+  id: z.string().min(1),
+  createdAt: z.string().datetime({ offset: true }),
+  payload: interactionPayloadSchema,
+}).strict();
+export type InteractionSubmissionDto = z.infer<typeof interactionSubmissionSchema>;
+export const interactionStateSchema = z.object({
+  lastSubmission: interactionSubmissionSchema.nullable(),
+  count: z.number().int().nonnegative(),
+  deduplicated: z.boolean(),
+}).strict();
+export type InteractionStateDto = z.infer<typeof interactionStateSchema>;
 
 // —— 作答 ——
 

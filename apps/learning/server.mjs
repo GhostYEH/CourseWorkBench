@@ -134,7 +134,8 @@ const main = async () => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 1200);
         try {
-          await fetch(`${origin}/internal/project`, {
+          for (const [path, body] of [['/internal/models/cancel', {}], ['/internal/project', { action: 'close' }]]) {
+          const response = await fetch(`${origin}${path}`, {
             method: 'POST',
             headers: {
               'content-type': 'application/json',
@@ -142,9 +143,11 @@ const main = async () => {
               'x-sew-control': controlToken,
               origin,
             },
-            body: JSON.stringify({ action: 'close' }),
+            body: JSON.stringify(body),
             signal: controller.signal,
           });
+          if (path === '/internal/models/cancel' && response.ok) emit({ type: 'model-requests-cancelled' });
+          }
         } catch { /* service may already be unavailable */ }
         finally { clearTimeout(timer); }
       }
@@ -209,7 +212,7 @@ const main = async () => {
       }
     }
 
-    if (shuttingDown && policyPath !== '/internal/project') {
+    if (shuttingDown && policyPath !== '/internal/project' && policyPath !== '/internal/models/cancel') {
       sendJson(res, 503, errorBody('SERVICE_STOPPING', 'Service is stopping', true));
       return;
     }

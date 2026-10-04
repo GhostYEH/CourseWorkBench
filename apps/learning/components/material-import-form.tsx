@@ -2,23 +2,15 @@
 
 import { Notice } from './ui';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch, describeApiError } from '../lib/client';
-
-const SAMPLE = [
-  '# 人教版必修一 第三章 函数的基本性质',
-  '',
-  '函数的单调性：设函数 f(x) 的定义域为 I，如果对于定义域 I 内某个区间 D 上的任意两个自变量的值 x1、x2，当 x1 < x2 时，都有 f(x1) < f(x2)，那么就说函数 f(x) 在区间 D 上是增函数。',
-  '',
-  '判断单调性的基本步骤是取值、作差、变形、定号、下结论。',
-].join('\n');
 
 /** 导入材料。文本直接粘贴或从原生选择器授权文件；两条路径走同一套规范化与指纹。 */
 export const MaterialImportForm = ({ projectId, generation }: { projectId: string; generation: number }) => {
   const router = useRouter();
-  const [displayName, setDisplayName] = useState('必修一第三章.md');
-  const [readableLocation, setReadableLocation] = useState('人教版必修一 第三章');
+  const [displayName, setDisplayName] = useState('');
+  const [readableLocation, setReadableLocation] = useState('');
   const [materialType, setMaterialType] = useState<'txt' | 'md'>('md');
   // 导入模式用显式状态表达，不从正文前缀字符串推断。
   const [mode, setMode] = useState<'file' | 'text'>('text');
@@ -28,6 +20,8 @@ export const MaterialImportForm = ({ projectId, generation }: { projectId: strin
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [busy, setBusy] = useState(false);
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
 
   const pickFile = async () => {
     const bridge = window.sewNative;
@@ -51,8 +45,17 @@ export const MaterialImportForm = ({ projectId, generation }: { projectId: strin
   };
 
   const submit = async () => {
+    if (!ready || busy || pending) return;
     setError(null);
     setMessage(null);
+    if (!displayName.trim()) {
+      setError('请填写实际材料名称。');
+      return;
+    }
+    if (mode === 'text' && !rawText.trim()) {
+      setError('材料正文为空，请粘贴实际材料内容。');
+      return;
+    }
     if (mode === 'file' && !sourcePath) {
       setError('尚未选择已授权文件，请先点击「从本机选择文件」。');
       return;
@@ -68,7 +71,7 @@ export const MaterialImportForm = ({ projectId, generation }: { projectId: strin
       const body =
         mode === 'file'
           ? { ...shared, mode: 'file' as const, sourcePath: sourcePath ?? '' }
-          : { ...shared, mode: 'text' as const, rawText: rawText || SAMPLE };
+          : { ...shared, mode: 'text' as const, rawText };
       const data = await apiFetch<{
         material: { displayName: string; revision: number };
         segments: unknown[];
@@ -93,8 +96,9 @@ export const MaterialImportForm = ({ projectId, generation }: { projectId: strin
     <div className="card">
       <h2>导入材料</h2>
       <p className="secondary">
-        首版支持 txt / md。导入时程序统一 UTF-8、移除开头 BOM、换行转换为 LF，切分段落并计算 SHA-256 指纹；
+        首版支持 UTF-8 编码的 txt / md，编码错误或空正文会拒绝导入。程序移除开头 BOM、换行转换为 LF，切分段落并计算 SHA-256 指纹；
         重新导入同一名称的材料会产生新版本，旧版本保留。
+        从本机选择文件时还会原样归档该文件的字节与 SHA-256，供后续按段落打开原文；粘贴导入没有原文件，会明确标记为未归档。
       </p>
       <div className="row-inline">
         <div className="field" style={{ flex: '1 1 220px' }}>
@@ -122,7 +126,7 @@ export const MaterialImportForm = ({ projectId, generation }: { projectId: strin
         </div>
       </div>
       <div className="field">
-        <label htmlFor="material-text">材料正文（留空则使用示例节选）</label>
+        <label htmlFor="material-text">材料正文</label>
         <textarea
           id="material-text"
           value={mode === 'file' ? '' : rawText}
@@ -141,7 +145,7 @@ export const MaterialImportForm = ({ projectId, generation }: { projectId: strin
         </div>
       ) : null}
       <div className="row-inline">
-        <button type="button" className="btn btn-primary" onClick={submit} disabled={busy || pending}>
+        <button type="button" className="btn btn-primary" data-material-import-submit onClick={submit} disabled={!ready || busy || pending}>
           {busy ? '导入中…' : '导入并切分段落'}
         </button>
         <button type="button" className="btn" onClick={pickFile}>

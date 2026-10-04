@@ -568,6 +568,74 @@ CREATE INDEX idx_classroom_document_folders_folder
   ON classroom_document_folders(project_id, folder_id, stage_id);
 `,
   },
+  {
+    version: 9,
+    name: 'material_raw_archive_and_segment_spans',
+    sql: `
+-- 原始文件归档：文件导入按材料版本保存原样字节与其 SHA-256（含 BOM 与原换行风格）。
+-- 粘贴导入与升级前的历史版本没有原文件可归档，明确记为 absent，界面不得宣称可打开原文。
+CREATE TABLE source_raw_archives (
+  material_id   TEXT NOT NULL,
+  revision      INTEGER NOT NULL,
+  storage_mode  TEXT NOT NULL CHECK (storage_mode IN ('archived', 'absent')),
+  absent_reason TEXT CHECK (absent_reason IS NULL OR absent_reason IN ('text_import', 'legacy_import')),
+  original_name TEXT,
+  media_type    TEXT CHECK (media_type IS NULL OR media_type IN ('text/plain', 'text/markdown')),
+  raw_sha256    TEXT,
+  byte_length   INTEGER,
+  raw_bytes     BLOB,
+  archived_at   TEXT NOT NULL,
+  PRIMARY KEY (material_id, revision),
+  FOREIGN KEY (material_id, revision)
+    REFERENCES source_versions(material_id, revision) ON DELETE CASCADE,
+  CHECK (
+    (storage_mode = 'archived' AND raw_bytes IS NOT NULL AND raw_sha256 IS NOT NULL AND byte_length IS NOT NULL)
+    OR (storage_mode = 'absent' AND raw_bytes IS NULL AND raw_sha256 IS NULL AND byte_length IS NULL)
+  )
+);
+
+-- 既有版本在此迁移前只保存了规范化文本，原始字节已经丢弃：如实标为历史未归档。
+INSERT INTO source_raw_archives (material_id, revision, storage_mode, absent_reason, archived_at)
+SELECT material_id, revision, 'absent', 'legacy_import', imported_at FROM source_versions;
+
+-- 段落在归档原文中的 UTF-8 字节区间与行号（1 起始）；原文未归档时为 NULL。
+ALTER TABLE source_segments ADD COLUMN raw_start_byte INTEGER;
+ALTER TABLE source_segments ADD COLUMN raw_end_byte INTEGER;
+ALTER TABLE source_segments ADD COLUMN raw_line_start INTEGER;
+ALTER TABLE source_segments ADD COLUMN raw_line_end INTEGER;
+`,
+  },
+  {
+    version: 10,
+    name: 'syllabus_items_and_knowledge_mapping',
+    sql: `
+-- 考纲原子项：人工登记的可考核条目及其必要要素（《规划书》8.1 的覆盖分母）。
+-- 同一记录范围内考纲编号唯一且不区分大小写：重复登记被拒绝，避免同一条目虚增分母。
+CREATE TABLE syllabus_items (
+  item_id            TEXT PRIMARY KEY,
+  code               TEXT NOT NULL,
+  label              TEXT NOT NULL,
+  requirements_json  TEXT NOT NULL,
+  source_material_id TEXT NOT NULL,
+  source_revision    INTEGER NOT NULL,
+  source_segment_id  TEXT NOT NULL,
+  source_fingerprint TEXT NOT NULL,
+  source_excerpt     TEXT NOT NULL,
+  record_scope       TEXT NOT NULL DEFAULT 'formal' CHECK (record_scope IN ('formal', 'demo')),
+  created_at         TEXT NOT NULL,
+  updated_at         TEXT NOT NULL,
+  FOREIGN KEY (source_material_id, source_revision)
+    REFERENCES source_versions(material_id, revision) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX idx_syllabus_scope_code ON syllabus_items(record_scope, code COLLATE NOCASE);
+CREATE INDEX idx_syllabus_scope_order ON syllabus_items(record_scope, created_at, item_id);
+
+-- 知识点到「某条目内某个必要要素」的映射；未映射为 NULL，覆盖统计按缺口单列。
+ALTER TABLE knowledge_points ADD COLUMN syllabus_item_id TEXT;
+ALTER TABLE knowledge_points ADD COLUMN syllabus_requirement_key TEXT;
+CREATE INDEX idx_knowledge_syllabus_item ON knowledge_points(syllabus_item_id, syllabus_requirement_key);
+`,
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
