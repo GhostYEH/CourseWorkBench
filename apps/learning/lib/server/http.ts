@@ -24,6 +24,7 @@ const HTTP_STATUS: Partial<Record<StudyErrorCode, number>> = {
   QUESTION_ORIGIN_FORBIDDEN: 422,
   CLASSROOM_LESSON_NOT_REVIEWED: 403,
   CLASSROOM_SCENE_SOURCE_MISSING: 409,
+  ASSET_IN_USE: 409,
   // 没有归档原文是该版本的事实状态，用 409 表达「当前状态不支持该操作」；
   // 归档字节与登记摘要不符属于本地数据故障，不能伪装成客户端可修正的入参问题。
   MATERIAL_RAW_ABSENT: 409,
