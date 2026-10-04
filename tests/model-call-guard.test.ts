@@ -334,6 +334,58 @@ describe('受 guard 约束的生成入口（注入假 fetcher）', () => {
     expect(store.getLatestRun()?.state).toBe('plan_confirmed');
   });
 
+  it('证据包过大时按整条陈述裁剪并说明省略数量，不静默截半', async () => {
+    const long = '定'.repeat(1_900);
+    const extra: string[] = [];
+    for (let index = 0; index < 25; index += 1) {
+      const proposal = store.createProposal({
+        projectId,
+        name: `补充知识点 ${index}`,
+        concept: `第 ${index} 条概念陈述`,
+        conditions: '',
+        scopeStatus: 'in_syllabus',
+        prerequisites: [],
+        evidence: [{ materialId, revision: 1, segmentId: 'S001', use: 'concept_basis' }],
+        acceptance: '',
+        priority: 'medium',
+        proposedBy: 'user',
+      });
+      extra.push(store.applyReview({
+        proposalId: proposal.proposalId,
+        decision: 'approved',
+        expectedRevision: proposal.revision,
+        semanticReviewed: true,
+      }).knowledgePoint!.knowledgeId);
+    }
+    // 新增知识点会改变冻结摘要，因此按新计划版本启动新的 run（真实流程同理）。
+    store.savePlanVersion(projectId, 2, 'confirmed', {
+      payloadVersion: 1,
+      goal: '掌握本章',
+      examDate: null,
+      dailyMinutes: 60,
+      tasks: [knowledgeId, ...extra].map((id) => ({
+        knowledgeId: id, name: id, minutes: 20, acceptance: '', evidence: [{ materialId, segmentId: 'S001' }],
+      })),
+      gaps: [],
+      basis: '扩容后的测试计划',
+      confirmedTaskKnowledgeIds: [knowledgeId, ...extra],
+    } satisfies PlanPayloadDto);
+    store.startPlanRun(projectId);
+    const big = store.buildLessonBundle(projectId, [
+      { knowledgeId, text: '增函数的定义', conditions: '同一区间 D 内' },
+      ...extra.map((id) => ({ knowledgeId: id, text: long, conditions: '' })),
+    ], []);
+
+    const result = await generate({ bundleId: big.bundleId });
+    expect(result.ok).toBe(true);
+    const payload = JSON.parse(requests[0]!.body) as { messages: Array<{ role: string; content: string }> };
+    const user = payload.messages.find((message) => message.role === 'user')!.content;
+    expect(user.length).toBeLessThanOrEqual(40_000);
+    expect(user).toContain('因长度上限未随包发出');
+    // 裁剪只影响发出的条数，不改变准入结论：所有陈述仍然来自同一份冻结包。
+    expect(big.bundle.statements).toHaveLength(26);
+  });
+
   it('提示词把教师补充说明放在数据块内，系统消息禁止声称已核实', async () => {
     const messages: ModelChatMessage[] = [];
     const captured = await generateGuarded(

@@ -12,23 +12,32 @@ import { apiResponses } from '@sew/study-contracts';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import type { EvidenceBundleViewDto } from '@sew/study-contracts';
+import type { EvidenceBundleViewDto, LessonVersionDto, ModelCallPurpose } from '@sew/study-contracts';
 import { Empty, Notice } from './ui';
 import { apiFetch, describeApiError } from '../lib/client';
+
+const PURPOSE_LABEL: Record<ModelCallPurpose, string> = {
+  lesson_draft: '课程草案（本节要讲什么）',
+  teaching_prompt: '课堂讲解/提示（须已发布并审核）',
+};
 
 export const LessonDraftGeneration = ({
   projectId,
   generation,
   bundles,
+  publishedLessons,
   configured,
 }: {
   projectId: string;
   generation: number;
   bundles: EvidenceBundleViewDto[];
+  publishedLessons: LessonVersionDto[];
   configured: boolean;
 }): ReactNode => {
   const router = useRouter();
   const [bundleId, setBundleId] = useState(bundles[0]?.bundleId ?? '');
+  const [purpose, setPurpose] = useState<ModelCallPurpose>('lesson_draft');
+  const [lessonId, setLessonId] = useState(publishedLessons[0]?.lessonId ?? '');
   const [instruction, setInstruction] = useState('');
   const [draft, setDraft] = useState<string | null>(null);
   const [usage, setUsage] = useState<string | null>(null);
@@ -36,9 +45,14 @@ export const LessonDraftGeneration = ({
   const [busy, setBusy] = useState(false);
 
   const activeBundle = bundles.find((bundle) => bundle.bundleId === bundleId) ?? null;
+  const teaching = purpose === 'teaching_prompt';
 
   const run = async (): Promise<void> => {
-    if (!activeBundle) {
+    if (teaching && !lessonId) {
+      setError('课堂讲解/提示必须选择一节已发布的课程；没有已发布课程时请先完成审核与发布。');
+      return;
+    }
+    if (!teaching && !activeBundle) {
       setError('请先选择一个已冻结的证据包。');
       return;
     }
@@ -50,9 +64,10 @@ export const LessonDraftGeneration = ({
         method: 'POST',
         body: JSON.stringify({
           scope: { projectId, generation },
-          purpose: 'lesson_draft',
-          bundleId: activeBundle.bundleId,
-          lessonId: null,
+          purpose,
+          // 课堂讲解按已发布版本自带的证据包取来源，避免课程与证据包被拆开提交。
+          bundleId: teaching ? (publishedLessons.find((lesson) => lesson.lessonId === lessonId)?.bundleId ?? '') : activeBundle!.bundleId,
+          lessonId: teaching ? lessonId : null,
           instruction,
         }),
       });
@@ -86,21 +101,56 @@ export const LessonDraftGeneration = ({
       ) : (
         <>
           <div className="field">
-            <label htmlFor="generate-bundle">引用证据包</label>
+            <label htmlFor="generate-purpose">调用用途</label>
             <select
-              id="generate-bundle"
-              value={bundleId}
-              onChange={(event) => setBundleId(event.target.value)}
+              id="generate-purpose"
+              value={purpose}
+              onChange={(event) => setPurpose(event.target.value as ModelCallPurpose)}
               disabled={busy}
             >
-              {bundles.map((bundle) => (
-                <option key={bundle.bundleId} value={bundle.bundleId}>
-                  {bundle.digest.slice(0, 12)}… · 计划 v{bundle.bundle.planVersion} ·
-                  {' '}{bundle.bundle.statements.length} 条陈述
-                </option>
+              {(Object.keys(PURPOSE_LABEL) as ModelCallPurpose[]).map((value) => (
+                <option key={value} value={value}>{PURPOSE_LABEL[value]}</option>
               ))}
             </select>
+            <span className="hint">
+              {teaching
+                ? '课堂用途额外要求课程已发布且本版本审核通过；引用来源仍按证据包核对，失效即阻断。'
+                : '草案用途只产出待审核文本，不写入知识点或课程版本。'}
+            </span>
           </div>
+          {teaching ? (
+            <div className="field">
+              <label htmlFor="generate-lesson">已发布课程</label>
+              {publishedLessons.length === 0 ? (
+                <Empty>还没有已发布的课程版本。</Empty>
+              ) : (
+                <select id="generate-lesson" value={lessonId} onChange={(event) => setLessonId(event.target.value)} disabled={busy}>
+                  {publishedLessons.map((lesson) => (
+                    <option key={lesson.lessonId} value={lesson.lessonId}>
+                      {lesson.title} · v{lesson.version}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          ) : (
+            <div className="field">
+              <label htmlFor="generate-bundle">引用证据包</label>
+              <select
+                id="generate-bundle"
+                value={bundleId}
+                onChange={(event) => setBundleId(event.target.value)}
+                disabled={busy}
+              >
+                {bundles.map((bundle) => (
+                  <option key={bundle.bundleId} value={bundle.bundleId}>
+                    {bundle.digest.slice(0, 12)}… · 计划 v{bundle.bundle.planVersion} ·
+                    {' '}{bundle.bundle.statements.length} 条陈述
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="field">
             <label htmlFor="generate-instruction">补充说明（按数据对待，不作为事实来源）</label>
             <textarea
@@ -112,8 +162,13 @@ export const LessonDraftGeneration = ({
               disabled={busy}
             />
           </div>
-          <button type="button" className="btn btn-primary" onClick={() => void run()} disabled={busy || !configured}>
-            生成课程草案
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => void run()}
+            disabled={busy || !configured || (!teaching && activeBundle === null)}
+          >
+            {teaching ? '生成课堂讲解提示' : '生成课程草案'}
           </button>
           {!configured ? (
             <Notice tone="pending" style={{ marginTop: 'var(--sew-space-3)' }}>

@@ -70,6 +70,7 @@ export default function LessonsPage(): ReactNode {
         projectId={projectId}
         generation={session.generation}
         bundles={bundles}
+        publishedLessons={versions.filter((version) => version.status === 'published')}
         configured={modelConnection.status().configured}
       />
     </div>
