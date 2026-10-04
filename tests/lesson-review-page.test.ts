@@ -21,7 +21,7 @@ const { validateBuildInputs } = require('../scripts/freshness.mjs') as {
  * 真实 SSR 响应，不用组件内假数据；但它仍不是浏览器点击记录（见待办 UI-01）。
  */
 
-const seedProject = (directory: string): { projectId: string; lessonId: string; version: number } => {
+const seedProject = (directory: string): { projectId: string; lessonId: string; version: number; bundleId: string; statementId: string } => {
   const paths = ensureProjectLayout(directory);
   const projectId = newId<'project'>('proj');
   // 服务按 project.json 认领项目身份；缺这份清单时会另起一个新 projectId，
@@ -81,7 +81,7 @@ const seedProject = (directory: string): { projectId: string; lessonId: string; 
       statementIds: bundle.bundle.statements.map((row) => row.statementId),
       questionIds: [],
     });
-    return { projectId, lessonId: lesson.lessonId, version: lesson.version };
+    return { projectId, lessonId: lesson.lessonId, version: lesson.version, bundleId: bundle.bundleId, statementId: bundle.bundle.statements[0]!.statementId };
   } finally {
     store.close();
   }
@@ -100,7 +100,7 @@ productionDescribe('课程审核界面（生产构建 SSR）', () => {
   let controlToken = '';
   let tempRoot = '';
   let projectDir = '';
-  let seeded = { projectId: '', lessonId: '', version: 1 };
+  let seeded = { projectId: '', lessonId: '', version: 1, bundleId: '', statementId: '' };
   let generation = 0;
 
   const request = (path: string, options: RequestInit = {}, headers: Record<string, string> = {}) =>
@@ -242,5 +242,78 @@ productionDescribe('课程审核界面（生产构建 SSR）', () => {
     expect(((await wrong.json()) as { error: { code: string } }).error.code).toBe('PROJECT_GENERATION_STALE');
     // 被拒绝的请求没有改变状态：课程仍是已撤回。
     expect(await lessonHtml()).toContain('已撤回');
+  });
+
+  it('教学闭环走真实 HTTP：待核卡片不播、审核后按序播、交还本人期间停播', async () => {
+    const classCommand = async (body: Record<string, unknown>) => {
+      const response = await request('/api/study/classroom', {
+        method: 'POST',
+        body: JSON.stringify({ scope: { projectId: seeded.projectId, generation }, ...body }),
+      }, { origin, 'content-type': 'application/json', 'x-sew-session': sessionToken });
+      return {
+        status: response.status,
+        json: (await response.json()) as {
+          ok: boolean;
+          data?: Record<string, unknown>;
+          error?: { code: string; message: string };
+        },
+      };
+    };
+    const cardOf = (json: { data?: Record<string, unknown> }) =>
+      (json.data as { card: { explanationId: string } | null }).card;
+    const sessionOf = (json: { data?: Record<string, unknown> }) =>
+      (json.data as { session: { sessionId: string; status: string; roundIndex: number } }).session;
+
+    // 重新发布一个可用版本（上一用例已把 v1 撤回）。
+    const draft = await command({
+      action: 'draft', lessonId: seeded.lessonId, bundleId: seeded.bundleId, title: '函数单调性（重备课时）',
+      statementIds: [seeded.statementId], questionIds: [],
+    });
+    expect(draft.status).toBe(200);
+    const draftVersion = ((await draft.json()) as { data: { lesson: { version: number } } }).data.lesson.version;
+    expect((await command({ action: 'review', lessonId: seeded.lessonId, version: draftVersion, decision: 'approved', note: '重备核对' })).status).toBe(200);
+    expect((await command({ action: 'publish', lessonId: seeded.lessonId, version: draftVersion })).status).toBe(200);
+
+    const html = await lessonHtml();
+    expect(html).toContain('教学准备');
+    expect(html).toContain('课堂面板');
+    expect(html).toContain('当前没有进行中的课堂会话');
+
+    const created = await classCommand({
+      action: 'create-card', lessonId: seeded.lessonId, lessonVersion: draftVersion, sceneId: 'scene-1',
+      kind: 'explain', text: '先看图像上升趋势，再回到定义里的任意 x1 小于 x2', statementIds: [seeded.statementId],
+    });
+    expect(created.status).toBe(200);
+    const explanationId = cardOf(created.json)!.explanationId;
+
+    const opened = await classCommand({ action: 'open', lessonId: seeded.lessonId, stageId: null, sceneId: 'scene-1' });
+    expect(opened.status).toBe(200);
+    const sessionId = sessionOf(opened.json).sessionId;
+
+    // 待核卡片不进入播放队列。
+    const beforeReview = await classCommand({ action: 'play-next', sessionId });
+    expect(beforeReview.status).toBe(200);
+    expect(beforeReview.json.data && cardOf(beforeReview.json)).toBeNull();
+
+    expect((await classCommand({ action: 'review-card', explanationId, decision: 'approved', note: '与定义一致' })).status).toBe(200);
+    const played = await classCommand({ action: 'play-next', sessionId });
+    expect(cardOf(played.json)!.explanationId).toBe(explanationId);
+    // 队列已空：再次播放不会二次播报。
+    const replay = await classCommand({ action: 'play-next', sessionId });
+    expect(cardOf(replay.json)).toBeNull();
+
+    const handback = await classCommand({ action: 'handback', sessionId, reason: '请本人完成第 3 题' });
+    expect(sessionOf(handback.json).status).toBe('awaiting_learner');
+    const blocked = await classCommand({ action: 'play-next', sessionId });
+    expect(blocked.status).toBe(409);
+    expect(blocked.json.error?.code).toBe('CLASSROOM_AWAITING_LEARNER');
+
+    const answered = await classCommand({ action: 'learner-answered', sessionId });
+    expect(sessionOf(answered.json).roundIndex).toBe(2);
+    const closed = await classCommand({ action: 'close', sessionId, status: 'completed', reason: '本节结束' });
+    expect(sessionOf(closed.json).status).toBe('completed');
+
+    const state = await request('/api/study/classroom', {}, { 'x-sew-session': sessionToken });
+    expect(((await state.json()) as { data: { state: unknown } }).data.state).toBeNull();
   });
 });

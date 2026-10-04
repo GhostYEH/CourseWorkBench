@@ -7,6 +7,8 @@
 
 import type {
   AttemptDto,
+  ClassroomSessionDto,
+  ExplanationCardDto,
   KnowledgePointDto,
   LessonReviewRecordDto,
   LessonVersionDto,
@@ -20,6 +22,8 @@ import type {
 } from '@sew/study-contracts';
 import type {
   AttemptRow,
+  ClassroomSessionRow,
+  ExplanationRow,
   KnowledgeRow,
   LessonReviewRow,
   LessonVersionRow,
@@ -41,6 +45,25 @@ export const toLessonReviewDto = (row: LessonReviewRow): LessonReviewRecordDto =
   projectId: row.projectId, lessonId: row.lessonId, version: row.version, decision: row.decision,
   note: row.note, admittedKnowledgeIds: row.admittedKnowledgeIds,
   blockedKnowledgeIds: row.blockedKnowledgeIds, reviewedAt: row.reviewedAt,
+});
+
+/** 讲解卡与课堂会话按显式 DTO 出界面，存储行字段变化不会静默变成对外合同。 */
+export const toExplanationDto = (row: ExplanationRow): ExplanationCardDto => ({
+  explanationId: row.explanationId, projectId: row.projectId,
+  lessonId: row.lessonId, lessonVersion: row.lessonVersion, sceneId: row.sceneId,
+  position: row.position, kind: row.kind, origin: row.origin, status: row.status,
+  text: row.text, statementIds: row.statementIds, reviewNote: row.reviewNote,
+  createdAt: row.createdAt, updatedAt: row.updatedAt,
+});
+
+export const toClassroomSessionDto = (row: ClassroomSessionRow): ClassroomSessionDto => ({
+  sessionId: row.sessionId, projectId: row.projectId, runId: row.runId,
+  lessonId: row.lessonId, lessonVersion: row.lessonVersion, bundleId: row.bundleId,
+  stageId: row.stageId, learnerKey: row.learnerKey, status: row.status,
+  awaitingReason: row.awaitingReason, currentSceneId: row.currentSceneId,
+  roundIndex: row.roundIndex, roundCalls: row.roundCalls,
+  roundPeerTurns: row.roundPeerTurns, lessonCalls: row.lessonCalls,
+  peersEnabled: row.peersEnabled, createdAt: row.createdAt, updatedAt: row.updatedAt,
 });
 
 export const toMaterialDto = (row: MaterialRow): MaterialDto => ({

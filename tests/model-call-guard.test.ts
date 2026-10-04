@@ -320,18 +320,39 @@ describe('受 guard 约束的生成入口（注入假 fetcher）', () => {
     expect(runEvents().some((event) => event.payload.type === 'model_call')).toBe(false);
   });
 
-  it('教学用途必须走已发布并审核的课程，草案阶段直接阻断', async () => {
+  it('教学用途必须有进行中的课堂会话，且正文只进待核区', async () => {
     requests = [];
+    // 没有会话时先阻断：诊断式的「课程已发布」不足以让教师开口。
     await expect(generate({ purpose: 'teaching_prompt', lessonId })).rejects.toThrow(/该课堂文档不是已登记的审核课件/);
     expect(requests).toHaveLength(0);
 
     store.reviewLesson({ projectId, lessonId, version: lessonVersion, decision: 'approved', note: '按原文核对' });
     store.publishLesson({ projectId, lessonId, version: lessonVersion });
+    await expect(generate({ purpose: 'teaching_prompt', lessonId })).rejects.toThrow(/该课堂文档不是已登记的审核课件/);
+    expect(requests).toHaveLength(0);
+
+    const session = store.openClassroomSession({
+      projectId, lessonId, stageId: null, learnerKey: 'sew:classroom:owner:v1', sceneId: 'scene-1',
+    });
     const result = await generate({ purpose: 'teaching_prompt', lessonId });
     expect(result.ok).toBe(true);
     expect(requests).toHaveLength(1);
-    // 教学用途不推进「等待课程审核」状态。
-    expect(store.getLatestRun()?.state).toBe('plan_confirmed');
+    expect(result.pendingExplanationId).not.toBeNull();
+    const pending = store.getExplanation(result.pendingExplanationId!, projectId);
+    expect(pending).toMatchObject({ origin: 'model_generated', status: 'draft', statementIds: [] });
+    const counted = store.getClassroomSession(session.sessionId, projectId);
+    expect(counted?.roundCalls).toBe(1);
+    expect(counted?.lessonCalls).toBe(1);
+    // 课堂用途不推进「等待课程审核」状态。
+    expect(store.getLatestRun()?.state).toBe('in_class');
+
+    // 每轮上限同样先于请求生效：第 5 次不再发出。
+    await generate({ purpose: 'teaching_prompt', lessonId });
+    await generate({ purpose: 'teaching_prompt', lessonId });
+    await generate({ purpose: 'teaching_prompt', lessonId });
+    requests = [];
+    await expect(generate({ purpose: 'teaching_prompt', lessonId })).rejects.toThrow(/模型调用额度已用满/);
+    expect(requests).toHaveLength(0);
   });
 
   it('证据包过大时按整条陈述裁剪并说明省略数量，不静默截半', async () => {

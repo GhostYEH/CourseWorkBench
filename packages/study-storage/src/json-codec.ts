@@ -133,6 +133,7 @@ export {
   runEventPayloadSchema,
   runStartReceiptSchema,
   evidenceBundleSchema,
+  classroomActionPayloadSchema,
 } from '@sew/study-contracts';
 
 /** 任意载荷（收据结果、事件 payload、计划 payload）：只校验 JSON 语法与根非 undefined。 */

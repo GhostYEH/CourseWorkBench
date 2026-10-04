@@ -24,6 +24,10 @@ const HTTP_STATUS: Partial<Record<StudyErrorCode, number>> = {
   QUESTION_ORIGIN_FORBIDDEN: 422,
   CLASSROOM_LESSON_NOT_REVIEWED: 403,
   CLASSROOM_SCENE_SOURCE_MISSING: 409,
+  // 等待本人、额度用满与未配置模型都是「当前状态不允许该操作」，不是客户端可重发的入参错误。
+  CLASSROOM_AWAITING_LEARNER: 409,
+  BUDGET_EXCEEDED: 409,
+  MODEL_NOT_CONFIGURED: 409,
   ASSET_IN_USE: 409,
   // 没有归档原文是该版本的事实状态，用 409 表达「当前状态不支持该操作」；
   // 归档字节与登记摘要不符属于本地数据故障，不能伪装成客户端可修正的入参问题。

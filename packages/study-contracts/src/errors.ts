@@ -51,6 +51,7 @@ export const STUDY_ERROR_CODES = [
   // —— 课堂文档与审核准入 ——
   'CLASSROOM_LESSON_NOT_REVIEWED',
   'CLASSROOM_SCENE_SOURCE_MISSING',
+  'CLASSROOM_AWAITING_LEARNER',
   'ASSET_IN_USE',
 
   // —— 模型调用与预算 ——
@@ -105,6 +106,7 @@ export const STUDY_ERROR_MESSAGE: Record<StudyErrorCode, string> = {
 
   CLASSROOM_LESSON_NOT_REVIEWED: '该课堂文档不是已登记的审核课件，不能写入正式教学',
   CLASSROOM_SCENE_SOURCE_MISSING: '课堂场景缺少可定位的来源绑定，暂不能用于教学',
+  CLASSROOM_AWAITING_LEARNER: '课堂正在等待本人作答，教师不再自动播报',
   ASSET_IN_USE: '资源仍被课件引用，不能回收',
 
   MODEL_NOT_CONFIGURED: '尚未配置模型连接，不能发起课程草案生成',
@@ -126,6 +128,7 @@ export const PENDING_ONLY_CODES: ReadonlySet<StudyErrorCode> = new Set<StudyErro
   'KNOWLEDGE_SCOPE_INVALID',
   'PREREQUISITE_UNSATISFIED',
   'CLASSROOM_SCENE_SOURCE_MISSING',
+  'CLASSROOM_AWAITING_LEARNER',
   'BUDGET_EXCEEDED',
 ]);
 

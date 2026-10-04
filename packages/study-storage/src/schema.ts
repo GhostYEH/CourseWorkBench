@@ -763,6 +763,68 @@ ALTER TABLE lesson_versions_next RENAME TO lesson_versions;
 CREATE INDEX idx_lesson_versions_project ON lesson_versions(project_id, status, lesson_id, version);
 `,
   },
+  {
+    version: 15,
+    name: 'classroom_teaching',
+    sql: `
+-- 讲解卡（TEACH-01）：正式连续授课只用审核通过的卡片，卡片文本与它引用的证据包陈述一起保存。
+-- origin 记录文字出自教师手写还是模型现场产生；模型产生的卡片批准后仍保留该来源标记。
+CREATE TABLE lesson_explanations (
+  explanation_id       TEXT PRIMARY KEY,
+  project_id           TEXT NOT NULL,
+  lesson_id            TEXT NOT NULL,
+  lesson_version       INTEGER NOT NULL,
+  scene_id             TEXT NOT NULL,
+  position             INTEGER NOT NULL,
+  kind                 TEXT NOT NULL CHECK (kind IN ('explain', 'prompt')),
+  origin               TEXT NOT NULL CHECK (origin IN ('teacher_authored', 'model_generated')),
+  status               TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'approved', 'rejected')),
+  text                 TEXT NOT NULL,
+  statement_ids_json   TEXT NOT NULL DEFAULT '[]',
+  review_note          TEXT NOT NULL DEFAULT '',
+  created_at           TEXT NOT NULL,
+  updated_at           TEXT NOT NULL
+);
+CREATE INDEX idx_lesson_explanations_play
+  ON lesson_explanations(project_id, lesson_id, lesson_version, scene_id, status, position);
+
+-- 课堂会话：一次上课的外层状态。等待本人要落库，重启后仍是等待，不能自行批准或编造作答。
+CREATE TABLE classroom_sessions (
+  session_id        TEXT PRIMARY KEY,
+  project_id        TEXT NOT NULL,
+  run_id            TEXT,
+  lesson_id         TEXT NOT NULL,
+  lesson_version    INTEGER NOT NULL,
+  bundle_id         TEXT NOT NULL,
+  stage_id          TEXT,
+  learner_key       TEXT NOT NULL,
+  status            TEXT NOT NULL CHECK (status IN ('in_class', 'awaiting_learner', 'completed', 'cancelled')),
+  awaiting_reason   TEXT NOT NULL DEFAULT '',
+  current_scene_id  TEXT NOT NULL DEFAULT '',
+  round_index       INTEGER NOT NULL DEFAULT 1,
+  round_calls       INTEGER NOT NULL DEFAULT 0,
+  round_peer_turns  INTEGER NOT NULL DEFAULT 0,
+  lesson_calls      INTEGER NOT NULL DEFAULT 0,
+  peers_enabled     INTEGER NOT NULL DEFAULT 0 CHECK (peers_enabled IN (0, 1)),
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
+);
+CREATE INDEX idx_classroom_sessions_project ON classroom_sessions(project_id, status, created_at, session_id);
+
+-- 课堂动作收据：与业务写入同一事务保存。step_key 由服务端按会话与动作意图生成，
+-- 重复请求读回既有收据，不重复播报、不重复计预算。
+CREATE TABLE classroom_action_receipts (
+  step_key     TEXT PRIMARY KEY,
+  session_id   TEXT NOT NULL,
+  project_id   TEXT NOT NULL,
+  kind         TEXT NOT NULL,
+  scene_id     TEXT NOT NULL DEFAULT '',
+  payload_json TEXT NOT NULL,
+  at           TEXT NOT NULL
+);
+CREATE INDEX idx_classroom_action_receipts_session ON classroom_action_receipts(session_id, at, step_key);
+`,
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

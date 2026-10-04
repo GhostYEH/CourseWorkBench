@@ -33,6 +33,22 @@ export type {
   LessonVersionDto, LessonDraftInput, LessonPublishInput, LessonReviewInput, LessonWithdrawInput,
   LessonReviewRecordDto, LessonBundleBuildInput,
 } from './lesson';
+export {
+  EXPLANATION_KIND, EXPLANATION_ORIGIN, EXPLANATION_STATUS,
+  CLASSROOM_SESSION_STATUS, CLASSROOM_ACTION_KINDS,
+  CLASSROOM_ROUND_LIMITS, CLASSROOM_LESSON_MAX_CALLS,
+  explanationCardSchema, explanationCreateSchema, explanationEditSchema, explanationReviewSchema,
+  classroomSessionSchema, classroomActionSchema, classroomActionPayloadSchema, classroomStateSchema,
+  classroomOpenSchema, classroomPlaySchema, classroomHandbackSchema, classroomAnsweredSchema,
+  classroomAdvanceSchema, classroomCloseSchema, classroomCommandSchema,
+} from './teaching';
+export type {
+  ExplanationKind, ExplanationOrigin, ExplanationStatus, ClassroomSessionStatus, ClassroomActionKind,
+  ExplanationCardDto, ExplanationCreateInput, ExplanationEditInput, ExplanationReviewInput,
+  ClassroomSessionDto, ClassroomActionDto, ClassroomActionPayloadDto, ClassroomStateDto,
+  ClassroomOpenInput, ClassroomPlayInput, ClassroomHandbackInput, ClassroomAnsweredInput,
+  ClassroomAdvanceInput, ClassroomCloseInput, ClassroomCommand,
+} from './teaching';
 export type {
   SourceStatus, ScopeStatus, RecordScope, ReviewProvenance, MasteryStatus, ReviewDecision, EvidenceUse, QuestionOrigin,
   ActorType, AttemptKind, RunState, RoleKind, RoleExplanation, ModelCallPurpose,

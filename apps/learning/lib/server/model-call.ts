@@ -18,7 +18,7 @@ import {
   type ModelGenerationInput,
   type ModelGenerationResultDto,
 } from '@sew/study-contracts';
-import { assertModelCallAdmitted, modelCallQuotaRemaining } from '@sew/study-domain';
+import { assertClassroomBudget, assertModelCallAdmitted, modelCallQuotaRemaining } from '@sew/study-domain';
 import type { StudyStore } from '@sew/study-storage';
 import type { ModelGenerateOutcome } from './model-connection';
 
@@ -103,8 +103,9 @@ export const generationPrompt = (
 /**
  * 一次受 guard 约束的生成调用。
  *
- * guard 顺序：run 与状态 → 预算 → 冻结后的来源变化 → 单点准入 → 课程审核发布 → 凭据。
- * 成功后把草案文本与用量写入 run 事件，并把草案生成推进到「等待课程审核」。
+ * guard 顺序：会话与 run → 预算 → 冻结后的来源变化 → 单点准入 → 课程审核发布 → 凭据。
+ * 草案用途只写 run 事件并把状态推进到「等待课程审核」；课堂讲解必须有进行中的会话，
+ * 正文进入待核区，由人工补来源并审核后才会出现在播放队列里。
  */
 export const generateGuarded = async (
   deps: ModelCallDeps,
@@ -113,18 +114,34 @@ export const generateGuarded = async (
 ): Promise<ModelGenerationResultDto> => {
   const { store, projectId } = deps;
   const limits = deps.limits ?? DEFAULT_MODEL_CALL_LIMITS;
+  const teaching = input.purpose === 'teaching_prompt';
 
-  const bundle = store.getEvidenceBundle(projectId, input.bundleId);
-  if (!bundle) throw new StudyError('NOT_FOUND', { bundleId: input.bundleId });
+  // 课堂讲解按会话冻结的证据包取来源；请求里的 bundleId 只对草案用途生效。
+  const session = teaching ? store.getOpenClassroomSession(projectId) : null;
+  if (teaching && !session) throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { reason: 'no_open_session' });
+  if (session && input.lessonId !== null && input.lessonId !== session.lessonId) {
+    throw new StudyError('INVALID_ARGUMENT', { reason: 'lesson_session_mismatch' });
+  }
+  const bundle = store.getEvidenceBundle(projectId, session ? session.bundleId : input.bundleId);
+  if (!bundle) throw new StudyError('NOT_FOUND', { bundleId: session ? session.bundleId : input.bundleId });
 
   const run = store.getLatestRun();
   let referenced: string[];
   let lesson: { status: LessonStatus | null; reviewApproved: boolean } | null = null;
-  if (input.purpose === 'teaching_prompt') {
-    if (!input.lessonId) throw new StudyError('INVALID_ARGUMENT', { reason: 'lesson_required' });
-    const ready = store.assertLessonClassroomReady(input.lessonId, projectId);
+  if (session) {
+    const ready = store.assertLessonClassroomReady(session.lessonId, projectId);
     referenced = ready.referencedKnowledgeIds;
     lesson = { status: ready.lesson.status, reviewApproved: true };
+    // 每轮与整节课上限先判，判不过就不发出请求。
+    assertClassroomBudget(
+      {
+        roundCalls: session.roundCalls,
+        roundPeerTurns: session.roundPeerTurns,
+        lessonCalls: session.lessonCalls,
+        peersEnabled: session.peersEnabled,
+      },
+      'model_call',
+    );
   } else {
     referenced = bundleKnowledgeIds(bundle.bundle);
   }
@@ -158,6 +175,29 @@ export const generateGuarded = async (
     store.appendNextRunEvent(run.runId, { type: 'draft_delta', text: outcome.text });
     if (input.purpose === 'lesson_draft') store.updateRunState(run.runId, 'awaiting_lesson_review');
   }
+  // 课堂调用进入待核区：正文先作为未审核卡片保存，来源由人工补上后才可能进入播放队列。
+  let pendingExplanationId: string | null = null;
+  if (session) {
+    store.noteClassroomModelCall({
+      projectId,
+      sessionId: session.sessionId,
+      purpose: input.purpose,
+      ok: outcome.ok,
+      totalTokens: outcome.totalTokens,
+    });
+    if (outcome.ok && outcome.text !== null) {
+      pendingExplanationId = store.createExplanation({
+        projectId,
+        lessonId: session.lessonId,
+        lessonVersion: session.lessonVersion,
+        sceneId: session.currentSceneId,
+        kind: 'explain',
+        origin: 'model_generated',
+        text: outcome.text.slice(0, 4_000),
+        statementIds: [],
+      }).explanationId;
+    }
+  }
 
   const used = store.modelCallUsage(run.runId);
   const quota = modelCallQuotaRemaining({ usage: used, limits });
@@ -176,5 +216,6 @@ export const generateGuarded = async (
     },
     remainingCalls: quota.calls,
     remainingTokens: quota.tokens,
+    pendingExplanationId,
   };
 };

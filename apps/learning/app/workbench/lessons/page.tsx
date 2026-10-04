@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { LessonDraftGeneration } from '../../../components/lesson-draft-generation';
+import { LessonTeaching } from '../../../components/lesson-teaching';
 import { LessonWorkbench } from '../../../components/lesson-workbench';
 import { bootstrapFromEnvironment, getSession } from '../../../lib/server/service';
 import { readWorkbenchKnowledge, readWorkbenchQuestions } from '../../../lib/server/workbench-data';
-import { toKnowledgePointDto, toLessonReviewDto, toLessonVersionDto } from '../../../lib/server/dto';
+import { toExplanationDto, toKnowledgePointDto, toLessonReviewDto, toLessonVersionDto } from '../../../lib/server/dto';
 import { modelConnection } from '../../../lib/server/model-connection';
 
 export const dynamic = 'force-dynamic';
@@ -37,6 +38,17 @@ export default function LessonsPage(): ReactNode {
     .filter((review): review is NonNullable<typeof review> => review !== null)
     .map(toLessonReviewDto);
   const confirmedPlan = session.store.getConfirmedPlan(projectId);
+  // 教学工作面只挂在已发布版本上：卡片、播放与课堂都引用这一份证据包。
+  const teaching = versions
+    .filter((version) => version.status === 'published')
+    .map((version) => {
+      const bundle = session.store.getEvidenceBundle(projectId, version.bundleId);
+      return {
+        lesson: version,
+        statements: bundle?.bundle.statements ?? [],
+        cards: session.store.listExplanationCards(version.lessonId, version.version, projectId).map(toExplanationDto),
+      };
+    });
 
   return (
     <div className="page-wide">
@@ -73,6 +85,17 @@ export default function LessonsPage(): ReactNode {
         publishedLessons={versions.filter((version) => version.status === 'published')}
         configured={modelConnection.status().configured}
       />
+
+      {teaching.map((item) => (
+        <LessonTeaching
+          key={`${item.lesson.lessonId}-v${item.lesson.version}`}
+          projectId={projectId}
+          generation={session.generation}
+          lesson={item.lesson}
+          statements={item.statements}
+          cards={item.cards}
+        />
+      ))}
     </div>
   );
 }

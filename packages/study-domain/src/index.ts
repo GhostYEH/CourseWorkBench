@@ -29,6 +29,11 @@ export type {
 } from './lesson';
 export { assertModelCallAdmitted, modelCallQuotaRemaining } from './guard';
 export type { ModelCallGuardFacts } from './guard';
+export {
+  assertCardGrounded, assertCardApprovable, assertCardPlayable, assertSessionActive,
+  assertClassroomBudget, nextPlayableCard, nextRoundIndex,
+} from './teaching';
+export type { ClassroomBudgetUse } from './teaching';
 export type {
   SyllabusRequirementRecord, SyllabusItemRecord, SyllabusMappingRecord,
   SyllabusCoveragePointRecord, SyllabusCoverageItemResult, SyllabusCoverageResult,

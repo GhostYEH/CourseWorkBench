@@ -73,5 +73,7 @@ export const modelGenerationResultSchema = z.object({
   /** 剩余额度按同一份台账计算并显示，避免界面按「大概还能用几次」猜测。 */
   remainingCalls: z.number().int().nonnegative(),
   remainingTokens: z.number().int().nonnegative(),
+  /** 课堂调用产生的正文进入待核区时给出卡片编号；草案用途为 null。 */
+  pendingExplanationId: z.string().nullable(),
 }).strict();
 export type ModelGenerationResultDto = z.infer<typeof modelGenerationResultSchema>;

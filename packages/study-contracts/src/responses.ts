@@ -11,6 +11,9 @@ import { modelGenerationResultSchema } from './model-connection';
 import {
   evidenceBundleRowSchema, lessonReviewRecordSchema, lessonVersionSchema, LESSON_STATUS,
 } from './lesson';
+import {
+  classroomSessionSchema, classroomStateSchema, explanationCardSchema,
+} from './teaching';
 
 export const apiErrorPayloadSchema = z.object({
   code: z.string().min(1), message: z.string(), pending: z.boolean(),
@@ -71,6 +74,15 @@ export const apiResponses = {
   lessonPublish: z.object({ lesson: lessonVersionSchema, link: classroomLinkSchema }).strict(),
   lessonReview: z.object({ review: lessonReviewRecordSchema }).strict(),
   lessonWithdraw: z.object({ lesson: lessonVersionSchema, link: classroomLinkSchema }).strict(),
+  explanationWrite: z.object({ card: explanationCardSchema }).strict(),
+  classroomSession: z.object({ session: classroomSessionSchema }).strict(),
+  classroomState: z.object({ state: classroomStateSchema.nullable() }).strict(),
+  classroomPlay: z.object({
+    card: explanationCardSchema.nullable(),
+    deduplicated: z.boolean(),
+    session: classroomSessionSchema,
+    playedIds: z.array(z.string()),
+  }).strict(),
   modelGenerate: modelGenerationResultSchema,
   classroomDemo: z.object({ stageId: z.string().min(1), lessonId: z.string().min(1) }).strict(),
   classroomAssets: z.object({

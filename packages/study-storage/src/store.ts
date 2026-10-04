@@ -15,6 +15,8 @@ import {
   StudyError,
   newId,
   type AdmissionResultDto,
+  type ClassroomStateDto,
+  type ExplanationCardDto,
   type FrozenVersionsDto,
   type LessonReviewDecision,
   type MasteryStatus,
@@ -34,6 +36,13 @@ import {
   buildStepKey,
   assertLessonReviewable,
   assertLessonTeachable,
+  assertCardGrounded,
+  assertCardApprovable,
+  assertCardPlayable,
+  assertSessionActive,
+  assertClassroomBudget,
+  nextPlayableCard,
+  nextRoundIndex,
   lessonReferencedKnowledgeIds,
   resolveQuestionOrigin,
   type MaterialChangeImpact,
@@ -67,14 +76,21 @@ import {
   type CreateLessonDraftInput,
   type PublishLessonInput,
 } from './repositories/lessons';
+import {
+  TeachingRepository,
+  type CreateExplanationInput,
+} from './repositories/teaching';
 import type { RunEventRow, StepReceiptRow } from './repositories/runs';
 import { SyllabusRepository } from './repositories/syllabus';
 import type { CreateSyllabusItemInput, SyllabusItemRow } from './repositories/syllabus';
 import type {
   AttemptRow,
+  ClassroomActionRow,
   ClassroomLinkRow,
+  ClassroomSessionRow,
   CreateProposalInput,
   EvidenceBundleRow,
+  ExplanationRow,
   ImportMaterialInput,
   KnowledgeRow,
   LessonReviewRow,
@@ -105,11 +121,13 @@ export { ClassroomAssetReferencedError } from './repositories/classroom-assets';
 export type { CreateSyllabusItemInput, SyllabusItemRow } from './repositories/syllabus';
 export type { PlanVersionRow, RoleProfileRow } from './repositories/types';
 export type {
-  ClassroomLinkRow, EvidenceBundleRow, LessonReviewRow, LessonStatus, LessonVersionRow,
+  ClassroomActionRow, ClassroomLinkRow, ClassroomSessionRow, EvidenceBundleRow, ExplanationRow,
+  LessonReviewRow, LessonStatus, LessonVersionRow,
 } from './repositories/types';
 export type {
   CreateLessonDraftInput, PublishLessonInput,
 } from './repositories/lessons';
+export type { CreateExplanationInput } from './repositories/teaching';
 export type { RunEventRow, StepReceiptRow } from './repositories/runs';
 export type { RoleWriteInput } from './repositories/roles';
 export type {
@@ -147,8 +165,7 @@ export interface StoreOptions {
   driver?: SqliteDriver;
 }
 
-export class StudyStore {
-  private readonly db: SqlDatabase;
+export class StudyStore {  private readonly db: SqlDatabase;
   private readonly driverName: string;
   private readonly projects: ProjectsRepository;
   private readonly materials: MaterialsRepository;
@@ -161,6 +178,7 @@ export class StudyStore {
   private readonly plans: PlansRepository;
   private readonly roles: RoleRepository;
   private readonly lessons: LessonRepository;
+  private readonly teaching: TeachingRepository;
   private readonly syllabus: SyllabusRepository;
   private readonly classroom: ClassroomRepository;
   private readonly documentOrganization: DocumentOrganizationRepository;
@@ -182,6 +200,7 @@ export class StudyStore {
     this.plans = new PlansRepository(db);
     this.roles = new RoleRepository(db);
     this.lessons = new LessonRepository(db);
+    this.teaching = new TeachingRepository(db);
     this.syllabus = new SyllabusRepository(db);
     this.classroom = new ClassroomRepository(db);
     this.documentOrganization = new DocumentOrganizationRepository(db);
@@ -1030,7 +1049,370 @@ export class StudyStore {
     return { lesson, link, referencedKnowledgeIds: facts.referenced };
   }
 
+  // ——————————————————— 讲解卡、课堂会话与动作收据 ———————————————————
+
+  /**
+   * 登记一张讲解卡（TEACH-01）。
+   *
+   * 教师手写的卡片必须当场给出依据陈述；模型现场产生的内容允许先没有来源，
+   * 但它停留在待核区，人工补上陈述并通过审核后才会进入播放队列。
+   */
+  createExplanation(input: CreateExplanationInput): ExplanationRow {
+    const lesson = this.lessons.getVersion(input.lessonId, input.lessonVersion, input.projectId);
+    if (!lesson) throw new StudyError('NOT_FOUND', { lessonId: input.lessonId, version: input.lessonVersion });
+    const bundle = this.lessons.getBundle(lesson.bundleId, input.projectId);
+    if (!bundle) throw new StudyError('INTERNAL', { bundleId: lesson.bundleId });
+    if (input.origin === 'teacher_authored' || input.statementIds.length > 0) {
+      assertCardGrounded(input.statementIds, bundle.bundle);
+    }
+    return this.teaching.createCard(input);
+  }
+
+  /** 草案卡片可编辑文本与依据陈述；已审核的卡片不再改写，避免结论与内容分叉。 */
+  updateExplanationDraft(input: {
+    projectId: string;
+    explanationId: string;
+    text?: string;
+    statementIds?: string[];
+  }): ExplanationRow {
+    const card = this.teaching.getCard(input.explanationId, input.projectId);
+    if (!card) throw new StudyError('NOT_FOUND', { explanationId: input.explanationId });
+    if (card.status !== 'draft') throw new StudyError('STEP_ALREADY_COMMITTED', { status: card.status });
+    if (input.text === undefined && input.statementIds === undefined) {
+      throw new StudyError('INVALID_ARGUMENT', { reason: 'nothing_to_edit' });
+    }
+    const statementIds = input.statementIds ?? card.statementIds;
+    if (input.statementIds !== undefined) {
+      const lesson = this.lessons.getVersion(card.lessonId, card.lessonVersion, input.projectId);
+      const bundle = lesson ? this.lessons.getBundle(lesson.bundleId, input.projectId) : null;
+      if (!bundle) throw new StudyError('INTERNAL', { explanationId: card.explanationId });
+      assertCardGrounded(statementIds, bundle.bundle);
+    }
+    return this.teaching.updateCard(input.explanationId, input.projectId, {
+      text: input.text,
+      statementIds,
+    });
+  }
+
+  listExplanationCards(lessonId: string, lessonVersion: number, projectId: string): ExplanationRow[] {
+    return this.teaching.listCards(lessonId, lessonVersion, projectId);
+  }
+
+  getExplanation(explanationId: string, projectId: string): ExplanationRow | null {
+    return this.teaching.getCard(explanationId, projectId);
+  }
+
+  /** 审核讲解卡。批准前复核准入：来源已失效的陈述不能靠点一次审核放行。 */
+  reviewExplanation(input: {
+    projectId: string;
+    explanationId: string;
+    decision: 'approved' | 'rejected';
+    note: string;
+  }): ExplanationRow {
+    const card = this.teaching.getCard(input.explanationId, input.projectId);
+    if (!card) throw new StudyError('NOT_FOUND', { explanationId: input.explanationId });
+    if (input.decision === 'approved') {
+      const lesson = this.lessons.getVersion(card.lessonId, card.lessonVersion, input.projectId);
+      const bundle = lesson ? this.lessons.getBundle(lesson.bundleId, input.projectId) : null;
+      if (!bundle) throw new StudyError('INTERNAL', { explanationId: card.explanationId });
+      const knowledgeIds = assertCardGrounded(card.statementIds, bundle.bundle);
+      assertCardApprovable(
+        { status: card.status, knowledgeIds },
+        new Set(this.checkAdmission(knowledgeIds, 'formal').admitted),
+      );
+    }
+    return this.teaching.reviewCard(input.explanationId, input.projectId, input.decision, input.note);
+  }
+
+  /**
+   * 开一堂课：外层课堂 session 包住 Director 调度（《规划书》6.5）。
+   *
+   * 开课即走上课入口的统一复核（已发布 + 本版本已审核 + 来源仍准入），
+   * 因此来源失效在第一步就阻断，不会讲到一半才发现无来源。
+   */
+  openClassroomSession(input: {
+    projectId: string;
+    lessonId: string;
+    stageId: string | null;
+    learnerKey: string;
+    sceneId: string;
+  }): ClassroomSessionRow {
+    const ready = this.assertLessonClassroomReady(input.lessonId, input.projectId);
+    const existing = this.teaching.getOpenSession(input.projectId);
+    if (existing && existing.lessonId !== input.lessonId) {
+      throw new StudyError('PROJECT_ALREADY_OPEN', { reason: 'classroom_session_running', sessionId: existing.sessionId });
+    }
+    if (existing) return existing;
+    const run = this.runs.getLatestRun();
+    const session = this.teaching.createSession({
+      projectId: input.projectId,
+      runId: run?.runId ?? null,
+      lessonId: ready.lesson.lessonId,
+      lessonVersion: ready.lesson.version,
+      bundleId: ready.lesson.bundleId,
+      stageId: input.stageId ?? ready.link.stageId,
+      learnerKey: input.learnerKey,
+      currentSceneId: input.sceneId,
+    });
+    if (run) this.runs.updateRunState(run.runId, 'in_class');
+    return session;
+  }
+
+  getClassroomSession(sessionId: string, projectId: string): ClassroomSessionRow | null {
+    return this.teaching.getSession(sessionId, projectId);
+  }
+
+  getOpenClassroomSession(projectId: string): ClassroomSessionRow | null {
+    return this.teaching.getOpenSession(projectId);
+  }
+
+  listClassroomSessions(projectId: string): ClassroomSessionRow[] {
+    return this.teaching.listSessions(projectId);
+  }
+
+  listClassroomActions(sessionId: string, projectId: string): ClassroomActionRow[] {
+    return this.teaching.listActions(sessionId, projectId);
+  }
+
+  /** 现场快照：会话、卡片队列、已播放编号与待核数量。读取不写任何状态。 */
+  classroomState(projectId: string, sessionId: string): ClassroomStateDto {
+    const session = this.teaching.getSession(sessionId, projectId);
+    if (!session) throw new StudyError('NOT_FOUND', { sessionId });
+    const cards = this.teaching.listCards(session.lessonId, session.lessonVersion, projectId);
+    const playedIds = this.teaching.playedCardIds(sessionId, projectId);
+    const sceneIds = [...new Set(cards.map((card) => card.sceneId))];
+    return {
+      session,
+      cards: cards.map((card) => this.toCard(card)),
+      playedIds,
+      pendingReview: cards.filter((card) => card.status === 'draft').length,
+      nextSceneId: sceneIds.find((sceneId) => sceneId !== session.currentSceneId) ?? null,
+    };
+  }
+
+  /**
+   * 播放下一张已审核讲解卡。
+   *
+   * 队列按场景与位置确定，Director 不做自由调度；收据按「会话 + 卡片」生成，
+   * 因此重复请求读回同一条收据，不会二次播报，也不会重复计入历史。
+   */
+  playNextExplanation(projectId: string, sessionId: string): {
+    card: ExplanationCardDto | null;
+    deduplicated: boolean;
+    session: ClassroomSessionRow;
+    playedIds: string[];
+  } {
+    const session = this.teaching.getSession(sessionId, projectId);
+    if (!session) throw new StudyError('NOT_FOUND', { sessionId });
+    assertSessionActive(session.status);
+    if (session.status === 'awaiting_learner') {
+      throw new StudyError('CLASSROOM_AWAITING_LEARNER', { reason: 'awaiting_learner' });
+    }
+    const cards = this.teaching.listCards(session.lessonId, session.lessonVersion, projectId);
+    const played = new Set(this.teaching.playedCardIds(sessionId, projectId));
+    const next = nextPlayableCard(cards.map((card) => this.toCard(card)), played, session.currentSceneId);
+    if (!next) {
+      return { card: null, deduplicated: false, session, playedIds: [...played] };
+    }
+    const bundle = this.lessons.getBundle(session.bundleId, projectId);
+    if (!bundle) throw new StudyError('INTERNAL', { bundleId: session.bundleId });
+    const knowledgeIds = assertCardGrounded(next.statementIds, bundle.bundle);
+    assertCardPlayable(
+      { cardStatus: next.status, sessionStatus: session.status, knowledgeIds },
+      new Set(this.checkAdmission(knowledgeIds, 'formal').admitted),
+    );
+    const stepKey = buildStepKey('classroom-card', projectId, sessionId, next.explanationId);
+    const { deduplicated } = this.teaching.recordAction({
+      stepKey,
+      sessionId,
+      projectId,
+      sceneId: next.sceneId,
+      payload: {
+        kind: 'card_played',
+        explanationId: next.explanationId,
+        sceneId: next.sceneId,
+        position: next.position,
+        origin: next.origin,
+      },
+    }, () => undefined);
+    const playedIds = this.teaching.playedCardIds(sessionId, projectId);
+    return {
+      card: next,
+      deduplicated,
+      session: this.requireSession(sessionId, projectId),
+      playedIds,
+    };
+  }
+
+  /** 交还本人：会话进入等待状态并落库，重启后仍然等待，不会自行继续讲解。 */
+  handBackToLearner(projectId: string, sessionId: string, reason: string): ClassroomSessionRow {
+    const session = this.requireSession(sessionId, projectId);
+    assertSessionActive(session.status);
+    const stepKey = buildStepKey('classroom-handback', projectId, sessionId, `r${session.roundIndex}`);
+    this.teaching.recordAction({
+      stepKey,
+      sessionId,
+      projectId,
+      sceneId: session.currentSceneId,
+      payload: { kind: 'handback', reason, roundIndex: session.roundIndex },
+    }, () => {
+      this.teaching.updateSession(sessionId, projectId, {
+        status: 'awaiting_learner',
+        awaitingReason: reason,
+      });
+      if (session.runId) this.runs.updateRunState(session.runId, 'awaiting_answer');
+    });
+    return this.requireSession(sessionId, projectId);
+  }
+
+  /** 本人作答归来：开始新一轮，轮内计数清零，整节课累计继续保留。 */
+  markLearnerAnswered(projectId: string, sessionId: string): ClassroomSessionRow {
+    const session = this.requireSession(sessionId, projectId);
+    assertSessionActive(session.status);
+    // 只有正在等待本人的会话才需要「作答归来」，否则等于凭空造一次作答记录。
+    if (session.status !== 'awaiting_learner') {
+      throw new StudyError('INVALID_ARGUMENT', { reason: 'not_awaiting_learner', status: session.status });
+    }
+    const roundIndex = nextRoundIndex(session.roundIndex);
+    const stepKey = buildStepKey('classroom-answered', projectId, sessionId, `r${session.roundIndex}`);
+    this.teaching.recordAction({
+      stepKey,
+      sessionId,
+      projectId,
+      sceneId: session.currentSceneId,
+      payload: { kind: 'learner_answered', roundIndex: session.roundIndex, sceneId: session.currentSceneId },
+    }, () => {
+      this.teaching.updateSession(sessionId, projectId, {
+        status: 'in_class',
+        awaitingReason: '',
+        roundIndex,
+        roundCalls: 0,
+        roundPeerTurns: 0,
+      });
+      if (session.runId) this.runs.updateRunState(session.runId, 'collecting_feedback');
+    });
+    return this.requireSession(sessionId, projectId);
+  }
+
+  /** 切换场景同样开启新一轮；等待本人时不允许跳过。 */
+  advanceClassroomScene(projectId: string, sessionId: string, sceneId: string): ClassroomSessionRow {
+    const session = this.requireSession(sessionId, projectId);
+    assertSessionActive(session.status);
+    if (session.status === 'awaiting_learner') {
+      throw new StudyError('CLASSROOM_AWAITING_LEARNER', { reason: 'awaiting_learner' });
+    }
+    const roundIndex = nextRoundIndex(session.roundIndex);
+    const stepKey = buildStepKey('classroom-scene', projectId, sessionId, sceneId);
+    this.teaching.recordAction({
+      stepKey,
+      sessionId,
+      projectId,
+      sceneId,
+      payload: { kind: 'scene_advanced', fromSceneId: session.currentSceneId, toSceneId: sceneId, roundIndex: session.roundIndex },
+    }, () => {
+      this.teaching.updateSession(sessionId, projectId, {
+        currentSceneId: sceneId,
+        roundIndex,
+        roundCalls: 0,
+        roundPeerTurns: 0,
+      });
+    });
+    return this.requireSession(sessionId, projectId);
+  }
+
+  closeClassroomSession(projectId: string, sessionId: string, status: 'completed' | 'cancelled', reason: string): ClassroomSessionRow {
+    const session = this.requireSession(sessionId, projectId);
+    assertSessionActive(session.status);
+    const stepKey = buildStepKey('classroom-close', projectId, sessionId, status);
+    this.teaching.recordAction({
+      stepKey,
+      sessionId,
+      projectId,
+      sceneId: session.currentSceneId,
+      payload: { kind: 'session_closed', status, reason },
+    }, () => {
+      this.teaching.updateSession(sessionId, projectId, { status, awaitingReason: reason });
+      if (session.runId) this.runs.updateRunState(session.runId, status === 'completed' ? 'completed' : 'cancelled', reason);
+    });
+    return this.requireSession(sessionId, projectId);
+  }
+
+  /**
+   * 记一次课堂模型调用：先按每轮与整节课上限判定，再在同一事务里计数并落收据。
+   *
+   * 收据 step key 由「会话 + 轮次 + 轮内序号」决定，重试读到既有收据不会重复计费。
+   */
+  noteClassroomModelCall(input: {
+    projectId: string;
+    sessionId: string;
+    purpose: 'lesson_draft' | 'teaching_prompt';
+    ok: boolean;
+    totalTokens: number;
+    limits?: { maxCallsPerRound?: number; maxPeerTurnsPerRound?: number; maxLessonCalls?: number };
+  }): ClassroomSessionRow {
+    const session = this.requireSession(input.sessionId, input.projectId);
+    assertSessionActive(session.status);
+    assertClassroomBudget(
+      {
+        roundCalls: session.roundCalls,
+        roundPeerTurns: session.roundPeerTurns,
+        lessonCalls: session.lessonCalls,
+        peersEnabled: session.peersEnabled,
+        ...input.limits,
+      },
+      'model_call',
+    );
+    const stepKey = buildStepKey(
+      'classroom-model', input.projectId, session.sessionId, `r${session.roundIndex}`, session.roundCalls + 1,
+    );
+    this.teaching.recordAction({
+      stepKey,
+      sessionId: session.sessionId,
+      projectId: input.projectId,
+      sceneId: session.currentSceneId,
+      payload: {
+        kind: 'model_call',
+        purpose: input.purpose,
+        ok: input.ok,
+        totalTokens: input.totalTokens,
+      },
+    }, () => {
+      this.teaching.updateSession(session.sessionId, input.projectId, {
+        roundCalls: session.roundCalls + 1,
+        lessonCalls: session.lessonCalls + 1,
+      });
+    });
+    return this.requireSession(session.sessionId, input.projectId);
+  }
+
+  private requireSession(sessionId: string, projectId: string): ClassroomSessionRow {
+    const session = this.teaching.getSession(sessionId, projectId);
+    if (!session) throw new StudyError('NOT_FOUND', { sessionId });
+    return session;
+  }
+
+  /** 行到合同的映射：卡片行的字段与共享 DTO 一致，映射只做一次显式拷贝。 */
+  private toCard(row: ExplanationRow): ExplanationCardDto {
+    return {
+      explanationId: row.explanationId,
+      projectId: row.projectId,
+      lessonId: row.lessonId,
+      lessonVersion: row.lessonVersion,
+      sceneId: row.sceneId,
+      position: row.position,
+      kind: row.kind,
+      origin: row.origin,
+      status: row.status,
+      text: row.text,
+      statementIds: row.statementIds,
+      reviewNote: row.reviewNote,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
   // ————————————————————————— 角色档案 —————————————————————————
+
   listRoleProfiles(scope: RecordScope = 'formal'): RoleProfileRow[] {
     return this.roles.list(scope);
   }

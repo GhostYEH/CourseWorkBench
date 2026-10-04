@@ -92,7 +92,7 @@ export const RunPanel = ({
             </tr>
             <tr>
               <th>模型配置</th>
-              <td className="muted">{current.frozen.modelProfileId ?? '未接入：本里程碑不启动真实模型调用'}</td>
+              <td className="muted">{current.frozen.modelProfileId ?? '未登记：run 不绑定模型档案，凭据只属于连接运行时'}</td>
             </tr>
           </tbody>
         </table>

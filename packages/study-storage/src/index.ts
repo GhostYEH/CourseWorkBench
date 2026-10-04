@@ -9,7 +9,7 @@ export type {
   MaterialRawArchiveRow, MaterialRow, ProjectRow, ProposalRow, QuestionRow, ReviewOutcome, RunRow, SegmentRow,
   SyllabusItemRow,
   PlanVersionRow, RoleProfileRow, RoleWriteInput, RunEventRow, StepReceiptRow,
-  ClassroomLinkRow, CreateLessonDraftInput, EvidenceBundleRow, LessonReviewRow, LessonStatus, LessonVersionRow, PublishLessonInput,
+  ClassroomLinkRow, ClassroomActionRow, ClassroomSessionRow, CreateExplanationInput, CreateLessonDraftInput, EvidenceBundleRow, ExplanationRow, LessonReviewRow, LessonStatus, LessonVersionRow, PublishLessonInput,
   StoreOptions, SubmitAttemptInput, SubmitAttemptOutcome,
 } from './store';
 export { DocumentOrganizationError } from './repositories/document-organization';

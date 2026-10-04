@@ -6,7 +6,13 @@
  */
 
 import type {
+  ClassroomActionKind,
+  ClassroomActionPayloadDto,
+  ClassroomSessionStatus,
   EvidenceUse,
+  ExplanationKind,
+  ExplanationOrigin,
+  ExplanationStatus,
   FrozenVersionsDto,
   EvidenceBundleDto,
   LessonReviewDecision,
@@ -260,7 +266,59 @@ export interface ClassroomLinkRow {
   updatedAt: string;
 }
 
-/** 角色档案行：权限位是派生值，不来自任何写入请求。 */export interface RoleProfileRow {
+/** 讲解卡行：statementIds 指向冻结证据包内的陈述编号。 */
+export interface ExplanationRow {
+  explanationId: string;
+  projectId: string;
+  lessonId: string;
+  lessonVersion: number;
+  sceneId: string;
+  position: number;
+  kind: ExplanationKind;
+  origin: ExplanationOrigin;
+  status: ExplanationStatus;
+  text: string;
+  statementIds: string[];
+  reviewNote: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 课堂会话行：等待状态与预算计数都落库，重启后按原样继续等待。 */
+export interface ClassroomSessionRow {
+  sessionId: string;
+  projectId: string;
+  runId: string | null;
+  lessonId: string;
+  lessonVersion: number;
+  bundleId: string;
+  stageId: string | null;
+  learnerKey: string;
+  status: ClassroomSessionStatus;
+  awaitingReason: string;
+  currentSceneId: string;
+  roundIndex: number;
+  roundCalls: number;
+  roundPeerTurns: number;
+  lessonCalls: number;
+  peersEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 课堂动作收据行：payload 即动作结果，重复 step_key 读回它而不重复执行。 */
+export interface ClassroomActionRow {
+  stepKey: string;
+  sessionId: string;
+  projectId: string;
+  kind: ClassroomActionKind;
+  sceneId: string;
+  payload: ClassroomActionPayloadDto;
+  at: string;
+}
+
+/** 角色档案行：权限位是派生值，不来自任何写入请求。 */
+export interface RoleProfileRow {
   profileId: string;
   kind: RoleKind;
   name: string;

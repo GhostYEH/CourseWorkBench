@@ -393,9 +393,12 @@ export const ClassroomSurface = ({
           <div className="role-card">
             <div className="role-name">
               <span className="pill" data-tone="info">AI 教师</span>
-              未接入
+              本课堂未挂接
             </div>
-            <p className="role-say">教师讲解、语音与白板功能尚不可用，可先独立浏览课件与完成测验。</p>
+            <p className="role-say">
+              讲解卡与课堂会话在「课程」页按已发布课时工作；本页是登记的演示课件，
+              正式课件文档（stage/scenes）生成后才会在这里读取同一份会话队列。
+            </p>
           </div>
 
           <div className="role-card">
