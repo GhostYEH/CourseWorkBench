@@ -44,9 +44,47 @@ export type QuestionOrigin = (typeof QUESTION_ORIGIN)[number];
 export const ACTOR_TYPE = ['human_learner', 'teacher_ai', 'peer_ai', 'system'] as const;
 export type ActorType = (typeof ACTOR_TYPE)[number];
 
+/**
+ * 角色档案类型。权限位由服务端按 kind 派生，任何写入请求都不能自报权限，
+ * 因此数据库里根本没有存放「客户端声称的权限」的列。
+ */
+export const ROLE_KIND = ['teacher', 'peer'] as const;
+export type RoleKind = (typeof ROLE_KIND)[number];
+
+/** 同学档案上限（PEER-01：零至两名同学）。 */
+export const MAX_PEER_PROFILES = 2;
+
+/** 角色讲解方式：与教学表达偏好同一组取值，但不改变任何事实或权限。 */
+export const ROLE_EXPLANATION = ['intuitive', 'rigorous', 'concise'] as const;
+export type RoleExplanation = (typeof ROLE_EXPLANATION)[number];
+
+export const ROLE_KIND_LABEL: Record<RoleKind, string> = {
+  teacher: 'AI 教师',
+  peer: 'AI 同学',
+};
+
 /** 作答分区：模拟数据可参与软件评测，不能更新本人掌握状态。 */
 export const ATTEMPT_KIND = ['real', 'simulation'] as const;
 export type AttemptKind = (typeof ATTEMPT_KIND)[number];
+
+/**
+ * 运行事件类型。放在状态枚举一侧，供 `plan.ts` 的载荷 schema 与 `events.ts` 的事件
+ * 类型共同引用，避免同一份清单出现两个来源。
+ */
+export const RUN_EVENT_TYPES = [
+  'run_started',
+  'step_started',
+  'draft_delta',
+  'proposal_created',
+  'review_required',
+  'answer_required',
+  'step_committed',
+  'run_completed',
+  'run_failed',
+  'run_cancelled',
+] as const;
+
+export type RunEventType = (typeof RUN_EVENT_TYPES)[number];
 
 /** 运行状态机（《规划书》6.3）。 */
 export const RUN_STATE = [

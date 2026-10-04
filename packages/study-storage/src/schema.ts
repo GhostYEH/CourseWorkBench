@@ -636,6 +636,47 @@ ALTER TABLE knowledge_points ADD COLUMN syllabus_requirement_key TEXT;
 CREATE INDEX idx_knowledge_syllabus_item ON knowledge_points(syllabus_item_id, syllabus_requirement_key);
 `,
   },
+  {
+    version: 11,
+    name: 'plan_payload_version_stamp',
+    sql: `
+-- N8：计划载荷改为版本化 schema 读取。给形状仍符合 v1 的历史载荷补标版本号与逐条确认字段，
+-- 让旧数据可以继续被正确解析；根不是对象或缺少 tasks/gaps 的行保留原样，
+-- 由读取层的 schema 诊断拒绝，而不是在迁移里猜测改写内容。
+UPDATE plan_versions
+   SET payload_json = json_insert(
+         payload_json,
+         '$.payloadVersion', 1,
+         '$.confirmedTaskKnowledgeIds', json('[]')
+       )
+ WHERE json_type(payload_json) = 'object'
+   AND json_extract(payload_json, '$.payloadVersion') IS NULL
+   AND json_type(json_extract(payload_json, '$.tasks')) = 'array'
+   AND json_type(json_extract(payload_json, '$.gaps')) = 'array';
+`,
+  },
+  {
+    version: 12,
+    name: 'role_profiles',
+    sql: `
+-- 角色档案（《规划书》第 7 节 role_profiles）：教师与同学的表达方式配置。
+-- 这里不存权限列：权限由服务端按 kind 派生，因此偏好无法把自己写成权限。
+CREATE TABLE role_profiles (
+  profile_id     TEXT PRIMARY KEY,
+  kind           TEXT NOT NULL CHECK (kind IN ('teacher', 'peer')),
+  name           TEXT NOT NULL,
+  persona        TEXT NOT NULL DEFAULT '',
+  explanation    TEXT NOT NULL,
+  config_version INTEGER NOT NULL DEFAULT 1,
+  record_scope   TEXT NOT NULL DEFAULT 'formal' CHECK (record_scope IN ('formal', 'demo')),
+  created_at     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL
+);
+-- 教师档案每个记录范围最多一份；同学上限由领域层按 MAX_PEER_PROFILES 检查。
+CREATE UNIQUE INDEX idx_role_profiles_teacher ON role_profiles(record_scope, kind) WHERE kind = 'teacher';
+CREATE INDEX idx_role_profiles_scope_kind ON role_profiles(record_scope, kind, profile_id);
+`,
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

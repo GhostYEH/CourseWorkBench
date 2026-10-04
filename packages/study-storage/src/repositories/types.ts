@@ -7,26 +7,32 @@
 
 import type {
   EvidenceUse,
+  FrozenVersionsDto,
   MasteryStatus,
   MaterialRawArchiveDto,
   MechanicalCheckDto,
+  PlanPayloadDto,
   QuestionOrigin,
   RecordScope,
   ReviewProvenance,
+  RoleExplanation,
+  RoleKind,
+  RolePermissionsDto,
+  RunState,
   ScopeStatus,
   SourceStatus,
 } from '@sew/study-contracts';
-import { StudyError } from '@sew/study-contracts';
+import { RUN_STATE, StudyError } from '@sew/study-contracts';
 import type { OriginRecord } from '@sew/study-domain';
 import { z } from 'zod';
 import {
   decodeJson,
   evidenceListSchema,
+  frozenVersionsSchema,
   knowledgeIdsSchema,
   mechanicalSchema,
   originRecordSchema,
   prerequisitesSchema,
-  frozenSchema,
 } from '../json-codec';
 
 export type Row = Record<string, unknown>;
@@ -39,6 +45,11 @@ export const intOrNull = (value: unknown): number | null =>
 export const recordScope = (value: unknown): RecordScope => {
   if (value === 'formal' || value === 'demo') return value;
   throw new StudyError('INTERNAL', { reason: 'invalid_record_scope' });
+};
+/** run 状态是恢复判定输入：未知状态不能降级成某个默认值继续跑。 */
+export const runState = (value: unknown): RunState => {
+  if (typeof value === 'string' && (RUN_STATE as readonly string[]).includes(value)) return value as RunState;
+  throw new StudyError('INTERNAL', { reason: 'invalid_run_state' });
 };
 export const reviewProvenance = (value: unknown): ReviewProvenance | null => {
   if (value === null || value === undefined) return null;
@@ -192,10 +203,38 @@ export interface AttemptRow {
   submittedAt: string;
 }
 
+/** 角色档案行：权限位是派生值，不来自任何写入请求。 */
+export interface RoleProfileRow {
+  profileId: string;
+  kind: RoleKind;
+  name: string;
+  persona: string;
+  explanation: RoleExplanation;
+  configVersion: number;
+  recordScope: RecordScope;
+  permissions: RolePermissionsDto;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 计划版本行：载荷已经是校验过的 v1 形状，不再有泛型断言。 */
+export interface PlanVersionRow {
+  version: number;
+  status: 'draft' | 'confirmed';
+  createdAt: string;
+  payload: PlanPayloadDto;
+}
+
+export const mapPlanStatus = (value: string): PlanVersionRow['status'] => {
+  if (value === 'confirmed' || value === 'draft') return value;
+  throw new StudyError('INTERNAL', { reason: 'invalid_plan_status', status: value });
+};
+
 export interface RunRow {
   runId: string;
-  state: string;
-  frozen: Record<string, unknown>;
+  state: RunState;
+  /** 冻结版本集合：恢复必须核对该摘要，损坏时按权威列拒绝。 */
+  frozen: FrozenVersionsDto;
   terminatedReason: string | null;
   createdAt: string;
   updatedAt: string;
@@ -480,8 +519,8 @@ export const mapAttempt = (row: Row): AttemptRow => ({
 
 export const mapRun = (row: Row, policy: JsonColumnPolicy): RunRow => ({
   runId: str(row['run_id']),
-  state: str(row['state']),
-  frozen: readJsonColumn<Record<string, unknown>>(row['frozen_json'], frozenSchema, {}, 'runs.frozen_json', policy),
+  state: runState(row['state']),
+  frozen: readAuthoritativeJsonColumn(row['frozen_json'], frozenVersionsSchema, 'runs.frozen_json', policy),
   terminatedReason: nullableStr(row['terminated_reason']),
   createdAt: str(row['created_at']),
   updatedAt: str(row['updated_at']),

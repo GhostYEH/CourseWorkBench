@@ -27,7 +27,7 @@ export const buildWorkbenchState = (session: Session, data?: WorkbenchReadData):
   const proposals = data?.proposals ?? store.listProposals();
   const materials = data?.materials ?? store.listMaterials();
   const attempts = store.countAttemptKinds();
-  const confirmedPlan = store.getConfirmedPlan<{ tasks?: unknown[] }>(session.projectId);
+  const confirmedPlan = store.getConfirmedPlan(session.projectId);
 
   const blockedBySource = knowledge.filter(
     (k) => !view.admittedIds.has(k.knowledgeId) && view.blockedById.has(k.knowledgeId),
@@ -57,7 +57,7 @@ export const buildWorkbenchState = (session: Session, data?: WorkbenchReadData):
     },
     plan: {
       confirmedVersion: confirmedPlan?.version ?? null,
-      taskCount: confirmedPlan?.payload?.tasks?.length ?? 0,
+      taskCount: confirmedPlan?.payload.tasks.length ?? 0,
     },
     admission: {
       readyKnowledge: knowledge.length - blockedBySource,

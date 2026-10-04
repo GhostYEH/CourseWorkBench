@@ -8,6 +8,7 @@ export type {
   CreateProposalInput, CreateSyllabusItemInput, EvidenceStored, ImportMaterialInput, KnowledgeRow,
   MaterialRawArchiveRow, MaterialRow, ProjectRow, ProposalRow, QuestionRow, ReviewOutcome, RunRow, SegmentRow,
   SyllabusItemRow,
+  PlanVersionRow, RoleProfileRow, RoleWriteInput, RunEventRow, StepReceiptRow,
   StoreOptions, SubmitAttemptInput, SubmitAttemptOutcome,
 } from './store';
 export { DocumentOrganizationError } from './repositories/document-organization';

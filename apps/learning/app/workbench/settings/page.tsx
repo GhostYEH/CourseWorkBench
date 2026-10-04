@@ -2,9 +2,11 @@ import type { ReactNode } from 'react';
 import { ProjectSettingsForm } from '../../../components/project-settings-form';
 import { TeachingSettings } from '../../../components/appearance-settings';
 import { ModelConnectionSettings } from '../../../components/model-connection-settings';
+import { RoleProfiles } from '../../../components/role-profiles';
 import { AssetReclaim } from '../../../components/asset-reclaim';
 import { bootstrapFromEnvironment, getSession } from '../../../lib/server/service';
 import { readTeachingPreference } from '../../../lib/server/state';
+import { toRoleProfileDto } from '../../../lib/server/dto';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +43,13 @@ export default function SettingsPage(): ReactNode {
       <TeachingSettings initial={teaching} projectId={session.projectId} generation={session.generation} />
 
       <ModelConnectionSettings />
+
+      <RoleProfiles
+        projectId={session.projectId}
+        generation={session.generation}
+        profiles={session.store.listRoleProfiles().map(toRoleProfileDto)}
+        configDigest={session.store.roleConfigDigest()}
+      />
 
       <AssetReclaim projectId={session.projectId} generation={session.generation} />
     </div>

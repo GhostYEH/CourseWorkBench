@@ -5,23 +5,13 @@
  * 连接中断不自动重放已经执行的动作。
  */
 
+import type { FrozenVersionsDto } from './plan';
 import type { ActorType, RunState } from './status';
 import type { ProjectGeneration, ProjectId, RunId, StepId } from './ids';
 
-export const RUN_EVENT_TYPES = [
-  'run_started',
-  'step_started',
-  'draft_delta',
-  'proposal_created',
-  'review_required',
-  'answer_required',
-  'step_committed',
-  'run_completed',
-  'run_failed',
-  'run_cancelled',
-] as const;
-
-export type RunEventType = (typeof RUN_EVENT_TYPES)[number];
+export { RUN_EVENT_TYPES } from './status';
+export type { RunEventType } from './status';
+import type { RunEventType } from './status';
 
 export interface RunEventBase {
   type: RunEventType;
@@ -104,13 +94,8 @@ export type RunEvent =
   | RunFailedEvent
   | RunCancelledEvent;
 
-/** 开始 run 时冻结的版本集合，保证恢复后仍是同一套事实。 */
-export interface FrozenVersions {
-  knowledgeTableVersion: number;
-  materialRevisions: Record<string, number>;
-  planVersion: number | null;
-  lessonVersion: number | null;
-  teachingPreferenceVersion: number;
-  roleConfigVersion: number | null;
-  modelProfileId: string | null;
-}
+/**
+ * 开始 run 时冻结的版本集合，保证恢复后仍是同一套事实。
+ * 运行时形状由 `plan.ts` 的 `frozenVersionsSchema` 校验，这里不再另写一份字段清单。
+ */
+export type FrozenVersions = FrozenVersionsDto;

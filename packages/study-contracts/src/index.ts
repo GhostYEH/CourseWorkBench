@@ -10,10 +10,20 @@ export {
   SOURCE_STATUS, SCOPE_STATUS, RECORD_SCOPE, REVIEW_PROVENANCE, MASTERY_STATUS, REVIEW_DECISION, EVIDENCE_USE, QUESTION_ORIGIN,
   ACTOR_TYPE, ATTEMPT_KIND, RUN_STATE, SOURCE_STATUS_LABEL, SCOPE_STATUS_LABEL,
   MASTERY_STATUS_LABEL, QUESTION_ORIGIN_LABEL, ACTOR_TYPE_LABEL,
+  ROLE_KIND, ROLE_EXPLANATION, ROLE_KIND_LABEL, MAX_PEER_PROFILES,
 } from './status';
+export {
+  PLAN_PAYLOAD_VERSION, STEP_RECEIPT_VERSION,
+  planEvidenceRefSchema, planTaskSchema, planGapSchema, planPayloadSchema,
+  frozenVersionsSchema, runStartReceiptSchema, runEventPayloadSchema, runSnapshotSchema,
+} from './plan';
+export type {
+  PlanTaskDto, PlanGapDto, PlanPayloadDto, FrozenVersionsDto, RunStartReceiptDto,
+  RunEventPayloadDto, RunEventTypeDto, RunSnapshotDto,
+} from './plan';
 export type {
   SourceStatus, ScopeStatus, RecordScope, ReviewProvenance, MasteryStatus, ReviewDecision, EvidenceUse, QuestionOrigin,
-  ActorType, AttemptKind, RunState,
+  ActorType, AttemptKind, RunState, RoleKind, RoleExplanation,
 } from './status';
 export {
   STUDY_ERROR_CODES, STUDY_ERROR_MESSAGE, PENDING_ONLY_CODES, StudyError, isStudyError,
@@ -67,6 +77,7 @@ export {
   syllabusRequirementSchema, syllabusMappingSchema, syllabusItemCreateSchema,
   syllabusItemSchema, syllabusCoverageItemSchema, syllabusCoverageSchema,
   classroomAssetInfoSchema, assetReclaimReportSchema, assetReclaimSchema, assetReclaimResultSchema,
+  rolePermissionsSchema, roleProfileSchema, roleCreateSchema, roleUpdateSchema, roleDeleteSchema,
   recentProjectSchema, classroomSceneBindingSchema,
   interactionDirectionSchema, interactionSubmitSchema, interactionPayloadSchema,
   interactionSubmissionSchema, interactionStateSchema,
@@ -82,6 +93,7 @@ export type {
   SyllabusRequirementInput, SyllabusMappingInput, SyllabusItemCreateInput, SyllabusItemDto,
   SyllabusCoverageItemDto, SyllabusCoverageDto,
   ClassroomAssetInfoDto, AssetReclaimReportDto, AssetReclaimInput, AssetReclaimResultDto,
+  RolePermissionsDto, RoleProfileDto, RoleCreateInput, RoleUpdateInput, RoleDeleteInput,
   RecentProjectDto, ClassroomSceneBinding, ApiSuccess, ApiFailure, ApiEnvelope,
   InteractionSubmitInput, InteractionSubmissionDto, InteractionStateDto,
 } from './api';

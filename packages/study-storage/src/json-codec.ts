@@ -126,8 +126,13 @@ export const syllabusRequirementsSchema = z
     message: '必要要素编号不能重复',
   });
 
-/** runs.frozen_json：根形状必须是对象。 */
-export const frozenSchema = z.record(z.unknown());
+/** runs.frozen_json 等运行快照列直接复用共享合同里的版本化形状，不再另写一份字段清单。 */
+export {
+  frozenVersionsSchema,
+  planPayloadSchema,
+  runEventPayloadSchema,
+  runStartReceiptSchema,
+} from '@sew/study-contracts';
 
 /** 任意载荷（收据结果、事件 payload、计划 payload）：只校验 JSON 语法与根非 undefined。 */
 export const arbitrarySchema = z.unknown();

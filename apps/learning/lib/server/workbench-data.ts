@@ -41,3 +41,17 @@ export const readSyllabusItems = cache((session: Session) =>
 export const readWorkbenchQuestions = cache((session: Session) =>
   session.store.listQuestions().map(toQuestionListItemDto),
 );
+
+/** 最近一次 run 的可见快照；事件只读取已提交序号。 */
+export const readWorkbenchRun = cache((session: Session) => {
+  const run = session.store.getLatestRun();
+  if (!run) return null;
+  const events = session.store.listRunEvents(run.runId);
+  const last = events[events.length - 1];
+  return {
+    runId: run.runId,
+    state: run.state,
+    frozen: run.frozen,
+    lastSeq: last?.seq ?? 0,
+  };
+});

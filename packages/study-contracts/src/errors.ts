@@ -45,6 +45,8 @@ export const STUDY_ERROR_CODES = [
   'QUESTION_ORIGIN_FORBIDDEN',
   'SIMULATION_WRITE_FORBIDDEN',
   'ROLE_PERMISSION_DENIED',
+  'ROLE_LIMIT_REACHED',
+  'ROLE_TEACHER_EXISTS',
 
   // —— 课堂文档与审核准入 ——
   'CLASSROOM_LESSON_NOT_REVIEWED',
@@ -94,6 +96,8 @@ export const STUDY_ERROR_MESSAGE: Record<StudyErrorCode, string> = {
   QUESTION_ORIGIN_FORBIDDEN: '缺少可信出处记录，不能标记为真题',
   SIMULATION_WRITE_FORBIDDEN: '模拟作答不能写入本人学习记录',
   ROLE_PERMISSION_DENIED: '当前角色没有该操作权限',
+  ROLE_LIMIT_REACHED: 'AI 同学最多两名，请先删除一个再添加',
+  ROLE_TEACHER_EXISTS: '本项目已有 AI 教师档案，请直接修改它',
 
   CLASSROOM_LESSON_NOT_REVIEWED: '该课堂文档不是已登记的审核课件，不能写入正式教学',
   CLASSROOM_SCENE_SOURCE_MISSING: '课堂场景缺少可定位的来源绑定，暂不能用于教学',

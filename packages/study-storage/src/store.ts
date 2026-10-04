@@ -9,19 +9,27 @@
  * 本地服务是唯一数据库写入者；所有写入串行执行，首版不支持多窗口并发编辑。
  */
 
+import { createHash } from 'node:crypto';
 import {
+  STEP_RECEIPT_VERSION,
   StudyError,
   newId,
   type AdmissionResultDto,
+  type FrozenVersionsDto,
   type MasteryStatus,
+  type PlanPayloadDto,
   type QuestionOrigin,
   type ReviewDecision,
   type RecordScope,
+  type RoleKind,
+  type RunEventPayloadDto,
+  type RunState,
 } from '@sew/study-contracts';
 import {
   computeInvalidation,
   computeSyllabusCoverage,
   decideAttempt,
+  buildStepKey,
   resolveQuestionOrigin,
   type MaterialChangeImpact,
   type OriginRecord,
@@ -48,6 +56,8 @@ import { ProjectsRepository } from './repositories/projects';
 import { ProposalsRepository } from './repositories/proposals';
 import { QuestionsRepository } from './repositories/questions';
 import { RunsRepository } from './repositories/runs';
+import { RoleRepository, type RoleWriteInput } from './repositories/roles';
+import type { RunEventRow, StepReceiptRow } from './repositories/runs';
 import { SyllabusRepository } from './repositories/syllabus';
 import type { CreateSyllabusItemInput, SyllabusItemRow } from './repositories/syllabus';
 import type {
@@ -60,6 +70,7 @@ import type {
   ProposalRow,
   QuestionRow,
   ReviewOutcome,
+  RoleProfileRow,
   RunRow,
   SegmentRow,
   SubmitAttemptInput,
@@ -78,6 +89,9 @@ export { DocumentOrganizationError } from './repositories/document-organization'
 export type { ClassroomAssetBindingRow, ClassroomAssetInfo, ClassroomAssetRow } from './repositories/classroom-assets';
 export { ClassroomAssetReferencedError } from './repositories/classroom-assets';
 export type { CreateSyllabusItemInput, SyllabusItemRow } from './repositories/syllabus';
+export type { PlanVersionRow, RoleProfileRow } from './repositories/types';
+export type { RunEventRow, StepReceiptRow } from './repositories/runs';
+export type { RoleWriteInput } from './repositories/roles';
 export type {
   RuntimeAppendOptions,
   RuntimeRecordInput,
@@ -125,6 +139,7 @@ export class StudyStore {
   private readonly runs: RunsRepository;
   private readonly preferences: PreferencesRepository;
   private readonly plans: PlansRepository;
+  private readonly roles: RoleRepository;
   private readonly syllabus: SyllabusRepository;
   private readonly classroom: ClassroomRepository;
   private readonly documentOrganization: DocumentOrganizationRepository;
@@ -144,6 +159,7 @@ export class StudyStore {
     this.runs = new RunsRepository(db);
     this.preferences = new PreferencesRepository(db);
     this.plans = new PlansRepository(db);
+    this.roles = new RoleRepository(db);
     this.syllabus = new SyllabusRepository(db);
     this.classroom = new ClassroomRepository(db);
     this.documentOrganization = new DocumentOrganizationRepository(db);
@@ -616,19 +632,15 @@ export class StudyStore {
 
   // ————————————————————————— 运行与收据 —————————————————————————
 
-  getReceipt(stepKey: string): { stepKey: string; result: unknown; createdAt: string } | null {
+  getStepReceipt(stepKey: string): StepReceiptRow | null {
     return this.runs.getReceipt(stepKey);
   }
 
-  saveReceipt(stepKey: string, result: unknown, runId?: string, stepId?: string): void {
-    this.runs.saveReceipt(stepKey, result, runId, stepId);
-  }
-
-  createRun(runId: string, state: string, frozen: Record<string, unknown>): RunRow {
+  createRun(runId: string, state: RunState, frozen: FrozenVersionsDto): RunRow {
     return this.runs.createRun(runId, state, frozen);
   }
 
-  updateRunState(runId: string, state: string, terminatedReason?: string): RunRow {
+  updateRunState(runId: string, state: RunState, terminatedReason?: string): RunRow {
     return this.runs.updateRunState(runId, state, terminatedReason);
   }
 
@@ -636,15 +648,81 @@ export class StudyStore {
     return this.runs.getRun(runId);
   }
 
-  appendRunEvent(runId: string, seq: number, type: string, payload: unknown): void {
-    this.runs.appendRunEvent(runId, seq, type, payload);
+  /** 本项目最近一次 run；数据库按项目目录隔离，因此不需要项目列。 */
+  getLatestRun(): RunRow | null {
+    return this.runs.getLatestRun();
   }
 
-  listRunEvents(
-    runId: string,
-    afterSeq = 0,
-  ): Array<{ seq: number; type: string; payload: unknown; at: string }> {
+  appendRunEvent(runId: string, seq: number, payload: RunEventPayloadDto): RunEventRow {
+    return this.runs.appendRunEvent(runId, seq, payload);
+  }
+
+  listRunEvents(runId: string, afterSeq = 0): RunEventRow[] {
     return this.runs.listRunEvents(runId, afterSeq);
+  }
+
+  /**
+   * 从已确认计划启动备考 run（PLAN-01）。
+   *
+   * 收据键由「项目 + 计划版本」决定：同一计划的重复启动读回既有 run 与既有事件，
+   * 不产生第二个 run，也不重放已提交动作。run、run_started 事件与收据在同一事务落库。
+   */
+  startPlanRun(projectId: string): { run: RunRow; deduplicated: boolean } {
+    const confirmed = this.plans.getConfirmedPlan(projectId);
+    if (!confirmed) throw new StudyError('PLAN_NOT_CONFIRMED');
+    if (confirmed.payload.confirmedTaskKnowledgeIds.length === 0) {
+      throw new StudyError('PLAN_NOT_CONFIRMED', { reason: 'no_confirmed_tasks' });
+    }
+
+    const stepKey = buildStepKey('run-start', projectId, `v${confirmed.version}`);
+    const existing = this.runs.getReceipt(stepKey);
+    if (existing) {
+      const run = this.runs.getRun(existing.result.runId);
+      if (!run) {
+        throw new StudyError('INTERNAL', { reason: 'receipt_run_missing', runId: existing.result.runId });
+      }
+      return { run, deduplicated: true };
+    }
+
+    const frozen = this.freezeRunVersions(projectId, confirmed.version);
+    const runId = newId<'run'>('run');
+    const state: RunState = 'plan_confirmed';
+    this.db.transaction(() => {
+      this.runs.createRun(runId, state, frozen);
+      this.runs.appendRunEvent(runId, 1, { type: 'run_started', state, frozen });
+      this.runs.saveReceipt(
+        stepKey,
+        { receiptVersion: STEP_RECEIPT_VERSION, runId, planVersion: confirmed.version, state },
+        runId,
+        'start',
+      );
+    });
+    const run = this.runs.getRun(runId);
+    if (!run) throw new StudyError('INTERNAL', { runId });
+    return { run, deduplicated: false };
+  }
+
+  /**
+   * 冻结当前事实集合。
+   *
+   * 知识点用摘要表示：任何一条的新增、审核或失效都会改变它；模型配置尚未接入时
+   * `modelProfileId` 保持 null，不用假身份填充分母。
+   */
+  private freezeRunVersions(projectId: string, planVersion: number): FrozenVersionsDto {
+    const points = this.knowledge
+      .listKnowledge('formal')
+      .map((point) => `${point.knowledgeId}:${point.revision}:${point.sourceStatus}`)
+      .sort();
+    const teaching = this.preferences.readTeachingPreference<Record<string, unknown>>(projectId);
+    return {
+      knowledgeTableDigest: createHash('sha256').update(points.join('|'), 'utf8').digest('hex'),
+      materialRevisions: this.materials.currentRevisions('formal'),
+      planVersion,
+      lessonVersion: null,
+      teachingPreferenceVersion: teaching.version,
+      roleConfigDigest: this.roles.configDigest('formal'),
+      modelProfileId: null,
+    };
   }
 
   // ——————————————————————————— 偏好 ———————————————————————————
@@ -671,20 +749,47 @@ export class StudyStore {
     projectId: string,
     version: number,
     status: 'draft' | 'confirmed',
-    payload: unknown,
+    payload: PlanPayloadDto,
   ): void {
     this.plans.savePlanVersion(projectId, version, status, payload);
   }
 
-  getConfirmedPlan<T>(projectId: string): { version: number; payload: T } | null {
-    return this.plans.getConfirmedPlan<T>(projectId);
+  getConfirmedPlan(projectId: string): { version: number; payload: PlanPayloadDto } | null {
+    const confirmed = this.plans.getConfirmedPlan(projectId);
+    return confirmed ? { version: confirmed.version, payload: confirmed.payload } : null;
   }
 
   /** 最近一版计划（草案或已确认），用于界面展示与调整预览。 */
-  getLatestPlan<T>(
-    projectId: string,
-  ): { version: number; status: 'draft' | 'confirmed'; payload: T } | null {
-    return this.plans.getLatestPlan<T>(projectId);
+  getLatestPlan(projectId: string): {
+    version: number;
+    status: 'draft' | 'confirmed';
+    payload: PlanPayloadDto;
+  } | null {
+    const latest = this.plans.getLatestPlan(projectId);
+    return latest ? { version: latest.version, status: latest.status, payload: latest.payload } : null;
+  }
+
+  // ————————————————————————— 角色档案 —————————————————————————
+
+  listRoleProfiles(scope: RecordScope = 'formal'): RoleProfileRow[] {
+    return this.roles.list(scope);
+  }
+
+  createRoleProfile(kind: RoleKind, input: RoleWriteInput, scope: RecordScope = 'formal'): RoleProfileRow {
+    return this.roles.create(kind, input, scope);
+  }
+
+  updateRoleProfile(profileId: string, input: RoleWriteInput, scope: RecordScope = 'formal'): RoleProfileRow {
+    return this.roles.update(profileId, input, scope);
+  }
+
+  deleteRoleProfile(profileId: string, scope: RecordScope = 'formal'): void {
+    this.roles.delete(profileId, scope);
+  }
+
+  /** 角色集合摘要；未配置任何角色时为 null，run 冻结如实记录「未配置」。 */
+  roleConfigDigest(scope: RecordScope = 'formal'): string | null {
+    return this.roles.configDigest(scope);
   }
 
   // ————————————————————————— 课堂文档与状态 —————————————————————————

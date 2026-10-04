@@ -10,7 +10,7 @@ export default function StudyPage(): ReactNode {
   const session = (getSession() ?? bootstrapFromEnvironment())!;
   const view = readWorkbenchKnowledge(session);
   const admitted = view.rows.filter((point) => view.admittedIds.has(point.knowledgeId));
-  const confirmedPlan = session.store.getConfirmedPlan<{ tasks?: unknown[] }>(session.projectId);
+  const confirmedPlan = session.store.getConfirmedPlan(session.projectId);
   const questions = session.store.listQuestions();
 
   return (

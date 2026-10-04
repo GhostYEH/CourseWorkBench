@@ -12,6 +12,7 @@ import type {
   ProposalDto,
   QuestionDto,
   QuestionListItemDto,
+  RoleProfileDto,
   SegmentDto,
   SyllabusItemDto,
 } from '@sew/study-contracts';
@@ -21,6 +22,7 @@ import type {
   MaterialRow,
   ProposalRow,
   QuestionRow,
+  RoleProfileRow,
   SegmentRow,
   SyllabusItemRow,
 } from '@sew/study-storage';
@@ -108,8 +110,21 @@ export const toKnowledgePointDto = (row: KnowledgeRow): KnowledgePointDto => ({
   revision: row.revision,
 });
 
-export const toSyllabusItemDto = (row: SyllabusItemRow): SyllabusItemDto => ({
-  itemId: row.itemId,
+/** 角色档案：权限位是服务端派生值，渲染层只读展示。 */
+export const toRoleProfileDto = (row: RoleProfileRow): RoleProfileDto => ({
+  profileId: row.profileId,
+  kind: row.kind,
+  name: row.name,
+  persona: row.persona,
+  explanation: row.explanation,
+  configVersion: row.configVersion,
+  recordScope: row.recordScope,
+  permissions: row.permissions,
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
+});
+
+export const toSyllabusItemDto = (row: SyllabusItemRow): SyllabusItemDto => ({  itemId: row.itemId,
   code: row.code,
   label: row.label,
   recordScope: row.recordScope,
