@@ -9,6 +9,7 @@ import type {
   EvidenceUse,
   FrozenVersionsDto,
   EvidenceBundleDto,
+  LessonReviewDecision,
   MasteryStatus,
   MaterialRawArchiveDto,
   MechanicalCheckDto,
@@ -23,7 +24,7 @@ import type {
   ScopeStatus,
   SourceStatus,
 } from '@sew/study-contracts';
-import { RUN_STATE, StudyError } from '@sew/study-contracts';
+import { LESSON_STATUS, RUN_STATE, StudyError } from '@sew/study-contracts';
 import type { OriginRecord } from '@sew/study-domain';
 import { z } from 'zod';
 import {
@@ -204,7 +205,21 @@ export interface AttemptRow {
   submittedAt: string;
 }
 
-export type LessonStatus = 'draft' | 'published' | 'superseded';
+/** 课程版本状态与合同同源，避免存储层自己维护一份会漂移的清单。 */
+export type LessonStatus = (typeof LESSON_STATUS)[number];
+
+/** 课程版本的一次人工审核结论。 */
+export interface LessonReviewRow {
+  projectId: string;
+  lessonId: string;
+  version: number;
+  decision: LessonReviewDecision;
+  note: string;
+  /** 审核当时的准入快照：记录「按当时事实批准」，而不是永久担保。 */
+  admittedKnowledgeIds: string[];
+  blockedKnowledgeIds: string[];
+  reviewedAt: string;
+}
 
 /** 冻结的证据包一行；bundle 按权威列校验。 */
 export interface EvidenceBundleRow {
@@ -239,6 +254,8 @@ export interface ClassroomLinkRow {
   documentDigest: string | null;
   evidenceBundleId: string | null;
   status: LessonStatus;
+  /** 状态说明：撤回原因等人类可读依据，界面必须与状态一起显示。 */
+  statusNote: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -7,7 +7,7 @@
  */
 
 import { z } from 'zod';
-import { RUN_EVENT_TYPES, RUN_STATE } from './status';
+import { MODEL_CALL_PURPOSE, RUN_EVENT_TYPES, RUN_STATE } from './status';
 /** 计划载荷版本。改变载荷结构必须升版本，并在迁移里为旧载荷补标。 */
 export const PLAN_PAYLOAD_VERSION = 1;
 
@@ -100,6 +100,17 @@ export const runEventPayloadSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('run_completed'), state: z.enum(RUN_STATE) }).strict(),
   z.object({ type: z.literal('run_failed'), code: z.string().min(1), message: z.string().max(500) }).strict(),
   z.object({ type: z.literal('run_cancelled'), reason: z.string().max(500) }).strict(),
+  /**
+   * 模型调用台账（BUDGET-01 的最小落地）：一次真实尝试记一条，成功与失败都计数，
+   * 预算按 run 累计读取这里，而不是按内存里的计数器。
+   */
+  z.object({
+    type: z.literal('model_call'),
+    purpose: z.enum(MODEL_CALL_PURPOSE),
+    ok: z.boolean(),
+    totalTokens: z.number().int().nonnegative(),
+    message: z.string().max(500),
+  }).strict(),
 ]);
 export type RunEventPayloadDto = z.infer<typeof runEventPayloadSchema>;
 

@@ -94,11 +94,24 @@ describe('M1 renderer response integration', () => {
       action: 'draft', lessonId: null, bundleId: bundle.bundleId, title: '回归测试课程', statementIds: bundle.bundle.statements.map(row => row.statementId), questionIds: [],
     }));
     expect(lesson.lesson).not.toHaveProperty('projectId');
+    // 未审核的草案不能发布：服务端给出「需先审核」而不是静默成功。
+    await expect(apiFetch('/api/study/lessons', apiResponses.lessonPublish, init({
+      action: 'publish', lessonId: lesson.lesson.lessonId, version: lesson.lesson.version,
+    }))).rejects.toThrow(/该课堂文档不是已登记的审核课件/);
+    const reviewed = await apiFetch('/api/study/lessons', apiResponses.lessonReview, init({
+      action: 'review', lessonId: lesson.lesson.lessonId, version: lesson.lesson.version, decision: 'approved', note: '按原文核对',
+    }));
+    expect(reviewed.review.admittedKnowledgeIds).toEqual([knowledgeId]);
     const published = await apiFetch('/api/study/lessons', apiResponses.lessonPublish, init({
       action: 'publish', lessonId: lesson.lesson.lessonId, version: lesson.lesson.version,
     }));
     expect(published.lesson.status).toBe('published');
     expect(published.link.evidenceBundleId).toBe(bundle.bundleId);
+    const withdrawn = await apiFetch('/api/study/lessons', apiResponses.lessonWithdraw, init({
+      action: 'withdraw', lessonId: lesson.lesson.lessonId, reason: '回归测试撤回',
+    }));
+    expect(withdrawn.lesson.status).toBe('withdrawn');
+    expect(withdrawn.link.statusNote).toBe('回归测试撤回');
   });
 
   it('role CRUD and asset reclaim deliver validated real responses', async () => {

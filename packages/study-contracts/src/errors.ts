@@ -53,6 +53,10 @@ export const STUDY_ERROR_CODES = [
   'CLASSROOM_SCENE_SOURCE_MISSING',
   'ASSET_IN_USE',
 
+  // —— 模型调用与预算 ——
+  'MODEL_NOT_CONFIGURED',
+  'BUDGET_EXCEEDED',
+
   // —— 通用 ——
   'INVALID_ARGUMENT',
   'NOT_FOUND',
@@ -103,6 +107,9 @@ export const STUDY_ERROR_MESSAGE: Record<StudyErrorCode, string> = {
   CLASSROOM_SCENE_SOURCE_MISSING: '课堂场景缺少可定位的来源绑定，暂不能用于教学',
   ASSET_IN_USE: '资源仍被课件引用，不能回收',
 
+  MODEL_NOT_CONFIGURED: '尚未配置模型连接，不能发起课程草案生成',
+  BUDGET_EXCEEDED: '本次备考任务的模型调用额度已用满，请人工继续或调整额度',
+
   INVALID_ARGUMENT: '请求参数不合法',
   NOT_FOUND: '记录不存在',
   INTERNAL: '发生内部错误，请查看任务日志',
@@ -119,6 +126,7 @@ export const PENDING_ONLY_CODES: ReadonlySet<StudyErrorCode> = new Set<StudyErro
   'KNOWLEDGE_SCOPE_INVALID',
   'PREREQUISITE_UNSATISFIED',
   'CLASSROOM_SCENE_SOURCE_MISSING',
+  'BUDGET_EXCEEDED',
 ]);
 
 export interface StudyErrorPayload {

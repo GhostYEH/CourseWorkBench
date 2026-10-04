@@ -82,9 +82,17 @@ export const RUN_EVENT_TYPES = [
   'run_completed',
   'run_failed',
   'run_cancelled',
+  'model_call',
 ] as const;
 
 export type RunEventType = (typeof RUN_EVENT_TYPES)[number];
+
+/**
+ * 模型调用用途。诊断用途不在此列：连接测试有独立限额，且不能用来产出教学内容。
+ * `lesson_draft` 只产出待人工审核的草案；`teaching_prompt` 要求课程已发布并审核通过。
+ */
+export const MODEL_CALL_PURPOSE = ['lesson_draft', 'teaching_prompt'] as const;
+export type ModelCallPurpose = (typeof MODEL_CALL_PURPOSE)[number];
 
 /** 运行状态机（《规划书》6.3）。 */
 export const RUN_STATE = [

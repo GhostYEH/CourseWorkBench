@@ -712,6 +712,57 @@ CREATE TABLE lesson_versions (
 CREATE INDEX idx_lesson_versions_project ON lesson_versions(project_id, status, lesson_id, version);
 `,
   },
+  {
+    version: 14,
+    name: 'lesson_reviews_and_withdrawal',
+    sql: `
+-- 课程版本的人工审核结论（LESSON-02）。
+-- 主键含 version：审核结论只绑定那一个草案版本，改一处表述就得重新审核。
+-- reviewer 不落列：本机的权威审核人只有本地用户，客户端没有可提交的审核身份。
+CREATE TABLE lesson_reviews (
+  project_id       TEXT NOT NULL,
+  lesson_id        TEXT NOT NULL,
+  version          INTEGER NOT NULL,
+  decision         TEXT NOT NULL CHECK (decision IN ('approved', 'rejected')),
+  note             TEXT NOT NULL DEFAULT '',
+  admitted_json    TEXT NOT NULL DEFAULT '[]',
+  blocked_json     TEXT NOT NULL DEFAULT '[]',
+  reviewed_at      TEXT NOT NULL,
+  PRIMARY KEY (project_id, lesson_id, version)
+);
+CREATE INDEX idx_lesson_reviews_lesson ON lesson_reviews(project_id, lesson_id, version);
+
+-- 课程↔stage 映射补记状态说明：撤回原因要留在映射上，课堂入口据此给出可读提示。
+ALTER TABLE classroom_links ADD COLUMN status_note TEXT NOT NULL DEFAULT '';
+
+-- 课程状态增加 withdrawn（主动停用），与被新版本取代含义不同，需要重建表放宽 CHECK。
+CREATE TABLE lesson_versions_next (
+  lesson_id          TEXT NOT NULL,
+  version            INTEGER NOT NULL,
+  project_id         TEXT NOT NULL,
+  title              TEXT NOT NULL,
+  status             TEXT NOT NULL CHECK (status IN ('draft', 'published', 'superseded', 'withdrawn')),
+  bundle_id          TEXT NOT NULL,
+  bundle_digest      TEXT NOT NULL,
+  statement_ids_json TEXT NOT NULL DEFAULT '[]',
+  question_ids_json  TEXT NOT NULL DEFAULT '[]',
+  created_at         TEXT NOT NULL,
+  updated_at         TEXT NOT NULL,
+  PRIMARY KEY (lesson_id, version),
+  FOREIGN KEY (bundle_id) REFERENCES evidence_bundles(bundle_id)
+);
+INSERT INTO lesson_versions_next (
+  lesson_id, version, project_id, title, status, bundle_id, bundle_digest,
+  statement_ids_json, question_ids_json, created_at, updated_at
+)
+SELECT lesson_id, version, project_id, title, status, bundle_id, bundle_digest,
+       statement_ids_json, question_ids_json, created_at, updated_at
+  FROM lesson_versions;
+DROP TABLE lesson_versions;
+ALTER TABLE lesson_versions_next RENAME TO lesson_versions;
+CREATE INDEX idx_lesson_versions_project ON lesson_versions(project_id, status, lesson_id, version);
+`,
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

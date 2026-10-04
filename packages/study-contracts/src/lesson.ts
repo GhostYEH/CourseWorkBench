@@ -14,9 +14,16 @@ import { evidenceRefSchema, projectScopeSchema } from './api';
 /** 证据包结构版本。 */
 export const EVIDENCE_BUNDLE_VERSION = 1;
 
-/** 课程版本状态：草案可改，已发布固定，被新版本取代后标记 superseded。 */
-export const LESSON_STATUS = ['draft', 'published', 'superseded'] as const;
+/**
+ * 课程版本状态。草案可改，已发布固定，被新版本取代记 superseded，
+ * 主动停用记 withdrawn —— 撤回与被取代含义不同，不能混用同一个状态。
+ */
+export const LESSON_STATUS = ['draft', 'published', 'superseded', 'withdrawn'] as const;
 export type LessonStatus = (typeof LESSON_STATUS)[number];
+
+/** 课程版本的人工审核结论。只有 approved 才允许发布与上课。 */
+export const LESSON_REVIEW_DECISION = ['approved', 'rejected'] as const;
+export type LessonReviewDecision = (typeof LESSON_REVIEW_DECISION)[number];
 
 /** 一条学科陈述：必须绑定知识点与至少一条可定位原文。 */
 export const bundleStatementSchema = z
@@ -126,6 +133,49 @@ export const lessonPublishSchema = z
   })
   .strict();
 export type LessonPublishInput = z.infer<typeof lessonPublishSchema>;
+
+export const lessonReviewSchema = z
+  .object({
+    scope: projectScopeSchema,
+    action: z.literal('review'),
+    lessonId: z.string().min(1),
+    version: z.number().int().positive(),
+    decision: z.enum(LESSON_REVIEW_DECISION),
+    note: z.string().max(500),
+  })
+  .strict();
+export type LessonReviewInput = z.infer<typeof lessonReviewSchema>;
+
+export const lessonWithdrawSchema = z
+  .object({
+    scope: projectScopeSchema,
+    action: z.literal('withdraw'),
+    lessonId: z.string().min(1),
+    reason: z.string().max(500),
+  })
+  .strict();
+export type LessonWithdrawInput = z.infer<typeof lessonWithdrawSchema>;
+
+/**
+ * 一次课程版本审核的权威记录。
+ *
+ * `admittedKnowledgeIds` / `blockedKnowledgeIds` 是审核当时的准入快照：审核结论只对
+ * 该课程版本及其证据包摘要有效，来源更新后新版本必须重新审核。审核人身份由服务端写入，
+ * 请求体里没有 reviewer 字段，客户端不能自报「已由谁审核」。
+ */
+export const lessonReviewRecordSchema = z
+  .object({
+    projectId: z.string().min(1),
+    lessonId: z.string().min(1),
+    version: z.number().int().positive(),
+    decision: z.enum(LESSON_REVIEW_DECISION),
+    note: z.string(),
+    admittedKnowledgeIds: z.array(z.string()),
+    blockedKnowledgeIds: z.array(z.string()),
+    reviewedAt: z.string(),
+  })
+  .strict();
+export type LessonReviewRecordDto = z.infer<typeof lessonReviewRecordSchema>;
 
 export const lessonBundleBuildSchema = z
   .object({

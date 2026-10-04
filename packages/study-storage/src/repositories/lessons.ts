@@ -6,8 +6,11 @@
  * 课程↔stage 侧表。JSON 列都按权威列读取，损坏即拒绝。
  */
 
-import { StudyError, newId, type EvidenceBundleDto } from '@sew/study-contracts';
-import { assertLessonPublishable, nextLessonVersion } from '@sew/study-domain';
+import { StudyError, newId, type EvidenceBundleDto, type LessonReviewDecision } from '@sew/study-contracts';
+import { LESSON_REVIEW_DECISION, LESSON_STATUS } from '@sew/study-contracts';
+import {
+  assertLessonPublishable, lessonReferencedKnowledgeIds, nextLessonVersion,
+} from '@sew/study-domain';
 import type { SqlDatabase } from '../driver';
 import { encodeJson, evidenceBundleSchema, knowledgeIdsSchema } from '../json-codec';
 import {
@@ -17,6 +20,7 @@ import {
   str,
   type ClassroomLinkRow,
   type EvidenceBundleRow,
+  type LessonReviewRow,
   type LessonStatus,
   type LessonVersionRow,
   type Row,
@@ -82,9 +86,35 @@ const mapLesson = (row: Row): LessonVersionRow => {
 };
 
 export function mapLessonStatus(value: string): LessonStatus {
-  if (value === 'draft' || value === 'published' || value === 'superseded') return value;
+  if ((LESSON_STATUS as readonly string[]).includes(value)) return value as LessonStatus;
   throw new StudyError('INTERNAL', { reason: 'invalid_lesson_status', status: value });
 }
+
+const mapLessonReviewDecision = (value: string): LessonReviewDecision => {
+  if ((LESSON_REVIEW_DECISION as readonly string[]).includes(value)) return value as LessonReviewDecision;
+  throw new StudyError('INTERNAL', { reason: 'invalid_lesson_review_decision', decision: value });
+};
+
+const mapReview = (row: Row): LessonReviewRow => {
+  const lessonId = str(row['lesson_id']);
+  const version = num(row['version']);
+  const readIds = (column: string): string[] => readAuthoritativeJsonColumn(
+    row[column],
+    knowledgeIdsSchema,
+    `lesson_reviews.${column}[${lessonId}#${version}]`,
+    defaultJsonPolicy,
+  );
+  return {
+    projectId: str(row['project_id']),
+    lessonId,
+    version,
+    decision: mapLessonReviewDecision(str(row['decision'])),
+    note: str(row['note']),
+    admittedKnowledgeIds: readIds('admitted_json'),
+    blockedKnowledgeIds: readIds('blocked_json'),
+    reviewedAt: str(row['reviewed_at']),
+  };
+};
 
 export class LessonRepository {
   constructor(private readonly db: SqlDatabase) {}
@@ -198,27 +228,27 @@ export class LessonRepository {
   }
 
   /**
-   * 发布课程：在同一个事务内复核准入、转换旧版本状态并写课程↔stage 侧表。
+   * 发布课程：在同一个事务内复核「已审核 + 准入」，转换旧版本状态并写课程↔stage 侧表。
    *
-   * `statementKnowledge` 由调用方（StudyStore）提供，本层不自行判断知识点是否可用。
+   * `reviewApproved` 与 `admittedKnowledgeIds` 由调用方（StudyStore）提供，本层不自行判断。
    */
   publish(
     input: PublishLessonInput,
-    deps: { admittedKnowledgeIds: ReadonlySet<string>; statementKnowledgeOf: (statementId: string) => string | null; questionKnowledgeOf: (questionId: string) => string[] },
+    deps: {
+      admittedKnowledgeIds: ReadonlySet<string>;
+      reviewApproved: boolean;
+      statementKnowledgeOf: (statementId: string) => string | null;
+      questionKnowledgeOf: (questionId: string) => string[];
+    },
   ): LessonVersionRow {
     const lesson = this.getVersion(input.lessonId, input.version, input.projectId);
     if (!lesson) throw new StudyError('NOT_FOUND', { lessonId: input.lessonId, version: input.version });
-
-    const statementKnowledge = lesson.statementIds.map((id) => {
-      const knowledgeId = deps.statementKnowledgeOf(id);
-      if (knowledgeId === null) {
-        throw new StudyError('SOURCE_MISSING', { statementId: id, reason: 'statement_not_in_bundle' });
-      }
-      return knowledgeId;
-    });
-    const questionKnowledge = lesson.questionIds.flatMap((id) => deps.questionKnowledgeOf(id));
     assertLessonPublishable(
-      { status: lesson.status, statementKnowledgeIds: statementKnowledge, questionKnowledgeIds: questionKnowledge },
+      {
+        status: lesson.status,
+        reviewApproved: deps.reviewApproved,
+        referencedKnowledgeIds: lessonReferencedKnowledgeIds(lesson, deps),
+      },
       deps.admittedKnowledgeIds,
     );
 
@@ -239,6 +269,81 @@ export class LessonRepository {
     return published;
   }
 
+  /** 当前已发布的版本；没有则返回 null。撤回与课堂入口都以这一条为准。 */
+  publishedVersion(lessonId: string, projectId: string): LessonVersionRow | null {
+    const row = this.db
+      .prepare("SELECT * FROM lesson_versions WHERE lesson_id = ? AND project_id = ? AND status = 'published'")
+      .get(lessonId, projectId) as Row | undefined;
+    return row ? mapLesson(row) : null;
+  }
+
+  /**
+   * 主动停用已发布课程：版本状态记 withdrawn（与被新版本取代不同），
+   * 侧表同步停用并保留可读原因，课堂入口随即受阻。
+   */
+  withdraw(input: { projectId: string; lessonId: string; version: number; reason: string }): LessonVersionRow {
+    const now = new Date().toISOString();
+    this.db.transaction(() => {
+      const result = this.db
+        .prepare("UPDATE lesson_versions SET status = 'withdrawn', updated_at = ? WHERE lesson_id = ? AND version = ? AND project_id = ? AND status = 'published'")
+        .run(now, input.lessonId, input.version, input.projectId);
+      if (result.changes !== 1) {
+        throw new StudyError('STEP_ALREADY_COMMITTED', { reason: 'lesson_not_published' });
+      }
+      this.db
+        .prepare("UPDATE classroom_links SET status = 'withdrawn', status_note = ?, updated_at = ? WHERE lesson_id = ? AND project_id = ?")
+        .run(input.reason, now, input.lessonId, input.projectId);
+    });
+    const withdrawn = this.getVersion(input.lessonId, input.version, input.projectId);
+    if (!withdrawn) throw new StudyError('INTERNAL', { lessonId: input.lessonId, version: input.version });
+    return withdrawn;
+  }
+
+  /**
+   * 记录课程版本的审核结论。重复审核同一版本按更新处理：审核人改判不必等新版本，
+   * 但新草案版本仍需一条自己的记录，旧结论不会顺延。
+   */
+  recordReview(input: {
+    projectId: string;
+    lessonId: string;
+    version: number;
+    decision: LessonReviewDecision;
+    note: string;
+    admittedKnowledgeIds: string[];
+    blockedKnowledgeIds: string[];
+  }): LessonReviewRow {
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO lesson_reviews (project_id, lesson_id, version, decision, note, admitted_json, blocked_json, reviewed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(project_id, lesson_id, version)
+         DO UPDATE SET decision = excluded.decision, note = excluded.note,
+                       admitted_json = excluded.admitted_json, blocked_json = excluded.blocked_json,
+                       reviewed_at = excluded.reviewed_at`,
+      )
+      .run(
+        input.projectId,
+        input.lessonId,
+        input.version,
+        input.decision,
+        input.note,
+        encodeJson([...new Set(input.admittedKnowledgeIds)]),
+        encodeJson([...new Set(input.blockedKnowledgeIds)]),
+        now,
+      );
+    const saved = this.getReview(input.lessonId, input.version, input.projectId);
+    if (!saved) throw new StudyError('INTERNAL', { lessonId: input.lessonId, version: input.version });
+    return saved;
+  }
+
+  getReview(lessonId: string, version: number, projectId: string): LessonReviewRow | null {
+    const row = this.db
+      .prepare('SELECT * FROM lesson_reviews WHERE lesson_id = ? AND version = ? AND project_id = ?')
+      .get(lessonId, version, projectId) as Row | undefined;
+    return row ? mapReview(row) : null;
+  }
+
   /** 课程↔stage 一对一映射：没有课堂文档时也要留下课程已发布的记录。 */
   private upsertLink(input: PublishLessonInput, bundleId: string, now: string): void {
     const existing = this.db
@@ -246,7 +351,7 @@ export class LessonRepository {
       .get(input.lessonId, input.projectId) as Row | undefined;
     if (existing) {
       this.db
-        .prepare('UPDATE classroom_links SET lesson_version = ?, stage_id = ?, stage_document_version = ?, document_digest = ?, evidence_bundle_id = ?, status = ?, updated_at = ? WHERE lesson_id = ? AND project_id = ?')
+        .prepare('UPDATE classroom_links SET lesson_version = ?, stage_id = ?, stage_document_version = ?, document_digest = ?, evidence_bundle_id = ?, status = ?, status_note = ?, updated_at = ? WHERE lesson_id = ? AND project_id = ?')
         .run(
           input.version,
           input.stageId ?? null,
@@ -254,6 +359,7 @@ export class LessonRepository {
           input.documentDigest ?? null,
           bundleId,
           'published',
+          '',
           now,
           input.lessonId,
           input.projectId,
@@ -293,6 +399,7 @@ export class LessonRepository {
       documentDigest: str(row['document_digest']) || null,
       evidenceBundleId: str(row['evidence_bundle_id']) || null,
       status: mapLessonStatus(str(row['status'])),
+      statusNote: str(row['status_note']),
       createdAt: str(row['created_at']),
       updatedAt: str(row['updated_at']),
     };

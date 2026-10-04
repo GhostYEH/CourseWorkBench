@@ -11,6 +11,7 @@ export {
   ACTOR_TYPE, ATTEMPT_KIND, RUN_STATE, SOURCE_STATUS_LABEL, SCOPE_STATUS_LABEL,
   MASTERY_STATUS_LABEL, QUESTION_ORIGIN_LABEL, ACTOR_TYPE_LABEL,
   ROLE_KIND, ROLE_EXPLANATION, ROLE_KIND_LABEL, MAX_PEER_PROFILES,
+  MODEL_CALL_PURPOSE,
 } from './status';
 export {
   PLAN_PAYLOAD_VERSION, STEP_RECEIPT_VERSION,
@@ -22,17 +23,19 @@ export type {
   RunEventPayloadDto, RunEventTypeDto, RunSnapshotDto,
 } from './plan';
 export {
-  EVIDENCE_BUNDLE_VERSION, LESSON_STATUS,
+  EVIDENCE_BUNDLE_VERSION, LESSON_STATUS, LESSON_REVIEW_DECISION,
   bundleStatementSchema, bundleQuestionSchema, evidenceBundleSchema, evidenceBundleRowSchema,
-  lessonVersionSchema, lessonDraftSchema, lessonPublishSchema, lessonBundleBuildSchema,
+  lessonVersionSchema, lessonDraftSchema, lessonPublishSchema, lessonReviewSchema,
+  lessonWithdrawSchema, lessonReviewRecordSchema, lessonBundleBuildSchema,
 } from './lesson';
 export type {
-  LessonStatus, BundleStatementDto, BundleQuestionDto, EvidenceBundleDto, EvidenceBundleViewDto,
-  LessonVersionDto, LessonDraftInput, LessonPublishInput, LessonBundleBuildInput,
+  LessonStatus, LessonReviewDecision, BundleStatementDto, BundleQuestionDto, EvidenceBundleDto, EvidenceBundleViewDto,
+  LessonVersionDto, LessonDraftInput, LessonPublishInput, LessonReviewInput, LessonWithdrawInput,
+  LessonReviewRecordDto, LessonBundleBuildInput,
 } from './lesson';
 export type {
   SourceStatus, ScopeStatus, RecordScope, ReviewProvenance, MasteryStatus, ReviewDecision, EvidenceUse, QuestionOrigin,
-  ActorType, AttemptKind, RunState, RoleKind, RoleExplanation,
+  ActorType, AttemptKind, RunState, RoleKind, RoleExplanation, ModelCallPurpose,
 } from './status';
 export {
   STUDY_ERROR_CODES, STUDY_ERROR_MESSAGE, PENDING_ONLY_CODES, StudyError, isStudyError,
@@ -47,7 +50,7 @@ export {
 export type {
   RunEventType, RunEventBase, RunStartedEvent, StepStartedEvent, DraftDeltaEvent,
   ProposalCreatedEvent, ReviewRequiredEvent, AnswerRequiredEvent, StepCommittedEvent,
-  RunCompletedEvent, RunFailedEvent, RunCancelledEvent, RunEvent, FrozenVersions,
+  RunCompletedEvent, RunFailedEvent, RunCancelledEvent, ModelCallEvent, RunEvent, FrozenVersions,
 } from './events';
 export {
   IPC, PRELOAD_BRIDGE_NAME, IPC_METHOD_CHANNEL,
@@ -65,8 +68,14 @@ export {
 export type {
   MaterialType,
 } from './fingerprint';
-export { modelConnectionInputSchema, modelTestResultSchema, modelConnectionStatusSchema } from './model-connection';
-export type { ModelConnectionInput, ModelTestResult, ModelConnectionStatus } from './model-connection';
+export {
+  modelConnectionInputSchema, modelTestResultSchema, modelConnectionStatusSchema,
+  modelChatMessageSchema, modelGenerationInputSchema, modelGenerationUsageSchema, modelGenerationResultSchema,
+} from './model-connection';
+export type {
+  ModelConnectionInput, ModelTestResult, ModelConnectionStatus,
+  ModelChatMessage, ModelGenerationInput, ModelGenerationUsageDto, ModelGenerationResultDto,
+} from './model-connection';
 export { apiErrorPayloadSchema, apiEnvelopeSchema, runtimeApiFailureSchema, apiResponses } from './responses';
 export {
   THEME_IDS, ACCENT_PRESETS, STATUS_TOKEN_KEYS,

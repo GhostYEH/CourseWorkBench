@@ -1,17 +1,19 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
+import { LessonDraftGeneration } from '../../../components/lesson-draft-generation';
 import { LessonWorkbench } from '../../../components/lesson-workbench';
 import { bootstrapFromEnvironment, getSession } from '../../../lib/server/service';
 import { readWorkbenchKnowledge, readWorkbenchQuestions } from '../../../lib/server/workbench-data';
-import { toKnowledgePointDto, toLessonVersionDto } from '../../../lib/server/dto';
+import { toKnowledgePointDto, toLessonReviewDto, toLessonVersionDto } from '../../../lib/server/dto';
+import { modelConnection } from '../../../lib/server/model-connection';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * 课程与证据包（LESSON-01）。
+ * 课程与证据包（LESSON-01 / LESSON-02）。
  *
- * 只有已确认计划的准入知识点能进入证据包；课程发布前再次复核，
- * 来源之后失效不会改写已发布课程，而是让课堂入口按准入受阻。
+ * 只有已确认计划的准入知识点能进入证据包；草案须经本地用户审核后才能发布，
+ * 来源之后失效不会改写已发布课程，而是让课堂入口与生成入口按准入受阻。
  */
 export default function LessonsPage(): ReactNode {
   const session = (getSession() ?? bootstrapFromEnvironment())!;
@@ -30,6 +32,10 @@ export default function LessonsPage(): ReactNode {
   }));
   const lessons = session.store.listLessons(projectId).map(toLessonVersionDto);
   const versions = lessons.flatMap((lesson) => session.store.listLessonVersions(lesson.lessonId, projectId).map(toLessonVersionDto));
+  const reviews = versions
+    .map((version) => session.store.getLessonReview(version.lessonId, version.version, projectId))
+    .filter((review): review is NonNullable<typeof review> => review !== null)
+    .map(toLessonReviewDto);
   const confirmedPlan = session.store.getConfirmedPlan(projectId);
 
   return (
@@ -55,8 +61,16 @@ export default function LessonsPage(): ReactNode {
         bundles={bundles}
         lessons={lessons}
         versions={versions}
+        reviews={reviews}
         knowledge={knowledge}
         questions={questions}
+      />
+
+      <LessonDraftGeneration
+        projectId={projectId}
+        generation={session.generation}
+        bundles={bundles}
+        configured={modelConnection.status().configured}
       />
     </div>
   );

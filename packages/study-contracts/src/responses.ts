@@ -7,7 +7,10 @@ import {
   syllabusCoverageSchema, syllabusItemSchema, teachingPreferenceSchema, workbenchStateSchema,
 } from './api';
 import { planPayloadSchema, runSnapshotSchema } from './plan';
-import { evidenceBundleRowSchema, lessonVersionSchema, LESSON_STATUS } from './lesson';
+import { modelGenerationResultSchema } from './model-connection';
+import {
+  evidenceBundleRowSchema, lessonReviewRecordSchema, lessonVersionSchema, LESSON_STATUS,
+} from './lesson';
 
 export const apiErrorPayloadSchema = z.object({
   code: z.string().min(1), message: z.string(), pending: z.boolean(),
@@ -28,7 +31,7 @@ const classroomLinkSchema = z.object({
   lessonId: z.string(), projectId: z.string(), lessonVersion: z.number().int().positive(),
   stageId: z.string().nullable(), stageDocumentVersion: z.number().int().nullable(),
   documentDigest: z.string().nullable(), evidenceBundleId: z.string().nullable(),
-  status: z.enum(LESSON_STATUS), createdAt: z.string(), updatedAt: z.string(),
+  status: z.enum(LESSON_STATUS), statusNote: z.string(), createdAt: z.string(), updatedAt: z.string(),
 }).strict();
 
 const reviewedQuizPayloadSchema = z.object({
@@ -66,6 +69,9 @@ export const apiResponses = {
   lessonBundle: evidenceBundleRowSchema,
   lessonDraft: z.object({ lesson: lessonVersionSchema }).strict(),
   lessonPublish: z.object({ lesson: lessonVersionSchema, link: classroomLinkSchema }).strict(),
+  lessonReview: z.object({ review: lessonReviewRecordSchema }).strict(),
+  lessonWithdraw: z.object({ lesson: lessonVersionSchema, link: classroomLinkSchema }).strict(),
+  modelGenerate: modelGenerationResultSchema,
   classroomDemo: z.object({ stageId: z.string().min(1), lessonId: z.string().min(1) }).strict(),
   classroomAssets: z.object({
     stageId: z.string().min(1), assets: z.array(z.object({

@@ -8,6 +8,7 @@
 import type {
   AttemptDto,
   KnowledgePointDto,
+  LessonReviewRecordDto,
   LessonVersionDto,
   MaterialDto,
   ProposalDto,
@@ -20,6 +21,7 @@ import type {
 import type {
   AttemptRow,
   KnowledgeRow,
+  LessonReviewRow,
   LessonVersionRow,
   MaterialRow,
   ProposalRow,
@@ -33,6 +35,12 @@ export const toLessonVersionDto = (row: LessonVersionRow): LessonVersionDto => (
   lessonId: row.lessonId, version: row.version, title: row.title, status: row.status,
   bundleId: row.bundleId, bundleDigest: row.bundleDigest, statementIds: row.statementIds,
   questionIds: row.questionIds, createdAt: row.createdAt, updatedAt: row.updatedAt,
+});
+
+export const toLessonReviewDto = (row: LessonReviewRow): LessonReviewRecordDto => ({
+  projectId: row.projectId, lessonId: row.lessonId, version: row.version, decision: row.decision,
+  note: row.note, admittedKnowledgeIds: row.admittedKnowledgeIds,
+  blockedKnowledgeIds: row.blockedKnowledgeIds, reviewedAt: row.reviewedAt,
 });
 
 export const toMaterialDto = (row: MaterialRow): MaterialDto => ({

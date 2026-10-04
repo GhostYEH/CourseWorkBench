@@ -20,11 +20,15 @@ export { checkAdmission } from './admission';
 export type { KnowledgeRecord, AdmissionInput } from './admission';
 export { validateSyllabusMapping, computeSyllabusCoverage } from './syllabus';
 export {
-  buildEvidenceBundle, evidenceBundleDigest, statementIdOf, nextLessonVersion, assertLessonPublishable,
+  buildEvidenceBundle, evidenceBundleDigest, statementIdOf, nextLessonVersion,
+  assertLessonPublishable, assertLessonReviewable, assertLessonTeachable,
+  assertLessonKnowledgeAdmitted, lessonReferencedKnowledgeIds,
 } from './lesson';
 export type {
   BundleSegmentRecord, BundleQuestionRecord, EvidenceBundleInput, LessonPublishFacts,
 } from './lesson';
+export { assertModelCallAdmitted, modelCallQuotaRemaining } from './guard';
+export type { ModelCallGuardFacts } from './guard';
 export type {
   SyllabusRequirementRecord, SyllabusItemRecord, SyllabusMappingRecord,
   SyllabusCoveragePointRecord, SyllabusCoverageItemResult, SyllabusCoverageResult,

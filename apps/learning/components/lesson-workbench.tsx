@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation';
 import type {
   EvidenceBundleViewDto,
   KnowledgePointDto,
+  LessonReviewRecordDto,
   LessonVersionDto,
   QuestionListItemDto,
 } from '@sew/study-contracts';
@@ -29,12 +30,35 @@ interface StatementRow {
   include: boolean;
 }
 
+/** 每个课程命令的响应合同：界面只消费校验过的数据。 */
+const LESSON_RESPONSES = {
+  'build-bundle': apiResponses.lessonBundle,
+  draft: apiResponses.lessonDraft,
+  review: apiResponses.lessonReview,
+  publish: apiResponses.lessonPublish,
+  withdraw: apiResponses.lessonWithdraw,
+} as const;
+
+const STATUS_LABEL: Record<LessonVersionDto['status'], string> = {  draft: '草案',
+  published: '已发布',
+  superseded: '已被新版本取代',
+  withdrawn: '已撤回',
+};
+
+const STATUS_TONE: Record<LessonVersionDto['status'], 'verified' | 'pending' | 'info'> = {
+  draft: 'pending',
+  published: 'verified',
+  superseded: 'info',
+  withdrawn: 'info',
+};
+
 export const LessonWorkbench = ({
   projectId,
   generation,
   bundles,
   lessons,
   versions,
+  reviews,
   knowledge,
   questions,
 }: {
@@ -43,6 +67,7 @@ export const LessonWorkbench = ({
   bundles: EvidenceBundleViewDto[];
   lessons: LessonVersionDto[];
   versions: LessonVersionDto[];
+  reviews: LessonReviewRecordDto[];
   knowledge: Array<KnowledgePointDto & { admitted: boolean }>;
   questions: QuestionListItemDto[];
 }): ReactNode => {
@@ -61,18 +86,23 @@ export const LessonWorkbench = ({
   const [questionIds, setQuestionIds] = useState<string[]>([]);
   const [bundleId, setBundleId] = useState(bundles[0]?.bundleId ?? '');
   const [title, setTitle] = useState('');
+  const [reviewNote, setReviewNote] = useState('');
+  const [withdrawReason, setWithdrawReason] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const activeBundle = bundles.find((bundle) => bundle.bundleId === bundleId) ?? null;
 
-  const call = async (body: Record<string, unknown>, successText: string): Promise<void> => {
+  const call = async (
+    body: { action: keyof typeof LESSON_RESPONSES } & Record<string, unknown>,
+    successText: string,
+  ): Promise<void> => {
     setBusy(true);
     setError(null);
     setNote(null);
     try {
-      await apiFetch('/api/study/lessons', (body.action === 'build-bundle' ? apiResponses.lessonBundle : body.action === 'draft' ? apiResponses.lessonDraft : apiResponses.lessonPublish), {
+      await apiFetch('/api/study/lessons', LESSON_RESPONSES[body.action], {
         method: 'POST',
         body: JSON.stringify({ scope: { projectId, generation }, ...body }),
       });
@@ -230,6 +260,10 @@ export const LessonWorkbench = ({
 
       <div className="card">
         <h2>课程版本</h2>
+        <p className="secondary">
+          草案须经本地用户审核通过才能发布；审核与发布都会复核准入，来源已失效的版本不能靠点击放行。
+          撤回只停用课堂入口，历史版本与证据包摘要保持原样。
+        </p>
         {lessons.length === 0 ? (
           <Empty>还没有课程版本。</Empty>
         ) : (
@@ -239,50 +273,118 @@ export const LessonWorkbench = ({
                 <th>课程</th>
                 <th>标题</th>
                 <th>状态</th>
+                <th>本版本审核</th>
                 <th>陈述/题目</th>
                 <th>证据包摘要</th>
                 <th>操作</th>
               </tr>
             </thead>
             <tbody>
-              {lessons.map((lesson) => (
-                <tr key={`${lesson.lessonId}-v${lesson.version}`}>
-                  <td className="mono">{lesson.lessonId}</td>
-                  <td>{lesson.title}</td>
-                  <td>
-                    <span className="pill" data-tone={lesson.status === 'published' ? 'verified' : lesson.status === 'draft' ? 'pending' : 'info'}>
-                      {lesson.status === 'published' ? '已发布' : lesson.status === 'draft' ? '草案' : '已被新版本取代'}
-                    </span>
-                  </td>
-                  <td className="mono">
-                    {lesson.statementIds.length} / {lesson.questionIds.length}
-                  </td>
-                  <td className="mono" title={lesson.bundleDigest}>{lesson.bundleDigest.slice(0, 12)}…</td>
-                  <td>
-                    {lesson.status === 'draft' ? (
-                      <button
-                        type="button"
-                        className="btn"
-                        disabled={busy}
-                        onClick={() =>
-                          void call(
-                            { action: 'publish', lessonId: lesson.lessonId, version: lesson.version },
-                            `课程 ${lesson.lessonId} v${lesson.version} 已发布；旧已发布版本转为已取代。`,
-                          )
-                        }
-                      >
-                        发布 v{lesson.version}
-                      </button>
-                    ) : (
-                      <span className="muted">{versions.filter((item) => item.lessonId === lesson.lessonId).length} 个版本</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {versions.map((lesson) => {
+                const review = reviews.find((item) => item.lessonId === lesson.lessonId && item.version === lesson.version);
+                return (
+                  <tr key={`${lesson.lessonId}-v${lesson.version}`}>
+                    <td className="mono">{lesson.lessonId}</td>
+                    <td>{lesson.title}</td>
+                    <td>
+                      <span className="pill" data-tone={STATUS_TONE[lesson.status]}>
+                        {STATUS_LABEL[lesson.status]}
+                      </span>
+                    </td>
+                    <td>
+                      {review
+                        ? <span className="mono">{review.decision === 'approved' ? '已通过' : '已退回'} · {review.reviewedAt.slice(0, 10)}</span>
+                        : <span className="muted">未审核</span>}
+                    </td>
+                    <td className="mono">
+                      {lesson.statementIds.length} / {lesson.questionIds.length}
+                    </td>
+                    <td className="mono" title={lesson.bundleDigest}>{lesson.bundleDigest.slice(0, 12)}…</td>
+                    <td>
+                      <div className="row-inline">
+                        {lesson.status === 'draft' ? (
+                          <>
+                            <button
+                              type="button"
+                              className="btn"
+                              disabled={busy}
+                              onClick={() => void call(
+                                { action: 'review', lessonId: lesson.lessonId, version: lesson.version, decision: 'approved', note: reviewNote },
+                                `课程 ${lesson.lessonId} v${lesson.version} 审核已通过（仅对本版本有效）。`,
+                              )}
+                            >
+                              审核通过
+                            </button>
+                            <button
+                              type="button"
+                              className="btn"
+                              disabled={busy}
+                              onClick={() => void call(
+                                { action: 'review', lessonId: lesson.lessonId, version: lesson.version, decision: 'rejected', note: reviewNote },
+                                `课程 ${lesson.lessonId} v${lesson.version} 已退回。`,
+                              )}
+                            >
+                              退回
+                            </button>
+                            {review?.decision === 'approved' ? (
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                disabled={busy}
+                                onClick={() => void call(
+                                  { action: 'publish', lessonId: lesson.lessonId, version: lesson.version },
+                                  `课程 ${lesson.lessonId} v${lesson.version} 已发布；旧已发布版本转为已被新版本取代。`,
+                                )}
+                              >
+                                发布 v{lesson.version}
+                              </button>
+                            ) : (
+                              <span className="muted">需先审核通过才能发布</span>
+                            )}
+                          </>
+                        ) : null}
+                        {lesson.status === 'published' ? (
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={busy}
+                            onClick={() => void call(
+                              { action: 'withdraw', lessonId: lesson.lessonId, reason: withdrawReason },
+                              `课程 ${lesson.lessonId} 已撤回，课堂入口随即阻断。`,
+                            )}
+                          >
+                            撤回
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
-        <p className="hint">发布后修改课程会得到新的草案版本；已发布版本与其证据包摘要保持不变。</p>
+        <div className="row-inline" style={{ marginTop: 'var(--sew-space-3)' }}>
+          <div className="field" style={{ flex: '1 1 260px' }}>
+            <label htmlFor="lesson-review-note">审核备注</label>
+            <input
+              id="lesson-review-note"
+              value={reviewNote}
+              onChange={(event) => setReviewNote(event.target.value)}
+              placeholder="例如：陈述与教材第 2 段一致"
+            />
+          </div>
+          <div className="field" style={{ flex: '1 1 260px' }}>
+            <label htmlFor="lesson-withdraw-reason">撤回原因</label>
+            <input
+              id="lesson-withdraw-reason"
+              value={withdrawReason}
+              onChange={(event) => setWithdrawReason(event.target.value)}
+              placeholder="例如：来源版本待更新"
+            />
+          </div>
+        </div>
+        <p className="hint">审核备注与撤回原因写入审核记录与课堂映射说明，撤回后仍可核对当时依据。</p>
       </div>
       {note ? <Notice tone="verified">{note}</Notice> : null}
       {error ? <Notice tone="error">{error}</Notice> : null}

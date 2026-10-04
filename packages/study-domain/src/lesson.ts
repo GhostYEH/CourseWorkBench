@@ -12,11 +12,11 @@ import type {
   BundleStatementDto,
   EvidenceBundleDto,
   EvidenceRefInput,
+  LessonStatus,
   QuestionOrigin,
 } from '@sew/study-contracts';
 import { canonicalJson } from './classroom';
 import { fingerprintOf } from './normalize';
-
 export interface BundleSegmentRecord {
   materialId: string;
   revision: number;
@@ -166,12 +166,57 @@ export const buildEvidenceBundle = (input: EvidenceBundleInput): { bundle: Evide
 export const nextLessonVersion = (existingVersions: readonly number[]): number =>
   existingVersions.length === 0 ? 1 : Math.max(...existingVersions) + 1;
 
-/** 发布前的准入复核输入：任一陈述或题目引用失效都不能发布。 */
+/** 发布前的复核输入：未审核或任一引用失效都不能发布。 */
 export interface LessonPublishFacts {
-  status: 'draft' | 'published' | 'superseded';
-  statementKnowledgeIds: string[];
-  questionKnowledgeIds: string[];
+  status: LessonStatus;
+  /** 该课程版本是否已有本地用户的 approved 审核记录。缺失记录时模型输出只是草案。 */
+  reviewApproved: boolean;
+  referencedKnowledgeIds: string[];
 }
+
+/**
+ * 课程版本引用到的知识点清单。
+ *
+ * 陈述必须能在冻结的证据包里定位；定位不到就是「包外陈述」，不能靠后续审核补进来。
+ */
+export const lessonReferencedKnowledgeIds = (
+  lesson: { statementIds: string[]; questionIds: string[] },
+  deps: {
+    statementKnowledgeOf: (statementId: string) => string | null;
+    questionKnowledgeOf: (questionId: string) => string[];
+  },
+): string[] => {
+  const statementKnowledge = lesson.statementIds.map((statementId) => {
+    const knowledgeId = deps.statementKnowledgeOf(statementId);
+    if (knowledgeId === null) {
+      throw new StudyError('SOURCE_MISSING', { statementId, reason: 'statement_not_in_bundle' });
+    }
+    return knowledgeId;
+  });
+  return [...new Set([
+    ...statementKnowledge,
+    ...lesson.questionIds.flatMap((questionId) => deps.questionKnowledgeOf(questionId)),
+  ])];
+};
+
+/**
+ * 来源准入复验。审核、发布、上课与模型调用四个入口共用这一份判定，
+ * 避免出现「某个入口放行、另一个入口阻断」的口径分裂。
+ */
+export const assertLessonKnowledgeAdmitted = (
+  referencedKnowledgeIds: readonly string[],
+  admittedKnowledgeIds: ReadonlySet<string>,
+): void => {
+  const blocked = referencedKnowledgeIds.filter((knowledgeId) => !admittedKnowledgeIds.has(knowledgeId));
+  if (blocked.length > 0) throw new StudyError('KNOWLEDGE_INVALIDATED', { knowledgeIds: blocked });
+};
+
+/** 只有草案版本可审核：已发布、已被取代或已撤回的版本不能再改判。 */
+export const assertLessonReviewable = (status: LessonStatus): void => {
+  if (status !== 'draft') {
+    throw new StudyError('STEP_ALREADY_COMMITTED', { status, reason: 'only_draft_reviewable' });
+  }
+};
 
 export const assertLessonPublishable = (
   facts: LessonPublishFacts,
@@ -180,9 +225,26 @@ export const assertLessonPublishable = (
   if (facts.status !== 'draft') {
     throw new StudyError('STEP_ALREADY_COMMITTED', { status: facts.status });
   }
-  const referenced = [...new Set([...facts.statementKnowledgeIds, ...facts.questionKnowledgeIds])];
-  const blocked = referenced.filter((id) => !admittedKnowledgeIds.has(id));
-  if (blocked.length > 0) {
-    throw new StudyError('KNOWLEDGE_INVALIDATED', { knowledgeIds: blocked });
+  if (!facts.reviewApproved) {
+    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { reason: 'lesson_version_not_approved' });
   }
+  assertLessonKnowledgeAdmitted(facts.referencedKnowledgeIds, admittedKnowledgeIds);
+};
+
+/**
+ * 课堂入口的复核：当前映射必须指向「已发布 + 本版本审核通过 + 来源仍准入」的课程版本。
+ * 撤回与来源失效都会在这里阻断，而不是等到页面渲染时才发现。
+ */
+export const assertLessonTeachable = (
+  facts: { lessonStatus: LessonStatus | null; reviewApproved: boolean },
+  referencedKnowledgeIds: readonly string[],
+  admittedKnowledgeIds: ReadonlySet<string>,
+): void => {
+  if (facts.lessonStatus !== 'published') {
+    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { reason: 'lesson_not_published', status: facts.lessonStatus });
+  }
+  if (!facts.reviewApproved) {
+    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { reason: 'review_missing' });
+  }
+  assertLessonKnowledgeAdmitted(referencedKnowledgeIds, admittedKnowledgeIds);
 };

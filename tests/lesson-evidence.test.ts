@@ -55,6 +55,16 @@ describe('证据包与课程版本', () => {
   const freeze = (text = '增函数的定义：区间内任取 x1 < x2 都有 f(x1) < f(x2)') =>
     store.buildLessonBundle(projectId, [{ knowledgeId, text, conditions: '同一区间 D 内' }], []);
 
+  /** 草案须经本地用户审核通过才能发布；这里只写机械可核对的夹具结论。 */
+  const approve = (lessonId: string, version: number): void => {
+    store.reviewLesson({ projectId, lessonId, version, decision: 'approved', note: '按已批准原文核对' });
+  };
+
+  const publish = (lessonId: string, version: number) => {
+    approve(lessonId, version);
+    return store.publishLesson({ projectId, lessonId, version });
+  };
+
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'sew-lesson-'));
     ensureProjectLayout(root);
@@ -203,12 +213,12 @@ describe('证据包与课程版本', () => {
     });
     expect(revised.version).toBe(2);
 
-    const published = store.publishLesson({ projectId, lessonId: created.lessonId, version: 1 });
+    const published = publish(created.lessonId, 1);
     expect(published.status).toBe('published');
     const link = store.getLessonClassroomLink(created.lessonId, projectId);
     expect(link).toMatchObject({ lessonVersion: 1, evidenceBundleId: bundle.bundleId, stageId: null, status: 'published' });
 
-    const second = store.publishLesson({ projectId, lessonId: created.lessonId, version: 2 });
+    const second = publish(created.lessonId, 2);
     expect(second.status).toBe('published');
     const versions = store.listLessonVersions(created.lessonId, projectId);
     expect(versions.map((row) => [row.version, row.status])).toEqual([[2, 'published'], [1, 'superseded']]);
@@ -229,7 +239,7 @@ describe('证据包与课程版本', () => {
       statementIds: bundle.bundle.statements.map((statement) => statement.statementId),
       questionIds: [],
     });
-    store.publishLesson({ projectId, lessonId: lesson.lessonId, version: lesson.version });
+    publish(lesson.lessonId, lesson.version);
 
     // 同名材料重新导入产生新版本：已发布课程与证据包仍指向 r1 及其摘要。
     store.importMaterial({
@@ -244,7 +254,7 @@ describe('证据包与课程版本', () => {
     expect(stillFrozen?.evidenceBundleId).toBe(bundle.bundleId);
     expect(store.listEvidenceBundles(projectId)[0]?.bundle.segmentDigests[0]?.revision).toBe(1);
 
-    // 新草案引用同一知识点时，准入复验会因来源版本变化而阻断发布。
+    // 新草案引用同一知识点时，审核入口就按准入阻断，不等到发布才发现。
     const fresh = store.createLessonDraft({
       projectId,
       lessonId: lesson.lessonId,
@@ -254,7 +264,17 @@ describe('证据包与课程版本', () => {
       questionIds: [],
     });
     expectCode(
+      () => store.reviewLesson({ projectId, lessonId: fresh.lessonId, version: fresh.version, decision: 'approved', note: '' }),
+      'KNOWLEDGE_INVALIDATED',
+    );
+    expectCode(
       () => store.publishLesson({ projectId, lessonId: fresh.lessonId, version: fresh.version }),
+      'CLASSROOM_LESSON_NOT_REVIEWED',
+      'lesson_version_not_approved',
+    );
+    // 课堂入口同样阻断：已发布版本不改写，但它依赖的来源已变化，不能继续按原样上课。
+    expectCode(
+      () => store.assertLessonClassroomReady(lesson.lessonId, projectId),
       'KNOWLEDGE_INVALIDATED',
     );
   });

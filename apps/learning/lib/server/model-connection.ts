@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import {
-  modelConnectionInputSchema, type ModelConnectionInput,
-  type ModelConnectionStatus, type ModelTestResult,
+  modelChatMessageSchema,
+  modelConnectionInputSchema,
+  type ModelChatMessage,
+  type ModelConnectionInput,
+  type ModelConnectionStatus,
+  type ModelTestResult,
 } from '@sew/study-contracts';
 
 const responseSchema = z.object({
@@ -9,6 +13,19 @@ const responseSchema = z.object({
   choices: z.array(z.object({ message: z.object({ content: z.string().max(100_000).nullable() }) })).min(1),
   usage: z.object({ total_tokens: z.number().int().nonnegative() }).optional(),
 });
+
+/**
+ * 一次真实生成尝试的结果。失败也带 elapsedMs 与 0 token，调用方据此写台账：
+ * 预算必须反映实际发生的尝试，而不是只反映成功的尝试。
+ */
+export interface ModelGenerateOutcome {
+  ok: boolean;
+  message: string;
+  text: string | null;
+  totalTokens: number;
+  requestedModel: string | null;
+  elapsedMs: number;
+}
 
 /** Count actual bytes before JSON parsing; never reflect untrusted bodies. */
 export const readModelJson = async (response: Response | Request, limit = 128 * 1024): Promise<unknown> => {
@@ -36,7 +53,11 @@ export const readModelJson = async (response: Response | Request, limit = 128 * 
  */
 export const createModelConnectionRuntime = ({
   fetcher = fetch, now = Date.now, deadlineMs = 40_000,
-}: { fetcher?: typeof fetch; now?: () => number; deadlineMs?: number } = {}) => {
+  generationDeadlineMs = 120_000, generationMaxCallsPerMinute = 6, generationMaxCallsPerHour = 30,
+}: {
+  fetcher?: typeof fetch; now?: () => number; deadlineMs?: number;
+  generationDeadlineMs?: number; generationMaxCallsPerMinute?: number; generationMaxCallsPerHour?: number;
+} = {}) => {
   let config: ModelConnectionInput | null = null;
   let persisted = false;
   let revision = 0;
@@ -44,6 +65,8 @@ export const createModelConnectionRuntime = ({
   let active: AbortController | null = null;
   let stopped = false;
   const calls: number[] = [];
+  /** 生成有独立的频次上限：连接诊断不应吃掉草案生成的次数，反之亦然。 */
+  const generationCalls: number[] = [];
   const status = (): ModelConnectionStatus => ({
     configured: config !== null, persisted,
     ...(config ? { provider: config.provider, baseUrl: config.baseUrl, model: config.model } : {}),
@@ -119,7 +142,92 @@ export const createModelConnectionRuntime = ({
     lastTest = result;
     return result;
   };
-  return { configure, status, test, cancel };
+  /**
+   * 真实生成调用。它只负责凭据、期限、取消、频次与响应校验，
+   * 不判断「能不能据此产出教学内容」——来源、run、审核与预算由 model-call 的 guard 决定，
+   * guard 不通过时这里一次请求都不会发出。
+   */
+  const generate = async (
+    messages: ModelChatMessage[],
+    options: { maxTokens?: number; signal?: AbortSignal } = {},
+  ): Promise<ModelGenerateOutcome> => {
+    const started = now();
+    const failed = (message: string): ModelGenerateOutcome => ({
+      ok: false, message, text: null, totalTokens: 0, requestedModel: null,
+      elapsedMs: Math.max(0, now() - started),
+    });
+    if (stopped) return failed('模型服务正在退出，不能开始新的生成');
+    if (!config) return failed('尚未配置模型连接');
+    if (active) return failed('已有模型调用正在执行，请等待结束');
+    if (options.signal?.aborted) return failed('生成已取消');
+    const checked = modelChatMessageSchema.array().min(1).max(8).safeParse(messages);
+    if (!checked.success) return failed('生成请求的消息不合法，已拒绝发出');
+
+    while (generationCalls.length && generationCalls[0]! <= started - 3_600_000) generationCalls.shift();
+    if (generationCalls.length >= generationMaxCallsPerHour
+      || generationCalls.filter((at) => at > started - 60_000).length >= generationMaxCallsPerMinute) {
+      return failed('生成调用达到频次限额，请稍后重试');
+    }
+    generationCalls.push(started);
+
+    const input = config;
+    const epoch = revision;
+    const controller = new AbortController();
+    active = controller;
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, generationDeadlineMs);
+    const abort = () => controller.abort();
+    options.signal?.addEventListener('abort', abort, { once: true });
+    let outcome: ModelGenerateOutcome;
+    try {
+      const response = await fetcher(`${input.baseUrl}/chat/completions`, {
+        method: 'POST', redirect: 'error', signal: controller.signal,
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${input.apiKey}` },
+        body: JSON.stringify({
+          model: input.model,
+          messages: checked.data,
+          max_tokens: options.maxTokens ?? 2048,
+          stream: false,
+        }),
+      });
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined);
+        outcome = failed(`模型服务返回 HTTP ${response.status}，请核对密钥、模型和服务额度`);
+      } else {
+        const parsed = responseSchema.safeParse(await readModelJson(response));
+        const content = parsed.success ? parsed.data.choices[0]?.message.content?.trim() : undefined;
+        if (!parsed.success || !content) {
+          outcome = failed('模型服务未返回有效文本，可能是推理额度不足或响应格式不兼容');
+        } else {
+          const returnedModel = parsed.data.model;
+          outcome = {
+            ok: true,
+            message: '模型已返回草案文本，仍需人工审核后才能用于教学',
+            text: content.slice(0, 20_000),
+            totalTokens: parsed.data.usage?.total_tokens ?? 0,
+            requestedModel: returnedModel && /^[\w.\-:/]{1,200}$/.test(returnedModel) && !returnedModel.includes(input.apiKey)
+              ? returnedModel
+              : input.model,
+            elapsedMs: Math.max(0, now() - started),
+          };
+        }
+      }
+    } catch {
+      outcome = failed(timedOut
+        ? '模型生成超时，请检查服务后手动重试'
+        : controller.signal.aborted ? '生成已取消' : '模型连接失败，请检查网络、地址和响应格式');
+    } finally {
+      clearTimeout(timer);
+      options.signal?.removeEventListener('abort', abort);
+      if (active === controller) active = null;
+    }
+    if (revision !== epoch || options.signal?.aborted || (controller.signal.aborted && !timedOut)) {
+      return failed('生成已取消，配置已变化或应用正在退出');
+    }
+    return outcome;
+  };
+
+  return { configure, status, test, generate, cancel };
 };
 
 const shared = globalThis as typeof globalThis & { __sewModelConnection?: ReturnType<typeof createModelConnectionRuntime> };

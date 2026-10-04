@@ -6,7 +6,7 @@
  */
 
 import type { FrozenVersionsDto } from './plan';
-import type { ActorType, RunState } from './status';
+import type { ActorType, ModelCallPurpose, RunState } from './status';
 import type { ProjectGeneration, ProjectId, RunId, StepId } from './ids';
 
 export { RUN_EVENT_TYPES } from './status';
@@ -82,6 +82,18 @@ export interface RunCancelledEvent extends RunEventBase {
   reason: string;
 }
 
+/**
+ * 模型调用台账事件。失败也记一条，预算才能反映真实消耗；
+ * 事件里不保存提示词与响应正文，只保存用途、结果与实际 token 数。
+ */
+export interface ModelCallEvent extends RunEventBase {
+  type: 'model_call';
+  purpose: ModelCallPurpose;
+  ok: boolean;
+  totalTokens: number;
+  message: string;
+}
+
 export type RunEvent =
   | RunStartedEvent
   | StepStartedEvent
@@ -92,7 +104,8 @@ export type RunEvent =
   | StepCommittedEvent
   | RunCompletedEvent
   | RunFailedEvent
-  | RunCancelledEvent;
+  | RunCancelledEvent
+  | ModelCallEvent;
 
 /**
  * 开始 run 时冻结的版本集合，保证恢复后仍是同一套事实。

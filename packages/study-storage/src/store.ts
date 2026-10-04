@@ -16,6 +16,7 @@ import {
   newId,
   type AdmissionResultDto,
   type FrozenVersionsDto,
+  type LessonReviewDecision,
   type MasteryStatus,
   type PlanPayloadDto,
   type QuestionOrigin,
@@ -31,6 +32,9 @@ import {
   decideAttempt,
   buildEvidenceBundle,
   buildStepKey,
+  assertLessonReviewable,
+  assertLessonTeachable,
+  lessonReferencedKnowledgeIds,
   resolveQuestionOrigin,
   type MaterialChangeImpact,
   type OriginRecord,
@@ -73,6 +77,7 @@ import type {
   EvidenceBundleRow,
   ImportMaterialInput,
   KnowledgeRow,
+  LessonReviewRow,
   LessonVersionRow,
   MaterialRow,
   ProjectRow,
@@ -100,7 +105,7 @@ export { ClassroomAssetReferencedError } from './repositories/classroom-assets';
 export type { CreateSyllabusItemInput, SyllabusItemRow } from './repositories/syllabus';
 export type { PlanVersionRow, RoleProfileRow } from './repositories/types';
 export type {
-  ClassroomLinkRow, EvidenceBundleRow, LessonStatus, LessonVersionRow,
+  ClassroomLinkRow, EvidenceBundleRow, LessonReviewRow, LessonStatus, LessonVersionRow,
 } from './repositories/types';
 export type {
   CreateLessonDraftInput, PublishLessonInput,
@@ -720,19 +725,47 @@ export class StudyStore {
   }
 
   /**
+   * 当前知识清单摘要。任何一条知识点的新增、审核或失效都会改变它，
+   * 因此 run 冻结值与这里的返回值不一致，就说明冻结之后来源发生过变化。
+   */
+  knowledgeTableDigest(): string {
+    const points = this.knowledge
+      .listKnowledge('formal')
+      .map((point) => `${point.knowledgeId}:${point.revision}:${point.sourceStatus}`)
+      .sort();
+    return createHash('sha256').update(points.join('|'), 'utf8').digest('hex');
+  }
+
+  /** 本 run 已累计的模型调用次数与 token；失败尝试同样计入预算。 */
+  modelCallUsage(runId: string): { calls: number; tokens: number } {
+    let calls = 0;
+    let tokens = 0;
+    for (const event of this.runs.listRunEvents(runId)) {
+      if (event.payload.type === 'model_call') {
+        calls += 1;
+        tokens += event.payload.totalTokens;
+      }
+    }
+    return { calls, tokens };
+  }
+
+  /** 按 run 内单调序号追加事件。序号来自既有事件，重启后仍延续同一台账。 */
+  appendNextRunEvent(runId: string, payload: RunEventPayloadDto): RunEventRow {
+    const events = this.runs.listRunEvents(runId);
+    const next = (events.at(-1)?.seq ?? 0) + 1;
+    return this.runs.appendRunEvent(runId, next, payload);
+  }
+
+  /**
    * 冻结当前事实集合。
    *
    * 知识点用摘要表示：任何一条的新增、审核或失效都会改变它；模型配置尚未接入时
    * `modelProfileId` 保持 null，不用假身份填充分母。
    */
   private freezeRunVersions(projectId: string, planVersion: number): FrozenVersionsDto {
-    const points = this.knowledge
-      .listKnowledge('formal')
-      .map((point) => `${point.knowledgeId}:${point.revision}:${point.sourceStatus}`)
-      .sort();
     const teaching = this.preferences.readTeachingPreference<Record<string, unknown>>(projectId);
     return {
-      knowledgeTableDigest: createHash('sha256').update(points.join('|'), 'utf8').digest('hex'),
+      knowledgeTableDigest: this.knowledgeTableDigest(),
       materialRevisions: this.materials.currentRevisions('formal'),
       planVersion,
       lessonVersion: null,
@@ -878,25 +911,123 @@ export class StudyStore {
     return this.lessons.getLink(lessonId, projectId);
   }
 
-  /** 发布课程：陈述与题目引用的知识点必须仍在准入范围内。 */
-  publishLesson(input: PublishLessonInput): LessonVersionRow {
-    const lesson = this.lessons.getVersion(input.lessonId, input.version, input.projectId);
-    if (!lesson) throw new StudyError('NOT_FOUND', { lessonId: input.lessonId, version: input.version });
-    const bundle = this.lessons.getBundle(lesson.bundleId, input.projectId);
-    if (!bundle) throw new StudyError('INTERNAL', { bundleId: lesson.bundleId });
+  getEvidenceBundle(projectId: string, bundleId: string): EvidenceBundleRow | null {
+    return this.lessons.getBundle(bundleId, projectId);
+  }
 
+  /**
+   * 课程版本引用到的知识点及其当前准入结论。
+   *
+   * 审核、发布、上课与模型调用四个入口共用这一份判定，避免出现「某处放行、某处阻断」
+   * 的口径分裂。陈述在证据包里定位不到时按缺来源处理，不当作空引用放行。
+   */
+  private lessonAdmission(projectId: string, lesson: LessonVersionRow): {
+    referenced: string[];
+    admitted: Set<string>;
+    blocked: string[];
+    statementKnowledgeOf: (statementId: string) => string | null;
+    questionKnowledgeOf: (questionId: string) => string[];
+  } {
+    const bundle = this.lessons.getBundle(lesson.bundleId, projectId);
+    if (!bundle) throw new StudyError('INTERNAL', { bundleId: lesson.bundleId });
     const statementKnowledgeOf = (statementId: string): string | null =>
       bundle.bundle.statements.find((statement) => statement.statementId === statementId)?.knowledgeId ?? null;
     const questionKnowledgeOf = (questionId: string): string[] =>
       bundle.bundle.questions.find((question) => question.questionId === questionId)?.knowledgeIds ?? [];
-    const referenced = [
-      ...new Set([
-        ...lesson.statementIds.flatMap((id) => [statementKnowledgeOf(id)]).filter((id): id is string => id !== null),
-        ...lesson.questionIds.flatMap((id) => questionKnowledgeOf(id)),
-      ]),
-    ];
-    const admitted = new Set(this.checkAdmission(referenced, 'formal').admitted);
-    return this.lessons.publish(input, { admittedKnowledgeIds: admitted, statementKnowledgeOf, questionKnowledgeOf });
+    const referenced = lessonReferencedKnowledgeIds(lesson, { statementKnowledgeOf, questionKnowledgeOf });
+    const admission = this.checkAdmission(referenced, 'formal');
+    return {
+      referenced,
+      admitted: new Set(admission.admitted),
+      blocked: admission.blocked.map((item) => item.knowledgeId),
+      statementKnowledgeOf,
+      questionKnowledgeOf,
+    };
+  }
+
+  /**
+   * 记录课程版本的人工审核结论（LESSON-02 的审核入口）。
+   *
+   * 批准前先复核准入：来源已失效的版本不能靠一次点击放行，界面拿到的是被阻断的知识点清单。
+   * 审核结论只绑定该版本，改表述产生新草案版本后必须重新审核。
+   */
+  reviewLesson(input: {
+    projectId: string;
+    lessonId: string;
+    version: number;
+    decision: LessonReviewDecision;
+    note: string;
+  }): LessonReviewRow {
+    const lesson = this.lessons.getVersion(input.lessonId, input.version, input.projectId);
+    if (!lesson) throw new StudyError('NOT_FOUND', { lessonId: input.lessonId, version: input.version });
+    assertLessonReviewable(lesson.status);
+    const facts = this.lessonAdmission(input.projectId, lesson);
+    if (input.decision === 'approved' && facts.blocked.length > 0) {
+      throw new StudyError('KNOWLEDGE_INVALIDATED', { knowledgeIds: facts.blocked });
+    }
+    return this.lessons.recordReview({
+      projectId: input.projectId,
+      lessonId: input.lessonId,
+      version: input.version,
+      decision: input.decision,
+      note: input.note,
+      admittedKnowledgeIds: facts.referenced.filter((knowledgeId) => facts.admitted.has(knowledgeId)),
+      blockedKnowledgeIds: facts.blocked,
+    });
+  }
+
+  getLessonReview(lessonId: string, version: number, projectId: string): LessonReviewRow | null {
+    return this.lessons.getReview(lessonId, version, projectId);
+  }
+
+  /** 发布课程：本版本必须已有人工审核通过记录，且引用来源仍准入。 */
+  publishLesson(input: PublishLessonInput): LessonVersionRow {
+    const lesson = this.lessons.getVersion(input.lessonId, input.version, input.projectId);
+    if (!lesson) throw new StudyError('NOT_FOUND', { lessonId: input.lessonId, version: input.version });
+    const facts = this.lessonAdmission(input.projectId, lesson);
+    const review = this.lessons.getReview(input.lessonId, input.version, input.projectId);
+    return this.lessons.publish(input, {
+      admittedKnowledgeIds: facts.admitted,
+      reviewApproved: review?.decision === 'approved',
+      statementKnowledgeOf: facts.statementKnowledgeOf,
+      questionKnowledgeOf: facts.questionKnowledgeOf,
+    });
+  }
+
+  /** 撤回当前已发布的版本：课堂入口随即受阻，历史版本与证据包保持原样。 */
+  withdrawLesson(input: { projectId: string; lessonId: string; reason: string }): LessonVersionRow {
+    const published = this.lessons.publishedVersion(input.lessonId, input.projectId);
+    if (!published) throw new StudyError('INVALID_ARGUMENT', { reason: 'lesson_not_published' });
+    return this.lessons.withdraw({ ...input, version: published.version });
+  }
+
+  /**
+   * 上课入口的统一复核（LESSON-02）。
+   *
+   * 返回当前可上的课程版本与课堂映射；未发布、未审核或来源失效都抛领域错误。
+   * 页面不能自行判断「这节课还能上」，模型的教学调用也必须先过这道复核。
+   */
+  assertLessonClassroomReady(lessonId: string, projectId: string): {
+    lesson: LessonVersionRow;
+    link: ClassroomLinkRow;
+    referencedKnowledgeIds: string[];
+  } {
+    const link = this.lessons.getLink(lessonId, projectId);
+    if (!link || link.status !== 'published') {
+      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+        reason: 'no_published_link', status: link?.status ?? null, note: link?.statusNote ?? '',
+      });
+    }
+    const lesson = this.lessons.getVersion(lessonId, link.lessonVersion, projectId);
+    if (!lesson) throw new StudyError('INTERNAL', { lessonId, version: link.lessonVersion });
+    const facts = this.lessonAdmission(projectId, lesson);
+    const review = this.lessons.getReview(lessonId, lesson.version, projectId);
+    assertLessonTeachable(
+      { lessonStatus: lesson.status, reviewApproved: review?.decision === 'approved' },
+      facts.referenced,
+      facts.admitted,
+    );
+    return { lesson, link, referencedKnowledgeIds: facts.referenced };
   }
 
   // ————————————————————————— 角色档案 —————————————————————————
