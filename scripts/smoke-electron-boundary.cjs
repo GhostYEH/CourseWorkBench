@@ -423,6 +423,103 @@ const run = async () => {
   assert(rendererRequests.every((entry) => !entry.controlInjected), 'a renderer request received the control credential');
   cover('same-origin iframe got no renderer credential; no control credential anywhere');
 
+  // ——— 工作台项目树：层级结构、ARIA 语义与键盘导航 ———
+  const readFocusedNode = () => window.webContents.executeJavaScript(`(() => {
+    const active = document.activeElement;
+    const item = active instanceof Element ? active.closest('[role="treeitem"]') : null;
+    if (!item) return { onTreeItem: false };
+    return {
+      onTreeItem: true,
+      level: Number(item.getAttribute('aria-level')),
+      expanded: item.getAttribute('aria-expanded'),
+      selected: item.getAttribute('aria-selected'),
+      tabIndex: item.tabIndex,
+      text: item.textContent.slice(0, 24),
+    };
+  })()`);
+
+  const pressKey = async (key) => {
+    // 隐藏窗口拿不到原生键盘焦点，这里在真实渲染器内派发可冒泡的 KeyboardEvent，
+    // 验证的仍是 React 事件处理器与随后的 DOM 焦点转移，而不是模型函数本身。
+    await window.webContents.executeJavaScript(`(() => {
+      const target = document.activeElement;
+      if (!target) return false;
+      target.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true, cancelable: true }));
+      target.dispatchEvent(new KeyboardEvent('keyup', { key: ${JSON.stringify(key)}, bubbles: true, cancelable: true }));
+      return true;
+    })()`);
+    await new Promise((resolveWait) => setTimeout(resolveWait, 150));
+  };
+
+  const treeStructure = await window.webContents.executeJavaScript(`(() => {
+    const tree = document.querySelector('ul[role="tree"][aria-label="项目树"]');
+    if (!tree) return { found: false };
+    const items = [...tree.querySelectorAll('[role="treeitem"]')];
+    return {
+      found: true,
+      levels: [...new Set(items.map((item) => Number(item.getAttribute('aria-level'))))].sort((a, b) => a - b),
+      itemCount: items.length,
+      groupCount: tree.querySelectorAll('[role="group"]').length,
+      rovingTabStops: items.filter((item) => item.tabIndex === 0).length,
+      selectedCount: items.filter((item) => item.getAttribute('aria-selected') === 'true').length,
+      expandedCount: items.filter((item) => item.getAttribute('aria-expanded') === 'true').length,
+      multiSelect: tree.getAttribute('aria-multiselectable'),
+      leafHrefs: [...tree.querySelectorAll('a.tree-leaf')].map((leaf) => leaf.getAttribute('href') || ''),
+      leafTabIndex: [...tree.querySelectorAll('a.tree-leaf')].every((leaf) => leaf.tabIndex === -1),
+      answerLeak: [...tree.querySelectorAll('a.tree-leaf')].some((leaf) => leaf.textContent.includes('答案')),
+    };
+  })()`);
+  assert(treeStructure.found, '工作台没有渲染出 role=tree 的项目树');
+  assert(String(treeStructure.levels) === '1,2,3', `项目树缺少三层层级：${JSON.stringify(treeStructure.levels)}`);
+  assert(treeStructure.groupCount >= 1, '项目树缺少 role=group 嵌套');
+  assert(treeStructure.rovingTabStops === 1, `项目树里可被 Tab 直接到达的节点应为 1 个，实际 ${treeStructure.rovingTabStops}`);
+  assert(treeStructure.selectedCount === 1, '项目树的 aria-selected 不唯一');
+  assert(treeStructure.expandedCount >= 1, '项目树默认没有展开任何分支');
+  assert(treeStructure.multiSelect === 'false', '项目树错误地声明了多选语义');
+  assert(treeStructure.leafTabIndex, '项目树叶子的链接与树节点形成双重 Tab 序');
+  assert(treeStructure.leafHrefs.length > 0 && treeStructure.leafHrefs.every((href) => href.startsWith('/workbench/')),
+    `项目树条目没有指向真实页面：${JSON.stringify(treeStructure.leafHrefs.slice(0, 3))}`);
+  assert(!treeStructure.answerLeak, '项目树把答案文本当作标签暴露');
+  cover('workbench project tree: 3 levels, role=tree/treeitem/group, single roving tab stop, no answer text');
+
+  await window.webContents.executeJavaScript(`document.querySelector('ul[role="tree"] [role="treeitem"]').focus()`);
+  const rootFocus = await readFocusedNode();
+  assert(rootFocus.onTreeItem && rootFocus.level === 1, '项目树根节点无法获得焦点');
+  await pressKey('ArrowDown');
+  const afterDown = await readFocusedNode();
+  assert(afterDown.onTreeItem && afterDown.level === 2, `下箭头没有从根进入分组：${JSON.stringify(afterDown)}`);
+  await pressKey('ArrowRight');
+  const afterRight = await readFocusedNode();
+  assert(afterRight.onTreeItem && afterRight.level === 3, `右箭头没有进入分组子节点：${JSON.stringify(afterRight)}`);
+  await pressKey('ArrowLeft');
+  const afterLeft = await readFocusedNode();
+  assert(afterLeft.onTreeItem && afterLeft.level === 2, `左箭头没有回到父分组：${JSON.stringify(afterLeft)}`);
+  const expandedBefore = afterLeft.expanded;
+  await pressKey('Enter');
+  const afterEnter = await readFocusedNode();
+  assert(afterEnter.expanded !== expandedBefore, `Enter 没有切换分组展开状态：${expandedBefore} → ${afterEnter.expanded}`);
+  await pressKey('Enter');
+  const afterEnterBack = await readFocusedNode();
+  assert(afterEnterBack.expanded === expandedBefore, 'Enter 再次切换没有恢复原展开状态');
+  await pressKey('End');
+  const afterEnd = await readFocusedNode();
+  assert(afterEnd.onTreeItem, 'End 键之后焦点离开了树');
+  cover('workbench tree keyboard model: arrows move focus and toggle expansion, Enter toggles branch');
+
+  const tabState = await window.webContents.executeJavaScript(`(() => {
+    const tabs = [...document.querySelectorAll('nav.tabs a.tab')];
+    return {
+      count: tabs.length,
+      current: tabs.filter((tab) => tab.getAttribute('data-current') === 'true').length,
+      ariaCurrent: tabs.filter((tab) => tab.getAttribute('aria-current') === 'page').length,
+      fakeTablist: Boolean(document.querySelector('[role="tablist"]')),
+    };
+  })()`);
+  assert(tabState.count >= 2 && tabState.current === 1 && tabState.ariaCurrent === 1,
+    `分区导航没有恰好一个当前项：${JSON.stringify(tabState)}`);
+  assert(!tabState.fakeTablist, '分区导航仍声明为 tablist，但它并不控制面板');
+  cover('workbench section navigation marks exactly one current page without a fake tablist');
+
   const closeButton = await window.webContents.executeJavaScript(`(() => {
     const button = [...document.querySelectorAll('button')].find((item) => item.textContent.includes('关闭项目'));
     if (!button) return false;

@@ -61,7 +61,7 @@ export const CandidateReview = ({
   };
 
   return (
-    <div className="card">
+    <div className="card" id={`prop-${proposal.proposalId}`} style={{ scrollMarginTop: 'var(--sew-space-6)' }}>
       <h2>
         {proposal.name}{' '}
         <span className="pill" data-tone={proposal.mechanical.passed ? 'pending' : 'error'}>

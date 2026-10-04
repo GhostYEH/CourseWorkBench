@@ -228,6 +228,43 @@ a.tree-row:hover {
   color: var(--sew-text-muted);
 }
 
+/* 项目树：li 承载 treeitem 语义与焦点，span.tree-row 只做视觉行。 */
+.tree-view,
+.tree-group {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tree-group {
+  padding-left: var(--sew-space-3);
+}
+
+.tree-node {
+  display: block;
+}
+
+.tree-node:focus-visible > .tree-row {
+  outline: 2px solid var(--sew-action-focus);
+  outline-offset: -2px;
+}
+
+.tree-node[aria-selected='true'] > .tree-row {
+  background: var(--sew-surface-card);
+  color: var(--sew-text-primary);
+  font-weight: 600;
+}
+
+.tree-leaf {
+  cursor: pointer;
+  border-radius: var(--sew-control-radius);
+}
+
+.tree-leaf:hover {
+  background: color-mix(in srgb, var(--sew-surface-app) 70%, transparent);
+  color: var(--sew-text-primary);
+}
+
 .center {
   flex: 1 1 auto;
   min-width: 0;

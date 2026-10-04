@@ -20,8 +20,9 @@ export default async function MistakesPage({ searchParams }: PageProps): Promise
         <div>
           <h1>错题本</h1>
           <p>
-            以每题为单位显示原题、作答原貌、具体错步、错因与证据、完整订正、复做题与复做记录。
-            只有答案而没有过程时，显示「依据不足，需要补充过程」并保留补过程入口。
+            本页按题显示已保存的作答原貌、过程文字与归因状态，并区分本人作答与模拟数据。
+            具体错步分析、错因证据、订正与复做记录属于后续里程碑（ERROR-01），尚未接入；
+            因此这里显示的是「依据不足，需要补充过程」这类状态，而不是已确认的错因结论。
           </p>
         </div>
       </div>
@@ -50,7 +51,7 @@ export default async function MistakesPage({ searchParams }: PageProps): Promise
                   <td className="secondary">{attempt.processText || '（缺少过程）'}</td>
                   <td>
                     <span className="pill" data-tone={attempt.attributionStatus === 'proposed' ? 'info' : 'pending'}>
-                      {attempt.attributionStatus === 'proposed' ? '可提出错因候选' : '依据不足，需要补充过程'}
+                      {attempt.attributionStatus === 'proposed' ? '过程已保存，等待错因核对' : '依据不足，需要补充过程'}
                     </span>
                   </td>
                   <td className="muted">{attempt.masteryAfter ?? '不影响本人掌握'}</td>

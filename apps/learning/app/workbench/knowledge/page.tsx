@@ -131,7 +131,7 @@ export default async function KnowledgePage({ searchParams }: PageProps): Promis
                 {knowledge.map((point) => {
                   const admission = view.admissionFor(point.knowledgeId);
                   return (
-                    <tr key={point.knowledgeId}>
+                    <tr key={point.knowledgeId} id={`kp-${point.knowledgeId}`} style={{ scrollMarginTop: 'var(--sew-space-6)' }}>
                       <td className="mono">{point.knowledgeId}</td>
                       <td>
                         <strong>{point.name}</strong>

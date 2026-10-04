@@ -19,8 +19,9 @@ export default function StudyPage(): ReactNode {
         <div>
           <h1>今日学习</h1>
           <p>
-            中央依次呈现必要前置、讲解、例题、独立练习和复盘。例题解释按步骤展开；独立练习先显示题干和作答区，
-            答案与解析默认折叠。正在生成的内容标为草案，审核发布后进入正式学习区。
+            本页列出准入通过的知识点与可用题目及其身份来源。讲解、例题分步、独立练习与复盘属于后续里程碑：
+            教师讲解与白板（TEACH-01/BOARD-01）、互动（VIS-01/02）与订正复做（ERROR-01）尚未接入，
+            这里不显示它们的进度或结果。
           </p>
         </div>
         <div className="actions">
@@ -39,7 +40,7 @@ export default function StudyPage(): ReactNode {
           </li>
           <li>可准入知识点：{admitted.length} 项</li>
           <li>可用题目：{questions.length} 道（每道题始终显示原题 / 材料改写 / AI 新编标签）</li>
-          <li>等待作答时教师暂停，不会跳过独立练习自动播放讲解</li>
+          <li>教师讲解与课堂推进尚未接入：本页不会自动播放，也不会替学习者推进步骤</li>
         </ol>
       </div>
 
@@ -87,7 +88,7 @@ export default function StudyPage(): ReactNode {
             </thead>
             <tbody>
               {questions.map((question) => (
-                <tr key={question.questionId}>
+                <tr key={question.questionId} id={`q-${question.questionId}`} style={{ scrollMarginTop: 'var(--sew-space-6)' }}>
                   <td>{question.stem}</td>
                   <td>
                     <span className="pill" data-tone={question.origin === 'exam_original' ? 'verified' : 'info'}>

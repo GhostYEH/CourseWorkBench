@@ -1,10 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useEffect, useMemo, type ReactNode } from 'react';
-import type { KnowledgePointDto, MaterialDto, PreferencesDto, ProposalDto, WorkbenchStateDto } from '@sew/study-contracts';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import type {
+  KnowledgePointDto, MaterialDto, PreferencesDto, ProposalDto, QuestionListItemDto, WorkbenchStateDto,
+} from '@sew/study-contracts';
 import { applyThemeToDocument, useAppStore } from '../lib/client';
+import {
+  buildProjectTree, defaultExpandedIds, flattenVisible, moveFocus, navigateWithArrow,
+  type FlatNode,
+} from '../lib/workbench-tree';
 import { ProjectActions } from './project-actions';
 import { ModelConnectionIndicator } from './model-connection-settings';
 
@@ -12,6 +18,7 @@ interface ShellProps {
   state: WorkbenchStateDto;
   materials: MaterialDto[];
   proposals: ProposalDto[];
+  questions: QuestionListItemDto[];
   knowledge: Array<KnowledgePointDto & { admission: { allowed: boolean } }>;
   preferences: PreferencesDto;
   children: ReactNode;
@@ -63,8 +70,12 @@ const sectionOf = (pathname: string): string => {
   return 'project';
 };
 
-export const WorkbenchShell = ({ state, materials, proposals, knowledge, preferences, children }: ShellProps) => {
+export const WorkbenchShell = ({
+  state, materials, proposals, questions, knowledge, preferences, children,
+}: ShellProps) => {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const panels = useAppStore((s) => s.panels);
   const toggleTree = useAppStore((s) => s.toggleTree);
   const toggleRight = useAppStore((s) => s.toggleRight);
@@ -86,56 +97,100 @@ export const WorkbenchShell = ({ state, materials, proposals, knowledge, prefere
     [proposals],
   );
 
-  const blocked = knowledge.filter((k) => !k.admission.allowed);
+  const projectTree = useMemo(
+    () => buildProjectTree({
+      projectId: state.project.projectId,
+      projectName: state.project.displayName,
+      subject: state.project.subject,
+      materials,
+      knowledge,
+      proposals,
+      questions,
+      plan: state.plan,
+    }),
+    [state.project, state.plan, materials, knowledge, proposals, questions],
+  );
 
-  const tree = useMemo(() => {
-    switch (section) {
-      case 'knowledge':
-        return [
-          { label: '已核实知识点', count: knowledge.filter((k) => k.sourceStatus === 'verified').length, href: '/workbench/knowledge' },
-          { label: '独立来源审核', count: pendingProposals.length, href: '/workbench/review' },
-          { label: '来源材料', count: materials.length, href: '/workbench/materials' },
-          { label: '准入被阻断', count: blocked.length, href: '/workbench/knowledge?tab=admission' },
-        ];
-      case 'review':
-        return [
-          { label: '待语义审核', count: pendingProposals.length, href: '/workbench/review' },
-          { label: '来源材料', count: materials.length, href: '/workbench/materials' },
-          { label: '已确认知识', count: knowledge.filter((k) => k.sourceStatus === 'verified').length, href: '/workbench/knowledge' },
-        ];
-      case 'plan':
-        return [
-          { label: '已确认计划版本', count: state.plan.confirmedVersion ?? 0, href: '/workbench/plan' },
-          { label: '计划任务', count: state.plan.taskCount, href: '/workbench/plan' },
-          { label: '待核范围', count: blocked.length, href: '/workbench/knowledge?tab=admission' },
-        ];
-      case 'study':
-        return [
-          { label: '今日学习', count: state.counts.knowledgeVerified, href: '/workbench/study' },
-          { label: '进入课堂', count: 0, href: '/classroom/lesson-001' },
-        ];
-      case 'mistakes':
-        return [
-          { label: '本人作答', count: state.counts.attemptsReal, href: '/workbench/mistakes' },
-          { label: '模拟作答（不计掌握）', count: state.counts.attemptsSimulation, href: '/workbench/mistakes?tab=simulation' },
-        ];
-      case 'eval':
-        return [
-          { label: '评测用例', count: 0, href: '/workbench/eval' },
-          { label: '无来源注入演示', count: 0, href: '/workbench/eval' },
-        ];
-      default:
-        return [
-          { label: '材料与来源', count: materials.length, href: '/workbench/materials' },
-          { label: '已核实知识点', count: state.counts.knowledgeVerified, href: '/workbench/knowledge' },
-          { label: '独立来源审核', count: pendingProposals.length, href: '/workbench/review' },
-          { label: '科目设置', count: 0, href: '/workbench/settings' },
-          { label: '外观与阅读', count: 0, href: '/workbench/appearance' },
-        ];
+  const [expanded, setExpanded] = useState<Set<string>>(() => defaultExpandedIds(projectTree));
+  const [focusId, setFocusId] = useState<string>(projectTree.rootId);
+  const focusPending = useRef(false);
+  const nodeRefs = useRef(new Map<string, HTMLLIElement>());
+  const visibleNodes = useMemo(() => flattenVisible(projectTree, expanded), [projectTree, expanded]);
+
+  useEffect(() => {
+    if (!focusPending.current) return;
+    focusPending.current = false;
+    nodeRefs.current.get(focusId)?.focus();
+  }, [focusId, expanded]);
+
+  const toggleNode = (id: string): void => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  /**
+   * 树内键盘导航：方向键移动焦点与展开折叠，Enter/空格激活条目。
+   * 语义由 lib/workbench-tree 提供，便于脱离渲染器验证。
+   */
+  const onKeyDown = (event: KeyboardEvent<HTMLUListElement>): void => {
+    const key = event.key;
+    if (key === 'ArrowDown' || key === 'ArrowUp' || key === 'Home' || key === 'End') {
+      event.preventDefault();
+      focusPending.current = true;
+      setFocusId(moveFocus(visibleNodes, focusId, key));
+      return;
     }
-  }, [section, knowledge, pendingProposals.length, materials.length, blocked.length, state]);
+    if (key === 'ArrowLeft' || key === 'ArrowRight') {
+      event.preventDefault();
+      const next = navigateWithArrow(projectTree, visibleNodes, expanded, focusId, key);
+      focusPending.current = true;
+      setExpanded(next.expanded);
+      setFocusId(next.focusId);
+      return;
+    }
+    if (key === 'Enter' || key === ' ' || key === 'Spacebar') {
+      const node = visibleNodes.find((entry) => entry.id === focusId);
+      if (!node) return;
+      event.preventDefault();
+      if (node.expandable) {
+        toggleNode(node.id);
+        return;
+      }
+      if (node.href) router.push(node.href);
+    }
+  };
 
+  const registerNode = (id: string) => (element: HTMLLIElement | null): void => {
+    if (element) nodeRefs.current.set(id, element);
+    else nodeRefs.current.delete(id);
+  };
+
+  const nodeProps = (node: FlatNode): {
+    ref: (element: HTMLLIElement | null) => void;
+    className: string;
+    role: 'treeitem';
+    'aria-level': number;
+    'aria-selected': boolean;
+    'aria-expanded'?: boolean;
+    tabIndex: number;
+  } => ({
+    ref: registerNode(node.id),
+    className: 'tree-node',
+    role: 'treeitem',
+    'aria-level': node.level,
+    'aria-selected': focusId === node.id,
+    ...(node.expandable ? { 'aria-expanded': expanded.has(node.id) } : {}),
+    tabIndex: focusId === node.id ? 0 : -1,
+  });
+
+  const rootNode = visibleNodes[0];
   const tabs = SECTION_TABS[section] ?? [];
+  const queryString = searchParams.toString();
+  const currentUrl = queryString ? `${pathname}?${queryString}` : pathname;
 
   const draftLabel =
     state.counts.proposalsPending > 0 ? `草稿：${state.counts.proposalsPending} 项待审` : '草稿：无待提交';
@@ -195,35 +250,68 @@ export const WorkbenchShell = ({ state, materials, proposals, knowledge, prefere
           </Link>
         </nav>
 
-        <aside className="tree" data-hidden={!panels.tree} aria-label="项目树">
-          <div className="tree-section">{state.project.subject || '未设置科目'}</div>
-          {tree.map((row) => (
-            <Link key={row.href + row.label} className="tree-row" href={row.href}>
-              <span>{row.label}</span>
-              <span className="count">{row.count}</span>
-            </Link>
-          ))}
-          <div className="tree-section">材料</div>
-          {materials.length === 0 ? (
-            <div className="tree-row muted">尚未导入材料</div>
-          ) : (
-            materials.slice(0, 8).map((material) => (
-              <Link key={material.materialId} className="tree-row" href="/workbench/materials">
-                <span title={material.displayName}>{material.displayName}</span>
-                <span className="count">r{material.revision}</span>
-              </Link>
-            ))
-          )}
+        <aside className="tree" data-hidden={!panels.tree}>
+          <ul className="tree-view" role="tree" aria-label="项目树" aria-multiselectable={false} onKeyDown={onKeyDown}>
+            {rootNode ? (
+              <li {...nodeProps(rootNode)}>
+                <span className="tree-row">
+                  <span>{projectTree.rootLabel}</span>
+                  <span className="count">{projectTree.rootNote}</span>
+                </span>
+                {expanded.has(rootNode.id) ? (
+                  <ul role="group" className="tree-group">
+                    {projectTree.groups.map((group) => {
+                      const groupNode = visibleNodes.find((node) => node.id === group.id);
+                      if (!groupNode) return null;
+                      return (
+                        <li key={group.id} {...nodeProps(groupNode)}>
+                          <span className="tree-row">
+                            <span>{group.label}</span>
+                            <span className="count">{group.leaves.length}</span>
+                          </span>
+                          {expanded.has(group.id) ? (
+                            <ul role="group" className="tree-group">
+                              {group.leaves.map((leaf) => {
+                                const leafNode = visibleNodes.find((node) => node.id === leaf.id);
+                                if (!leafNode) return null;
+                                return (
+                                  <li key={leaf.id} {...nodeProps(leafNode)}>
+                                    <Link className="tree-row tree-leaf" href={leaf.href} tabIndex={-1} title={leaf.note}>
+                                      <span>{leaf.label}</span>
+                                      <span className="count">{leaf.note}</span>
+                                    </Link>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
+              </li>
+            ) : null}
+          </ul>
         </aside>
 
         <main className="center">
-          <div className="tabs" role="tablist">
-            {tabs.map((tab) => (
-              <Link key={tab.href} className="tab" href={tab.href} data-current={false}>
-                {tab.label}
-              </Link>
-            ))}
-          </div>
+          <nav className="tabs" aria-label="分区视图">
+            {tabs.map((tab) => {
+              const current = tab.href === currentUrl;
+              return (
+                <Link
+                  key={tab.href}
+                  className="tab"
+                  href={tab.href}
+                  data-current={current}
+                  aria-current={current ? 'page' : undefined}
+                >
+                  {tab.label}
+                </Link>
+              );
+            })}
+          </nav>
           <div className="content">{children}</div>
           <section className="bottom-panel" data-expanded={panels.bottom} aria-label="任务与日志">
             <div className="bottom-head">

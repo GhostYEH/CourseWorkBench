@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { WorkbenchShell } from '../../components/workbench-shell';
 import { bootstrapFromEnvironment, getSession } from '../../lib/server/service';
 import { readPreferences } from '../../lib/server/state';
-import { readWorkbenchState, readWorkbenchMaterials, readWorkbenchProposals, readWorkbenchKnowledge } from '../../lib/server/workbench-data';
+import { readWorkbenchState, readWorkbenchMaterials, readWorkbenchProposals, readWorkbenchKnowledge, readWorkbenchQuestions } from '../../lib/server/workbench-data';
 import { toKnowledgePointDto, toMaterialDto, toProposalDto } from '../../lib/server/dto';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +15,7 @@ export default function WorkbenchLayout({ children }: { children: ReactNode }) {
   const state = readWorkbenchState(session);
   const materials = readWorkbenchMaterials(session).map(toMaterialDto);
   const proposals = readWorkbenchProposals(session).map(toProposalDto);
+  const questions = readWorkbenchQuestions(session);
   const view = readWorkbenchKnowledge(session);
   const knowledge = view.rows.map((point) => ({
     ...toKnowledgePointDto(point),
@@ -27,6 +28,7 @@ export default function WorkbenchLayout({ children }: { children: ReactNode }) {
       state={state}
       materials={materials}
       proposals={proposals}
+      questions={questions}
       knowledge={knowledge}
       preferences={preferences}
     >

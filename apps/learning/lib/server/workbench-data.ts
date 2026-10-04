@@ -3,7 +3,7 @@ import { cache } from 'react';
 import type { Session } from './service';
 import { buildWorkbenchState } from './state';
 import { buildKnowledgeView } from './views';
-import { toSegmentDto, toSyllabusItemDto } from './dto';
+import { toQuestionListItemDto, toSegmentDto, toSyllabusItemDto } from './dto';
 
 export const readWorkbenchMaterials = cache((session: Session) => session.store.listMaterials());
 export const readWorkbenchProposals = cache((session: Session) => session.store.listProposals());
@@ -35,4 +35,9 @@ export const readSegmentChoices = cache((session: Session) =>
 
 export const readSyllabusItems = cache((session: Session) =>
   session.store.listSyllabusItems().map(toSyllabusItemDto),
+);
+
+/** 项目树只需要题目身份标签：这里固定输出列表 DTO，不含答案与解析。 */
+export const readWorkbenchQuestions = cache((session: Session) =>
+  session.store.listQuestions().map(toQuestionListItemDto),
 );
