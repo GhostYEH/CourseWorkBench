@@ -1,5 +1,7 @@
 'use client';
 
+import { apiResponses } from '@sew/study-contracts';
+
 /**
  * 课程证据包与课程版本操作台（LESSON-01）。
  *
@@ -70,7 +72,7 @@ export const LessonWorkbench = ({
     setError(null);
     setNote(null);
     try {
-      await apiFetch('/api/study/lessons', {
+      await apiFetch('/api/study/lessons', (body.action === 'build-bundle' ? apiResponses.lessonBundle : body.action === 'draft' ? apiResponses.lessonDraft : apiResponses.lessonPublish), {
         method: 'POST',
         body: JSON.stringify({ scope: { projectId, generation }, ...body }),
       });

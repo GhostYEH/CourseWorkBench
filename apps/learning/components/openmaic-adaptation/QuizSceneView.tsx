@@ -1,7 +1,9 @@
 'use client';
 
+import { apiResponses } from '@sew/study-contracts';
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { QuizContent, RuntimeRecord, RuntimeSession } from '@openmaic/dsl';
+import type { QuizContent, RuntimeSession } from '@openmaic/dsl';
 import { HttpRuntimeStore } from '@openmaic/storage/runtime/http';
 import { apiFetch, getSessionToken, describeApiError } from '../../lib/client';
 
@@ -21,12 +23,6 @@ interface RuntimeView {
   session: RuntimeSession;
   lastSeq: number | null;
   payload?: QuizPayload;
-}
-
-interface AttemptResponse {
-  attempt: { kind: string; masteryAfter: string | null };
-  record: RuntimeRecord;
-  deduplicated: boolean;
 }
 
 const isQuizPayload = (value: unknown): value is QuizPayload => {
@@ -113,7 +109,7 @@ export function QuizSceneView({
     setError(null);
     if (startNew) updateRuntime(null);
     try {
-      const identity = await apiFetch<{ learnerKey: string }>('/api/maic/runtime/learner-key', {
+      const identity = await apiFetch('/api/maic/runtime/learner-key', apiResponses.classroomLearner, {
         headers: {
           'x-sew-project-id': scope.projectId,
           'x-sew-generation': String(scope.generation),
@@ -299,7 +295,7 @@ export function QuizSceneView({
         processText,
       });
       if (epochRef.current !== submitEpoch) return;
-      const data = await apiFetch<AttemptResponse>('/api/maic/runtime/submit', {
+      const data = await apiFetch('/api/maic/runtime/submit', apiResponses.quizSubmit, {
         method: 'POST',
         headers: {
           'x-sew-project-id': scope.projectId,

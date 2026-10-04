@@ -8,7 +8,8 @@
  */
 
 import { create } from 'zustand';
-import type { ApiEnvelope, PreferencesDto } from '@sew/study-contracts';
+import { apiEnvelopeSchema, runtimeApiFailureSchema, type PreferencesDto } from '@sew/study-contracts';
+import { z } from 'zod';
 import { getAppearanceStyle } from './preferences';
 
 export interface ApiErrorPayload {
@@ -44,16 +45,35 @@ export const setSessionToken = (token: string | null): void => {
 
 export const getSessionToken = (): string | null => sessionToken;
 
-export const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
+export const apiFetch = async <S extends z.ZodTypeAny>(path: string, schema: S, init?: RequestInit): Promise<z.infer<S>> => {
   const headers = new Headers(init?.headers);
   headers.set('content-type', 'application/json');
   if (sessionToken) headers.set('x-sew-session', sessionToken);
 
   const response = await fetch(path, { ...init, headers });
-  const payload = (await response.json()) as ApiEnvelope<T>;
-
-  if (!payload.ok) throw new ApiError(payload.error);
-  return payload.data;
+  let raw: unknown;
+  try {
+    raw = await response.json();
+  } catch (error) {
+    if (init?.signal?.aborted) throw error;
+    throw new ApiError({ code: 'API_RESPONSE_INVALID', message: '服务响应不是有效 JSON，请重试或查看服务日志', pending: false });
+  }
+  const parsed = apiEnvelopeSchema(z.unknown()).safeParse(raw);
+  if (!parsed.success) {
+    // RuntimeStore deliberately has its own error shape; never apply this fallback to study endpoints.
+    if (!response.ok && path.startsWith('/api/maic/runtime/')) {
+      const failure = runtimeApiFailureSchema.safeParse(raw);
+      if (failure.success) throw new ApiError({ ...failure.data.error, pending: false });
+    }
+    throw new ApiError({ code: 'API_RESPONSE_INVALID', message: '服务响应与数据合同不一致，请刷新后重试', pending: false });
+  }
+  if (!parsed.data.ok) throw new ApiError(parsed.data.error);
+  if (!response.ok) throw new ApiError({ code: 'API_HTTP_ERROR', message: `服务请求失败（HTTP ${response.status}），请重试`, pending: false });
+  const result = schema.safeParse(parsed.data.data);
+  if (!('data' in parsed.data) || !result.success) {
+    throw new ApiError({ code: 'API_RESPONSE_INVALID', message: '服务响应与数据合同不一致，请刷新后重试', pending: false });
+  }
+  return result.data;
 };
 
 export interface PanelState {

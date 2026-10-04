@@ -1,5 +1,7 @@
 'use client';
 
+import { apiResponses } from '@sew/study-contracts';
+
 import { Notice } from './ui';
 
 import { useState } from 'react';
@@ -29,7 +31,7 @@ export const PlanActions = ({
     setError(null);
     setMessage(null);
     try {
-      const data = await apiFetch<{ version: number; status: string; plan: { tasks: unknown[] } }>('/api/study/plan', {
+      const data = await apiFetch('/api/study/plan', apiResponses.planWrite, {
         method: 'POST',
         body: JSON.stringify({ scope: { projectId, generation }, action }),
       });

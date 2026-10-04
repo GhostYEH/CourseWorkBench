@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createNodeSqliteDriver, projectPaths } from '@sew/study-storage';
+import { apiResponses } from '@sew/study-contracts';
 import { DELETE } from '../apps/learning/app/api/maic/assets/[assetId]/route';
 import { PUT } from '../apps/learning/app/api/maic/assets/[assetId]/content/route';
 import { GET } from '../apps/learning/app/api/maic/demo-assets/[stageId]/route';
@@ -65,6 +66,10 @@ describe('reviewed classroom demo assets', () => {
     const session = openProjectFromDisk(rootA);
     ensureFixedLesson(session);
     const bytes = assetManifest(projectRoot);
+    const manifest = await GET(new Request(`http://service.local/api/maic/demo-assets/${reviewedLesson.stageId}`, {
+      headers: projectScopeHeaders(session.projectId, session.generation),
+    }), { params: Promise.resolve({ stageId: reviewedLesson.stageId }) });
+    expect(apiResponses.classroomAssets.safeParse((await manifest.json()).data).success).toBe(true);
     const imageBinding = session.store.getClassroomAssetBinding(session.projectId, reviewedLesson.stageId, DEMO_ASSET_SCENE_ID, DEMO_IMAGE_SLOT);
     const fontBinding = session.store.getClassroomAssetBinding(session.projectId, reviewedLesson.stageId, DEMO_ASSET_SCENE_ID, DEMO_FONT_SLOT);
     expect(imageBinding?.assetId).toBeTruthy();

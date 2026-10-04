@@ -12,7 +12,7 @@ const useModelStatus = () => {
   const [status, setStatus] = useState<ModelConnectionStatus | null>(null);
   const refresh = useCallback(async () => {
     if (!getSessionToken()) return;
-    const value = modelConnectionStatusSchema.parse(await apiFetch<unknown>('/api/study/models', { cache: 'no-store' }));
+    const value = await apiFetch('/api/study/models', modelConnectionStatusSchema, { cache: 'no-store' });
     setStatus(value);
     return value;
   }, []);
@@ -22,7 +22,7 @@ const useModelStatus = () => {
     const read = async () => {
       if (!getSessionToken()) return;
       try {
-        const value = modelConnectionStatusSchema.parse(await apiFetch<unknown>('/api/study/models', { cache: 'no-store', signal: controller.signal }));
+        const value = await apiFetch('/api/study/models', modelConnectionStatusSchema, { cache: 'no-store', signal: controller.signal });
         if (!disposed) setStatus(value);
       } catch { /* A failed read does not invent a connection success. */ }
     };

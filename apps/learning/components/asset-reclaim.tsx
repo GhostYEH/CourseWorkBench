@@ -1,5 +1,7 @@
 'use client';
 
+import { apiResponses } from '@sew/study-contracts';
+
 /**
  * 课堂资源回收面板。
  *
@@ -29,7 +31,7 @@ export const AssetReclaim = ({ projectId, generation }: { projectId: string; gen
     setBusy(true);
     setError(null);
     try {
-      const next = await apiFetch<AssetReclaimReportDto>('/api/study/assets');
+      const next = await apiFetch('/api/study/assets', apiResponses.assetReport);
       setReport(next);
       setSelected([]);
     } catch (caught) {
@@ -44,8 +46,7 @@ export const AssetReclaim = ({ projectId, generation }: { projectId: string; gen
     setError(null);
     setMessage(null);
     try {
-      const result = await apiFetch<{ reclaimed: string[]; freedBytes: number; remainingUnbound: number }>(
-        '/api/study/assets',
+      const result = await apiFetch('/api/study/assets', apiResponses.assetReclaim,
         {
           method: 'POST',
           body: JSON.stringify({ scope: { projectId, generation }, assetIds: selected }),

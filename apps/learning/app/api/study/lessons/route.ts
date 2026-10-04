@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import {
+  StudyError,
   lessonBundleBuildSchema,
   lessonDraftSchema,
   lessonPublishSchema,
 } from '@sew/study-contracts';
 import { parseBody, route, ok } from '../../../../lib/server/http';
 import { assertScope, requireSession } from '../../../../lib/server/service';
+import { toLessonVersionDto } from '../../../../lib/server/dto';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,8 +29,8 @@ export const GET = route(() => {
       frozenAt: row.frozenAt,
       bundle: row.bundle,
     })),
-    lessons,
-    versions: lessons.flatMap((lesson) => session.store.listLessonVersions(lesson.lessonId, projectId)),
+    lessons: lessons.map(toLessonVersionDto),
+    versions: lessons.flatMap((lesson) => session.store.listLessonVersions(lesson.lessonId, projectId).map(toLessonVersionDto)),
     links: lessons
       .map((lesson) => session.store.getLessonClassroomLink(lesson.lessonId, projectId))
       .filter((link): link is NonNullable<typeof link> => link !== null),
@@ -55,7 +57,7 @@ export const POST = route(async (request: Request) => {
       ? session.store.listLessonVersions(body.lessonId, projectId)[0]
       : null;
     if (body.lessonId && !source) {
-      return ok({ error: 'lesson-not-found' }, { status: 404 });
+      throw new StudyError('NOT_FOUND', { lessonId: body.lessonId });
     }
     const lesson = session.store.createLessonDraft({
       projectId,
@@ -65,7 +67,7 @@ export const POST = route(async (request: Request) => {
       statementIds: body.statementIds,
       questionIds: body.questionIds,
     });
-    return ok({ lesson });
+    return ok({ lesson: toLessonVersionDto(lesson) });
   }
 
   const lesson = session.store.publishLesson({
@@ -74,7 +76,7 @@ export const POST = route(async (request: Request) => {
     version: body.version,
   });
   return ok({
-    lesson,
+    lesson: toLessonVersionDto(lesson),
     link: session.store.getLessonClassroomLink(body.lessonId, projectId),
   });
 });

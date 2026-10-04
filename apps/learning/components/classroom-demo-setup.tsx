@@ -1,5 +1,7 @@
 'use client';
 
+import { apiResponses } from '@sew/study-contracts';
+
 import { Notice } from './ui';
 
 import { useEffect, useState } from 'react';
@@ -16,7 +18,7 @@ export const ClassroomDemoSetup = ({ projectId, generation }: { projectId: strin
     setBusy(true);
     setError(null);
     try {
-      await apiFetch('/api/maic/demo', {
+      await apiFetch('/api/maic/demo', apiResponses.classroomDemo, {
         method: 'POST',
         body: JSON.stringify({ scope: { projectId, generation }, confirmDemoImport: true }),
       });

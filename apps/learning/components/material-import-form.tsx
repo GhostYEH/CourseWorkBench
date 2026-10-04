@@ -1,5 +1,7 @@
 'use client';
 
+import { apiResponses } from '@sew/study-contracts';
+
 import { Notice } from './ui';
 
 import { useEffect, useState, useTransition } from 'react';
@@ -72,11 +74,7 @@ export const MaterialImportForm = ({ projectId, generation }: { projectId: strin
         mode === 'file'
           ? { ...shared, mode: 'file' as const, sourcePath: sourcePath ?? '' }
           : { ...shared, mode: 'text' as const, rawText };
-      const data = await apiFetch<{
-        material: { displayName: string; revision: number };
-        segments: unknown[];
-        invalidated: unknown[];
-      }>('/api/study/materials', {
+      const data = await apiFetch('/api/study/materials', apiResponses.materialImport, {
         method: 'POST',
         body: JSON.stringify(body),
       });

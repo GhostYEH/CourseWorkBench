@@ -67,6 +67,7 @@ export type {
 } from './fingerprint';
 export { modelConnectionInputSchema, modelTestResultSchema, modelConnectionStatusSchema } from './model-connection';
 export type { ModelConnectionInput, ModelTestResult, ModelConnectionStatus } from './model-connection';
+export { apiErrorPayloadSchema, apiEnvelopeSchema, runtimeApiFailureSchema, apiResponses } from './responses';
 export {
   THEME_IDS, ACCENT_PRESETS, STATUS_TOKEN_KEYS,
 } from './tokens';

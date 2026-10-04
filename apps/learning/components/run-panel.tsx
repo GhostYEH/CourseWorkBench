@@ -1,5 +1,7 @@
 'use client';
 
+import { apiResponses } from '@sew/study-contracts';
+
 /**
  * 备考 run 面板（PLAN-01 基础）。
  *
@@ -36,7 +38,7 @@ export const RunPanel = ({
     setError(null);
     setNote(null);
     try {
-      const data = await apiFetch<{ snapshot: RunSnapshotDto | null; deduplicated: boolean }>('/api/study/run', {
+      const data = await apiFetch('/api/study/run', apiResponses.runStart, {
         method: 'POST',
         body: JSON.stringify({ scope: { projectId, generation }, action: 'start' }),
       });

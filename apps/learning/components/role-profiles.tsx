@@ -1,5 +1,7 @@
 'use client';
 
+import { apiResponses } from '@sew/study-contracts';
+
 /**
  * 角色档案面板（STYLE-01）。
  *
@@ -67,7 +69,7 @@ export const RoleProfiles = ({
     setError(null);
     setNote(null);
     try {
-      await apiFetch('/api/study/roles', { method: 'POST', body: JSON.stringify({ scope: { projectId, generation }, ...body }) });
+      await apiFetch('/api/study/roles', apiResponses.roleWrite, { method: 'POST', body: JSON.stringify({ scope: { projectId, generation }, ...body }) });
       setNote(successText);
       router.refresh();
     } catch (caught) {

@@ -11,6 +11,7 @@ import {
   type Session,
 } from '../apps/learning/lib/server/service';
 import { ensureFixedLesson, loadRenderableDocument } from '../apps/learning/lib/server/classroom-service';
+import { apiResponses } from '@sew/study-contracts';
 
 /**
  * 真实课堂本人提交与重启读回（STORE-01）。
@@ -106,6 +107,7 @@ describe('真实课堂提交与重启读回', () => {
       }),
     );
     expect(put.status).toBe(200);
+    expect(apiResponses.classroomPosition.safeParse((await put.json()).data).success).toBe(true);
 
     // —— 模拟重启：关闭项目再重新打开同一目录 ——
     closeProject();

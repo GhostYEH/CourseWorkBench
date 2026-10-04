@@ -1,5 +1,7 @@
 'use client';
 
+import { apiResponses } from '@sew/study-contracts';
+
 /**
  * 计划任务与逐条人工确认（PLAN-01）。
  *
@@ -35,7 +37,7 @@ export const PlanTasks = ({
     setBusy(true);
     setError(null);
     try {
-      await apiFetch('/api/study/plan', {
+      await apiFetch('/api/study/plan', apiResponses.planWrite, {
         method: 'POST',
         body: JSON.stringify({ scope: { projectId, generation }, action: 'confirm-task', knowledgeId, decision }),
       });

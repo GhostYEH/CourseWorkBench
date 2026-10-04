@@ -45,6 +45,10 @@
 
 ## 5. 当前实现约束与待验收边界
 
+用户指定网关的模型连接已独立接通：`model-connection.ts` 负责 HTTPS Chat Completions 诊断，`settings.cjs` 以 Electron safeStorage 保存用户级凭据，主进程恢复后经控制接口传入服务内存。实际桌面报告见 [模型连接验证](../apps/desktop/release/model-connection-live-2026-10-04.json)：请求 `muse-spark-1.3`，网关返回 `muse-spark-1.3-contributor`，有效回复、主框架无密钥回显、控制接口鉴权、整应用重启恢复与不自动重试均成立。凭据不进入安装包或项目备份；这是连接诊断实现，尚非上游 provider 全功能或教师/生成验收。
+
+32/256 token 的诊断曾返回空最终文本，实测模型先消耗 511 个推理 token；调整固定上限至 1024 后取得有效回复，[失败记录](../apps/desktop/release/model-connection-live-2026-10-04-token-cap-failed.json) 保留。独立代码审查发现服务 shutdown gate 会拒绝自身取消请求，已改成专用父进程取消路由，并用真实生产 HTTP 退出回归验证取消被受理。加密写入的 Windows EXDEV 回退只写密文；初次配置程序改为正常退出以完成系统加密状态落盘，之后跨进程解密与实际应用重启已验证。
+
 | 源位置 | 需保留的技术边界 | 后续验收 |
 | --- | --- | --- |
 | `apps/learning/server.mjs` | 自定义启动器承担 127.0.0.1 监听、握手及会话/控制认证；直接换成上游 `server.js` 会丢失本应用边界 | 在真实课堂生产包与无开发 Node 的 Windows 环境验证，见 PACK-01/02 |
@@ -153,7 +157,9 @@ Stage、PlaybackChromeRoot、SceneRenderer 与 QuizSceneView 的视图胶水仍�
 
 ### 7.6 当前分发验证与已知边界（2026-10-04）
 
-当前构建 `49ENHGnGrzqlR_fZx8HK1` 的目录包验证为 [30/30](../apps/desktop/release/pack01-verification-2026-10-03T23-46-26.290Z.json)，随包服务为 14/14；完整 `pnpm check` 为 37 个文件、226 项通过且无跳过。安装态 [50 项课堂及 M1 来源界面验证](../apps/desktop/release/m0-installed-classroom-2026-10-03T23-46-57Z-retry.json) 使用真实原生选择器和鼠标，覆盖图片/字体、测验与解题过程、互动明确提交/去重/重启读回、初始化脚本错误诊断、离线手动重试、服务崩溃、会话轮换和项目切换；还验证空正文不写样例、二次导入建立新版本、历史段落定位。
+模型连接补强后的当前构建为 `nmbMeLOKKj__yqRm22QyP`：完整检查 45 个文件/288 项通过，无跳过；随包服务 14/14，当前 [目录包 30/30](../apps/desktop/release/pack01-verification-2026-10-04T02-59-59.536Z.json)，服务清单 12,131 个文件逐字节匹配当前源码。实际模型调用及整应用重启 [9/9](../apps/desktop/release/model-connection-live-2026-10-04.json) 通过。新版安装包 194,162,258 字节，SHA-256 `D12756102244CC5F54FBDD0C3162B00C4B6DBE0DC2D005A04CB98FB239014C66`，外部验收包已同步。本轮没有重新执行安装/卸载或独立环境验收；下文的 50 项安装态证据与摘要属于此前 M0 基线版本，不作为新版安装态证据。
+
+此前 M0 基线构建 `49ENHGnGrzqlR_fZx8HK1` 的目录包验证为 [30/30](../apps/desktop/release/pack01-verification-2026-10-03T23-46-26.290Z.json)，随包服务为 14/14；完整 `pnpm check` 为 37 个文件、226 项通过且无跳过。安装态 [50 项课堂及 M1 来源界面验证](../apps/desktop/release/m0-installed-classroom-2026-10-03T23-46-57Z-retry.json) 使用真实原生选择器和鼠标，覆盖图片/字体、测验与解题过程、互动明确提交/去重/重启读回、初始化脚本错误诊断、离线手动重试、服务崩溃、会话轮换和项目切换；还验证空正文不写样例、二次导入建立新版本、历史段落定位。
 
 安装态首轮滑块操作因脚本未等待滚动后坐标稳定而超时，[失败报告](../apps/desktop/release/m0-installed-classroom-2026-10-03T23-47-06Z.json) 保留。改为瞬时滚动、等待两帧、验证可见 iframe 命中并拖动滑块后，同一已安装应用重新通过；复测从便携验收包运行脚本，使用安装后的随包 Node。打包工具全局缓存曾报跨卷 rename EXDEV，下载归档经字节复制和摘要复验后使用任务本地缓存构建成功。没有更改课堂功能以回避失败。
 

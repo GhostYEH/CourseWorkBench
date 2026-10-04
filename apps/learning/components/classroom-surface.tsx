@@ -1,5 +1,7 @@
 'use client';
 
+import { apiResponses } from '@sew/study-contracts';
+
 import { Notice } from './ui';
 
 /**
@@ -163,10 +165,7 @@ export const ClassroomSurface = ({
     };
       try {
         await waitForSessionToken();
-        const assetResult = await apiFetch<{
-          stageId: string;
-          assets: Array<{ symbolicRef: string; assetId: string; mediaType: string; sha256: string }>;
-        }>(`/api/maic/demo-assets/${encodeURIComponent(stageId)}`, {
+        const assetResult = await apiFetch(`/api/maic/demo-assets/${encodeURIComponent(stageId)}`, apiResponses.classroomAssets, {
           headers: { 'x-sew-project-id': projectId, 'x-sew-generation': String(generation) },
         });
         if (!isCurrent()) return { outcome: 'cancelled' };
@@ -265,7 +264,7 @@ export const ClassroomSurface = ({
       if (!lease?.isCurrent()) return false;
       setPositionState('saving');
       try {
-        await apiFetch<{ currentSceneId: string }>('/api/maic/state', {
+        await apiFetch('/api/maic/state', apiResponses.classroomPosition, {
           method: 'PUT',
           body: JSON.stringify({ scope: { projectId, generation }, stageId, sceneId: nextSceneId }),
         });

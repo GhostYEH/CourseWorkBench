@@ -1,5 +1,7 @@
 'use client';
 
+import { apiResponses } from '@sew/study-contracts';
+
 /**
  * 真题来源人工核对。
  *
@@ -40,7 +42,7 @@ export const ExamSourceVerification = ({
     setBusy(true);
     setError(null);
     try {
-      await apiFetch(`/api/study/materials/${material.materialId}/exam-verification`, {
+      await apiFetch(`/api/study/materials/${material.materialId}/exam-verification`, apiResponses.examVerification, {
         method: 'POST',
         body: JSON.stringify({
           scope: { projectId, generation },

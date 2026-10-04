@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { HttpAccountKV } from '@openmaic/storage';
 import { HttpRuntimeStore } from '@openmaic/storage/runtime/http';
 import type { RuntimeRecordInit } from '@openmaic/dsl';
+import { apiResponses } from '@sew/study-contracts';
 import { DELETE as deleteKv, GET as getKv, PUT as putKv } from '../apps/learning/app/api/maic/kv/[...segments]/route';
 import {
   DELETE as deleteRuntime,
@@ -222,6 +223,7 @@ describe('published OpenMAIC RuntimeStore/KV HTTP contracts', () => {
       deduplicated: boolean;
     } };
     expect(firstBody.data.attempt.kind).toBe('real');
+    expect(apiResponses.quizSubmit.safeParse(firstBody.data).success).toBe(true);
     // 演示中仍是本人真实作答，但不改变正式掌握状态。
     expect(firstBody.data.attempt.masteryAfter).toBeNull();
     expect(firstBody.data.record.seq).toBe(0);
@@ -233,6 +235,7 @@ describe('published OpenMAIC RuntimeStore/KV HTTP contracts', () => {
     const retry = await submit();
     const retryBody = await retry.json() as { data: { record: { id: string }; deduplicated: boolean } };
     expect(retryBody.data.deduplicated).toBe(true);
+    expect(apiResponses.quizSubmit.safeParse(retryBody.data).success).toBe(true);
     expect(retryBody.data.record.id).toBe(firstBody.data.record.id);
     expect(session.store.listAttempts('real', 'demo')).toHaveLength(1);
     const savedRecords = session.store.runtime.listRecords(session.projectId, runtimeSession.id);

@@ -1,5 +1,7 @@
 'use client';
 
+import { apiResponses } from '@sew/study-contracts';
+
 import { Notice } from './ui';
 
 import { useState } from 'react';
@@ -33,7 +35,7 @@ export const AdmissionChecker = ({
     setBusy(true);
     setError(null);
     try {
-      const data = await apiFetch<AdmissionResultDto>('/api/study/admission', {
+      const data = await apiFetch('/api/study/admission', apiResponses.admission, {
         method: 'POST',
         body: JSON.stringify({ scope: { projectId, generation }, knowledgeIds: selected }),
       });

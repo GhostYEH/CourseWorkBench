@@ -949,7 +949,7 @@
       "category": "providers_media",
       "name": "完整LLM provider注册表与兼容接口",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "E",
       "upstreamPaths": [
         "lib/ai/providers.ts",
@@ -960,7 +960,9 @@
         "lib/config/token-plan-presets.ts"
       ],
       "acceptance": "固定基线各provider可配置/检测，不假称所有联网测试通过",
-      "evidence": []
+      "evidence": [
+        "用户指定 HTTPS OpenAI-compatible 接口已配置/实际调用：muse-spark-1.3 请求收到有效文本，网关返回 muse-spark-1.3-contributor。Electron 加密凭据重启恢复、无 renderer 密钥回显、主进程控制接口、固定诊断的 deadline/限次/token 上限/取消有回归；报告 apps/desktop/release/model-connection-live-2026-10-04.json 9 项通过。只覆盖该兼容接口连接诊断，完整 provider 注册表、教学/生成调用与其他联网后端未完成。"
+      ]
     },
     {
       "id": "OMA-057",

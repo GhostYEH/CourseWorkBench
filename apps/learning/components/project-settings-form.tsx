@@ -1,5 +1,7 @@
 'use client';
 
+import { apiResponses } from '@sew/study-contracts';
+
 import { Notice } from './ui';
 
 import { useState } from 'react';
@@ -34,7 +36,7 @@ export const ProjectSettingsForm = ({
     setError(null);
     setMessage(null);
     try {
-      await apiFetch('/api/study/project', {
+      await apiFetch('/api/study/project', apiResponses.project, {
         method: 'PATCH',
         body: JSON.stringify({
           scope: { projectId, generation },

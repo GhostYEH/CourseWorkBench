@@ -85,7 +85,9 @@ export const createModelConnectionRuntime = ({
       const response = await fetcher(`${input.baseUrl}/chat/completions`, {
         method: 'POST', redirect: 'error', signal: controller.signal,
         headers: { 'content-type': 'application/json', authorization: `Bearer ${input.apiKey}` },
-        body: JSON.stringify({ model: input.model, messages: [{ role: 'user', content: 'Reply exactly OK.' }], max_tokens: 256, stream: false }),
+        // This reasoning model used 511 reasoning tokens for a two-byte reply
+        // in the live probe; a 256-token cap can yield null content legitimately.
+        body: JSON.stringify({ model: input.model, messages: [{ role: 'user', content: 'Reply exactly OK.' }], max_tokens: 1024, stream: false }),
       });
       if (!response.ok) {
         await response.body?.cancel().catch(() => undefined);

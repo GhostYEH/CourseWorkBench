@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { LessonWorkbench } from '../../../components/lesson-workbench';
 import { bootstrapFromEnvironment, getSession } from '../../../lib/server/service';
 import { readWorkbenchKnowledge, readWorkbenchQuestions } from '../../../lib/server/workbench-data';
-import { toKnowledgePointDto } from '../../../lib/server/dto';
+import { toKnowledgePointDto, toLessonVersionDto } from '../../../lib/server/dto';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,8 +28,8 @@ export default function LessonsPage(): ReactNode {
     frozenAt: row.frozenAt,
     bundle: row.bundle,
   }));
-  const lessons = session.store.listLessons(projectId);
-  const versions = lessons.flatMap((lesson) => session.store.listLessonVersions(lesson.lessonId, projectId));
+  const lessons = session.store.listLessons(projectId).map(toLessonVersionDto);
+  const versions = lessons.flatMap((lesson) => session.store.listLessonVersions(lesson.lessonId, projectId).map(toLessonVersionDto));
   const confirmedPlan = session.store.getConfirmedPlan(projectId);
 
   return (

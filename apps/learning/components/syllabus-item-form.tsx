@@ -1,5 +1,7 @@
 'use client';
 
+import { apiResponses } from '@sew/study-contracts';
+
 /**
  * 登记考纲原子项。
  *
@@ -67,7 +69,7 @@ export const SyllabusItemForm = ({
     setError(null);
     setMessage(null);
     try {
-      await apiFetch('/api/study/syllabus', {
+      await apiFetch('/api/study/syllabus', apiResponses.syllabusCreate, {
         method: 'POST',
         body: JSON.stringify({
           scope: { projectId, generation },

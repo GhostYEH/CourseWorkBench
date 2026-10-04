@@ -30,7 +30,7 @@ describe('write-only model credentials and guarded real-call adapter', () => {
       expect(url).toBe('https://test.example/v1/chat/completions');
       expect(init?.redirect).toBe('error');
       expect(new Headers(init?.headers).get('authorization')).toBe(`Bearer ${config.apiKey}`);
-      expect(init?.body).toBe(JSON.stringify({ model: config.model, messages: [{ role: 'user', content: 'Reply exactly OK.' }], max_tokens: 256, stream: false }));
+      expect(init?.body).toBe(JSON.stringify({ model: config.model, messages: [{ role: 'user', content: 'Reply exactly OK.' }], max_tokens: 1024, stream: false }));
       return success();
     } });
     runtime.configure(config, true);

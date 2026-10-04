@@ -1,5 +1,7 @@
 'use client';
 
+import { apiResponses } from '@sew/study-contracts';
+
 /**
  * 归档原文查看与打开。
  *
@@ -35,7 +37,7 @@ export const MaterialOriginal = ({
     try {
       const query = new URLSearchParams({ revision: String(revision) });
       if (segmentId) query.set('segmentId', segmentId);
-      setView(await apiFetch<MaterialRawViewDto>(`/api/study/materials/${materialId}/raw?${query.toString()}`));
+      setView(await apiFetch(`/api/study/materials/${materialId}/raw?${query.toString()}`, apiResponses.materialRaw));
     } catch (caught) {
       setError(describeApiError(caught));
     } finally {

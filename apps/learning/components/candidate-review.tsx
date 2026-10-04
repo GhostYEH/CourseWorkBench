@@ -1,5 +1,7 @@
 'use client';
 
+import { apiResponses } from '@sew/study-contracts';
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ProposalDto, SyllabusItemDto } from '@sew/study-contracts';
@@ -40,7 +42,7 @@ export const CandidateReview = ({
     setBusy(true);
     setError(null);
     try {
-      await apiFetch('/api/study/knowledge/review', {
+      await apiFetch('/api/study/knowledge/review', apiResponses.review, {
         method: 'POST',
         body: JSON.stringify({
           scope: { projectId, generation },

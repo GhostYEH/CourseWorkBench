@@ -38,7 +38,7 @@ export function InteractiveSceneView({ sceneId, stageId, content, scope }: { sce
   const restore = useCallback(async (epoch: number): Promise<void> => {
     setError(null);
     try {
-      const data = interactionStateSchema.parse(await apiFetch<unknown>(`/api/maic/interaction?stageId=${encodeURIComponent(stageId)}&sceneId=${encodeURIComponent(sceneId)}`, { headers, cache: 'no-store' }));
+      const data = await apiFetch(`/api/maic/interaction?stageId=${encodeURIComponent(stageId)}&sceneId=${encodeURIComponent(sceneId)}`, interactionStateSchema, { headers, cache: 'no-store' });
       if (epochRef.current !== epoch) return;
       setSaved(data);
       if (data.lastSubmission) {
@@ -80,9 +80,9 @@ export function InteractiveSceneView({ sceneId, stageId, content, scope }: { sce
     try {
       const value = Number(a);
       if (a.trim() === '' || !Number.isFinite(value)) throw new Error('请填写有效的参数 a。');
-      const data = interactionStateSchema.parse(await apiFetch<unknown>('/api/maic/interaction', {
+      const data = await apiFetch('/api/maic/interaction', interactionStateSchema, {
         method: 'POST', headers, body: JSON.stringify({ scope, stageId, sceneId, a: value, prediction, explanation }),
-      }));
+      });
       if (epochRef.current === epoch) setSaved(data);
     } catch (caught) { if (epochRef.current === epoch) setError(describeApiError(caught)); }
     finally { if (epochRef.current === epoch) { busyRef.current = false; setBusy(false); } }

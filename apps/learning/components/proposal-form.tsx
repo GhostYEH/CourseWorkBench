@@ -1,5 +1,7 @@
 'use client';
 
+import { apiResponses } from '@sew/study-contracts';
+
 import { Notice } from './ui';
 
 import { useState } from 'react';
@@ -44,8 +46,7 @@ export const ProposalForm = ({
     setError(null);
     setMessage(null);
     try {
-      const data = await apiFetch<{ proposal: { name: string; mechanical: { passed: boolean } } }>(
-        '/api/study/knowledge/propose',
+      const data = await apiFetch('/api/study/knowledge/propose', apiResponses.proposal,
         {
           method: 'POST',
           body: JSON.stringify({

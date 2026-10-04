@@ -1,5 +1,7 @@
 'use client';
 
+import { apiResponses } from '@sew/study-contracts';
+
 import { Notice } from './ui';
 
 import { useState } from 'react';
@@ -38,7 +40,7 @@ export const AppearanceSettings = ({ initial }: { initial: PreferencesDto }) => 
     setBusy(true);
     setError(null);
     try {
-      const data = await apiFetch<{ appearance: PreferencesDto }>('/api/study/preferences', {
+      const data = await apiFetch('/api/study/preferences', apiResponses.appearanceWrite, {
         method: 'PUT',
         body: JSON.stringify({ appearance: draft }),
       });
@@ -202,7 +204,7 @@ export const TeachingSettings = ({
   const save = async () => {
     setBusy(true);
     try {
-      const data = await apiFetch<{ teaching: TeachingPreferenceDto }>('/api/study/preferences', {
+      const data = await apiFetch('/api/study/preferences', apiResponses.teachingWrite, {
         method: 'PUT',
         // 教学表达是项目级事实：显式绑定项目与打开代次，过期代次由服务拒绝。
         body: JSON.stringify({ scope: { projectId, generation }, teaching: draft }),
