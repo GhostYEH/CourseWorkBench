@@ -31,9 +31,22 @@ export { assertModelCallAdmitted, modelCallQuotaRemaining } from './guard';
 export type { ModelCallGuardFacts } from './guard';
 export {
   assertCardGrounded, assertCardApprovable, assertCardPlayable, assertSessionActive,
-  assertClassroomBudget, nextPlayableCard, nextRoundIndex,
+  assertClassroomBudget, nextPlayableCard,
 } from './teaching';
 export type { ClassroomBudgetUse } from './teaching';
+export {
+  peerTurnCeiling, shouldPeerSpeak, assertPeerTurnAllowed, peerCapabilities,
+  assertPeerTurnGrounded, peerAttemptPartition,
+} from './peer';
+export {
+  reserveSharedModelTokens, sharedModelDeadlineMs, assertSharedModelSettlement,
+  assertSharedBudget, sharedBudgetRemaining, settlementMeasurement, costMeasurement, resumePolicyForUnsettled,
+} from './budget';
+export {
+  formalInteractionHash, formalInteractionSceneId, formalInteractionDefinitionSessionId,
+  formalInteractionObservationSessionId, publicFormalInteractionDefinition,
+} from './formal-interaction';
+export type { SharedBudgetLimits, SharedBudgetUsage } from './budget';
 export type {
   SyllabusRequirementRecord, SyllabusItemRecord, SyllabusMappingRecord,
   SyllabusCoveragePointRecord, SyllabusCoverageItemResult, SyllabusCoverageResult,
@@ -46,3 +59,8 @@ export {
   canonicalJson, classroomDocumentDigest, dslVersionState, stripQuizAnswers, assertSceneSourceBindings,
 } from './classroom';
 export type { DslVersionState, StrippedQuizScene, SceneSourceBinding } from './classroom';
+
+export { gradeQuestionAssessment } from './assessment';
+export { gradeReviewedAnswer } from './attempt-grading';
+
+export { consumptionOf, summarizeModelUsage } from './model-usage';

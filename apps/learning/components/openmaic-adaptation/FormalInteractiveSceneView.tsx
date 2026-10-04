@@ -1,0 +1,89 @@
+'use client';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { formalInteractionStateSchema, type FormalInteractionStateDto } from '@sew/study-contracts';
+import { apiFetch, describeApiError } from '../../lib/client';
+
+export function FormalInteractiveSceneView({ stageId, sceneId, scope }: { stageId: string; sceneId: string; scope: { projectId: string; generation: number } }) {
+  const [state, setState] = useState<FormalInteractionStateDto | null>(null);
+  const [a, setA] = useState('0'); const [x, setX] = useState('1');
+  /** 本人预测：必须与解释分开保存，且在提交前给出。 */
+  const [prediction, setPrediction] = useState('');
+  const [edgeId, setEdgeId] = useState(''); const [to, setTo] = useState(''); const [explanation, setExplanation] = useState('');
+  const [error, setError] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  const epochRef = useRef(0); const busyRef = useRef(false);
+  const requestRef = useRef<{ digest: string; nonce: string } | null>(null);
+  const headers = { 'x-sew-project-id': scope.projectId, 'x-sew-generation': String(scope.generation) };
+  const load = useCallback(async (epoch: number) => {
+    try {
+      const loaded = await apiFetch(`/api/study/formal-interactions?stageId=${encodeURIComponent(stageId)}&sceneId=${encodeURIComponent(sceneId)}`, formalInteractionStateSchema, { headers: { 'x-sew-project-id': scope.projectId, 'x-sew-generation': String(scope.generation) }, cache: 'no-store' });
+      if (epoch !== epochRef.current) return;
+      setState(loaded); setError(null);
+      const latest = loaded.draft && (!loaded.lastSubmission || loaded.draft.createdAt > loaded.lastSubmission.createdAt) ? loaded.draft : loaded.lastSubmission;
+      const values = latest?.payload.values;
+      setExplanation(values?.explanation ?? '');
+      if (loaded.definition.kind === 'parameter') {
+        setA(String(values?.kind === 'parameter' ? values.a : loaded.definition.min));
+        setX(String(values?.kind === 'parameter' ? values.x : 1));
+        const saved = values?.kind === 'parameter' ? values.prediction : null;
+        setPrediction(saved === null || saved === undefined ? '' : String(saved));
+      }
+      else { setEdgeId(values?.kind === 'concept_relation' ? values.edgeId : loaded.definition.edges[0]?.id ?? ''); setTo(values?.kind === 'concept_relation' ? values.to : loaded.definition.nodes[0]?.id ?? ''); }
+    } catch (caught) { if (epoch === epochRef.current) setError(describeApiError(caught)); }
+  }, [stageId, sceneId, scope.projectId, scope.generation]);
+  useEffect(() => { const epoch = ++epochRef.current; setState(null); setError(null); busyRef.current = false; setBusy(false); requestRef.current = null; void load(epoch); return () => { if (epoch === epochRef.current) epochRef.current++; }; }, [load]);
+  const save = async (operation: 'draft' | 'submit') => {
+    if (!state || busyRef.current) return;
+    busyRef.current = true; setBusy(true); setError(null); const epoch = epochRef.current;
+    try {
+      const current = state.definition;
+      const values = current.kind === 'parameter'
+        ? { kind: 'parameter' as const, a: Number(a), x: Number(x), prediction: prediction.trim() === '' ? null : Number(prediction), explanation }
+        : { kind: 'concept_relation' as const, edgeId, to, explanation };
+      if (values.kind === 'parameter' && (!a.trim() || !x.trim() || !Number.isFinite(values.a) || !Number.isFinite(values.x))) throw new Error('请输入有效实验数值。');
+      if (values.kind === 'parameter' && values.prediction !== null && !Number.isFinite(values.prediction)) throw new Error('请输入有效的预测数值，或留空。');
+      if (current.kind === 'parameter' && values.kind === 'parameter' && operation === 'submit'
+        && current.predictionRequired && values.prediction === null) throw new Error('本版本要求先填写本人预测，再提交互动。');
+      const digest = JSON.stringify({ operation, binding: state.binding, values });
+      if (requestRef.current?.digest !== digest) requestRef.current = { digest, nonce: crypto.randomUUID() };
+      const saved = await apiFetch('/api/study/formal-interactions', formalInteractionStateSchema, { method: 'POST', headers, body: JSON.stringify({ operation, scope, binding: state.binding, values, nonce: requestRef.current.nonce }) });
+      if (epoch === epochRef.current) setState(saved);
+    } catch (caught) { if (epoch === epochRef.current) setError(describeApiError(caught)); }
+    finally { if (epoch === epochRef.current) { busyRef.current = false; setBusy(false); } }
+  };
+  const definition = state?.definition;
+  const numericA = Number(a); const intercept = definition?.kind === 'parameter' ? definition.intercept : 0;
+  return <div className="card" data-scene="interactive" data-formal-interaction data-scene-id={sceneId}>
+    <h2>{definition?.title ?? '正在读取正式互动…'}</h2>
+    <p className="secondary">本版本互动定义经人工对照来源审核。草稿与本人提交分别保存；服务核验反馈不直接改变掌握状态。</p>
+    {definition?.kind === 'parameter' ? <>
+      <p>实验函数 f(x)=ax+{definition.intercept}。来源陈述：{definition.statementIds.join('、')}</p>
+      <svg viewBox="0 0 400 220" role="img" aria-label="线性函数参数图" style={{ width: '100%', height: 220 }}><path d="M0 110H400M200 0V220" stroke="currentColor" fill="none"/><path d={`M0 ${110 - (-5 * numericA + intercept) * 15}L400 ${110 - (5 * numericA + intercept) * 15}`} stroke="#0f766e" strokeWidth="3" fill="none"/></svg>
+      <label>参数 a<input data-formal-parameter type="number" min={definition.min} max={definition.max} step={definition.step} value={a} disabled={busy} onChange={e => setA(e.target.value)}/></label>
+      <label>观察点 x<input data-formal-x type="number" min="-100" max="100" value={x} disabled={busy} onChange={e => setX(e.target.value)}/></label>
+      <label>
+        本人预测（先猜结果，再提交）{definition.predictionRequired ? ' · 本版本必填' : ' · 可留空'}
+        <input data-formal-prediction type="number" step="any" value={prediction} disabled={busy} onChange={e => setPrediction(e.target.value)}/>
+      </label>
+    </> : definition?.kind === 'concept_relation' ? <>
+      <p>节点：{definition.nodes.map(n => n.label).join(' · ')}；来源陈述：{definition.statementIds.join('、')}</p>
+      <label>选择关系<select data-formal-edge value={edgeId} disabled={busy} onChange={e => setEdgeId(e.target.value)}>{definition.edges.map(e => <option key={e.id} value={e.id}>{definition.nodes.find(n => n.id === e.from)?.label} — {e.label} → ?</option>)}</select></label>
+      <label>目标概念<select data-formal-target value={to} disabled={busy} onChange={e => setTo(e.target.value)}>{definition.nodes.map(n => <option key={n.id} value={n.id}>{n.label}</option>)}</select></label>
+      <svg viewBox="0 0 500 140" role="img" aria-label="本人概念关系图" style={{ width: '100%', height: 140 }}><rect x="10" y="35" width="170" height="70" rx="10" fill="#dbeafe"/><text x="20" y="75">{definition.nodes.find(n => n.id === definition.edges.find(e => e.id === edgeId)?.from)?.label}</text><path d="M180 70H300L285 60M300 70L285 80" stroke="#0f766e" fill="none"/><rect x="310" y="35" width="180" height="70" rx="10" fill="#ccfbf1"/><text x="320" y="75">{definition.nodes.find(n => n.id === to)?.label}</text></svg>
+    </> : null}
+    <label>本人解释<textarea data-formal-explanation maxLength={2000} value={explanation} disabled={!state || busy} onChange={e => setExplanation(e.target.value)}/></label>
+    <button className="btn" disabled={!state || busy} onClick={() => void save('draft')}>保存临时草稿</button>
+    <button className="btn btn-primary" data-formal-submit disabled={!state || busy} onClick={() => void save('submit')}>{busy ? '正在核验…' : '提交本人互动'}</button>
+    <button className="btn" disabled={busy} onClick={() => void load(epochRef.current)}>重新读取</button>
+    {state?.draft ? <p role="status">本版本临时草稿已保存，可重开恢复。</p> : null}
+    {state?.lastSubmission ? <p role="status" data-formal-result>
+      本人提交已保存，共 {state.count} 条。服务核验：{state.lastSubmission.payload.result}。
+      {state.lastSubmission.payload.predictionMatched === null
+        ? '本次未填写预测。'
+        : state.lastSubmission.payload.predictionMatched
+          ? '本人预测与实测一致。'
+          : '本人预测与实测不一致，可对照来源重做实验。'}
+      {state.deduplicated ? '重复请求已复用。' : ''}
+    </p> : null}
+    {error ? <p role="alert" className="error-text">{error} 可重新读取或再次提交。</p> : null}
+  </div>;
+}

@@ -185,6 +185,14 @@ productionDescribe('课程审核界面（生产构建 SSR）', () => {
   });
 
   it('未审核的草案只给出审核入口，并说明发布还缺什么', async () => {
+    const study = await request('/workbench/study', {}, { 'x-sew-session': sessionToken });
+    const studyHtml = await study.text();
+    expect(study.status).toBe(200);
+    expect(studyHtml).toContain('href="/workbench/lessons"');
+    expect(studyHtml).toContain('href="/classroom/lesson-demo-monotonicity-1"');
+    expect(studyHtml).not.toContain('/classroom/lesson-001');
+    expect(studyHtml).toContain('课程与讲解');
+    expect(studyHtml).toContain('固定课堂演示');
     const html = await lessonHtml();
     expect(html).toContain('课程版本');
     expect(html).toContain('未审核');
@@ -286,34 +294,81 @@ productionDescribe('课程审核界面（生产构建 SSR）', () => {
     expect(created.status).toBe(200);
     const explanationId = cardOf(created.json)!.explanationId;
 
+    const invalidOpen = await classCommand({ action: 'open', lessonId: seeded.lessonId, stageId: null, sceneId: '' });
+    expect(invalidOpen.status).toBe(400);
+    expect(invalidOpen.json.error?.code).toBe('INVALID_ARGUMENT');
+    const unopened = await request('/api/study/classroom', {}, { 'x-sew-session': sessionToken });
+    expect(((await unopened.json()) as { data: { state: unknown } }).data.state).toBeNull();
+
     const opened = await classCommand({ action: 'open', lessonId: seeded.lessonId, stageId: null, sceneId: 'scene-1' });
     expect(opened.status).toBe(200);
     const sessionId = sessionOf(opened.json).sessionId;
 
     // 待核卡片不进入播放队列。
-    const beforeReview = await classCommand({ action: 'play-next', sessionId });
+    const beforeReview = await classCommand({ action: 'play-next', sessionId, requestId: newId('play') });
     expect(beforeReview.status).toBe(200);
     expect(beforeReview.json.data && cardOf(beforeReview.json)).toBeNull();
 
     expect((await classCommand({ action: 'review-card', explanationId, decision: 'approved', note: '与定义一致' })).status).toBe(200);
-    const played = await classCommand({ action: 'play-next', sessionId });
+    const requestId = newId('play');
+    const played = await classCommand({ action: 'play-next', sessionId, requestId });
     expect(cardOf(played.json)!.explanationId).toBe(explanationId);
     // 队列已空：再次播放不会二次播报。
-    const replay = await classCommand({ action: 'play-next', sessionId });
-    expect(cardOf(replay.json)).toBeNull();
+    const replay = await classCommand({ action: 'play-next', sessionId, requestId });
+    expect(cardOf(replay.json)?.explanationId).toBe(explanationId);
+    expect(replay.json.data).toMatchObject({ deduplicated: true });
 
     const handback = await classCommand({ action: 'handback', sessionId, reason: '请本人完成第 3 题' });
     expect(sessionOf(handback.json).status).toBe('awaiting_learner');
-    const blocked = await classCommand({ action: 'play-next', sessionId });
+    const blocked = await classCommand({ action: 'play-next', sessionId, requestId: newId('play') });
     expect(blocked.status).toBe(409);
     expect(blocked.json.error?.code).toBe('CLASSROOM_AWAITING_LEARNER');
 
     const answered = await classCommand({ action: 'learner-answered', sessionId });
     expect(sessionOf(answered.json).roundIndex).toBe(2);
+    const sceneRequestId = newId('scene');
+    const advanced = await classCommand({ action: 'advance-scene', sessionId, sceneId: 'scene-2', requestId: sceneRequestId });
+    expect(advanced.status).toBe(200);
+    expect(advanced.json.data).toMatchObject({ deduplicated: false, session: { currentSceneId: 'scene-2', roundIndex: 3 } });
+    const retried = await classCommand({ action: 'advance-scene', sessionId, sceneId: 'scene-2', requestId: sceneRequestId });
+    expect(retried.json.data).toMatchObject({ deduplicated: true, session: { currentSceneId: 'scene-2', roundIndex: 3 } });
+    const returned = await classCommand({ action: 'advance-scene', sessionId, sceneId: 'scene-1', requestId: newId('scene') });
+    expect(returned.json.data).toMatchObject({ session: { currentSceneId: 'scene-1', roundIndex: 4 } });
+    const revisited = await classCommand({ action: 'advance-scene', sessionId, sceneId: 'scene-2', requestId: newId('scene') });
+    expect(revisited.json.data).toMatchObject({ session: { currentSceneId: 'scene-2', roundIndex: 5 } });
     const closed = await classCommand({ action: 'close', sessionId, status: 'completed', reason: '本节结束' });
     expect(sessionOf(closed.json).status).toBe('completed');
 
     const state = await request('/api/study/classroom', {}, { 'x-sew-session': sessionToken });
     expect(((await state.json()) as { data: { state: unknown } }).data.state).toBeNull();
+  });
+
+  it('多个已发布课时共用一个课堂面板，活动课时撤回后仍可结束会话', async () => {
+    const draft = await command({
+      action: 'draft', lessonId: null, bundleId: seeded.bundleId, title: '独立的第二课时',
+      statementIds: [seeded.statementId], questionIds: [],
+    });
+    expect(draft.status).toBe(200);
+    const lesson = ((await draft.json()) as { data: { lesson: { lessonId: string; version: number } } }).data.lesson;
+    expect((await command({ action: 'review', lessonId: lesson.lessonId, version: lesson.version, decision: 'approved', note: '' })).status).toBe(200);
+    expect((await command({ action: 'publish', lessonId: lesson.lessonId, version: lesson.version })).status).toBe(200);
+    const prepared = await lessonHtml();
+    expect(prepared.match(/<h2>课堂面板<\/h2>/g)).toHaveLength(1);
+    expect(prepared.match(/<h2>教学准备/g)).toHaveLength(2);
+    expect(prepared).toContain(`value="${lesson.lessonId}:v${lesson.version}"`);
+    const classCommand = (body: Record<string, unknown>) => request('/api/study/classroom', {
+      method: 'POST', body: JSON.stringify({ scope: { projectId: seeded.projectId, generation }, ...body }),
+    }, { origin, 'content-type': 'application/json', 'x-sew-session': sessionToken });
+    const opened = await classCommand({ action: 'open', lessonId: lesson.lessonId, stageId: null, sceneId: 'scene-2' });
+    expect(opened.status).toBe(200);
+    const sessionId = ((await opened.json()) as { data: { session: { sessionId: string } } }).data.session.sessionId;
+    const active = await lessonHtml();
+    expect(active.match(/<h2>课堂面板<\/h2>/g)).toHaveLength(1);
+    expect(active).toContain(`<option value="${lesson.lessonId}:v${lesson.version}" selected="">`);
+    expect((await command({ action: 'withdraw', lessonId: lesson.lessonId, reason: '停用第二课时' })).status).toBe(200);
+    const withdrawn = await lessonHtml();
+    expect(withdrawn.match(/<h2>课堂面板<\/h2>/g)).toHaveLength(1);
+    expect(withdrawn).toContain(`<option value="${lesson.lessonId}:v${lesson.version}" selected="">`);
+    expect((await classCommand({ action: 'close', sessionId, status: 'cancelled', reason: '已撤回课程' })).status).toBe(200);
   });
 });

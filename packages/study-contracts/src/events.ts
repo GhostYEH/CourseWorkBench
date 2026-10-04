@@ -88,6 +88,8 @@ export interface RunCancelledEvent extends RunEventBase {
  */
 export interface ModelCallEvent extends RunEventBase {
   type: 'model_call';
+  requestId?: string;
+  usageSource?: 'model' | 'grading';
   purpose: ModelCallPurpose;
   ok: boolean;
   totalTokens: number;

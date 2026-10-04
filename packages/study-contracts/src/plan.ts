@@ -106,6 +106,8 @@ export const runEventPayloadSchema = z.discriminatedUnion('type', [
    */
   z.object({
     type: z.literal('model_call'),
+    requestId: z.string().min(1).max(200).optional(),
+    usageSource: z.enum(['model', 'grading']).optional(),
     purpose: z.enum(MODEL_CALL_PURPOSE),
     ok: z.boolean(),
     totalTokens: z.number().int().nonnegative(),

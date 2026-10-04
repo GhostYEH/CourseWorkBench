@@ -1,13 +1,16 @@
-import type { ReactNode } from 'react';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
+import { Fragment } from 'react';
+import { PersonalPractice } from '../../../components/personal-practice';
 import { Empty } from '../../../components/ui';
-import { bootstrapFromEnvironment, getSession } from '../../../lib/server/service';
+import { FIXED_LESSON_ID } from '../../../lib/classroom/reviewed-lesson';
+import { requireSession } from '../../../lib/server/service';
 import { readWorkbenchKnowledge } from '../../../lib/server/workbench-data';
 
 export const dynamic = 'force-dynamic';
 
 export default function StudyPage(): ReactNode {
-  const session = (getSession() ?? bootstrapFromEnvironment())!;
+  const session = requireSession();
   const view = readWorkbenchKnowledge(session);
   const admitted = view.rows.filter((point) => view.admittedIds.has(point.knowledgeId));
   const confirmedPlan = session.store.getConfirmedPlan(session.projectId);
@@ -19,14 +22,17 @@ export default function StudyPage(): ReactNode {
         <div>
           <h1>今日学习</h1>
           <p>
-            本页列出准入通过的知识点与可用题目及其身份来源。讲解、例题分步、独立练习与复盘属于后续里程碑：
-            教师讲解与白板（TEACH-01/BOARD-01）、互动（VIS-01/02）与订正复做（ERROR-01）尚未接入，
-            这里不显示它们的进度或结果。
+            本页列出准入通过的知识点与可用题目及其身份来源。
+            课程页已支持讲解卡审核、按序播放和交还本人；正式课件尚未挂接到课堂。
+            白板、完整练习与订正复做仍待开发；固定课堂演示使用独立演示内容。
           </p>
         </div>
         <div className="actions">
-          <Link className="btn btn-primary" href="/classroom/lesson-001">
-            进入课堂
+          <Link className="btn btn-primary" href="/workbench/lessons">
+            课程与讲解
+          </Link>
+          <Link className="btn" href={`/classroom/${FIXED_LESSON_ID}`}>
+            固定课堂演示
           </Link>
         </div>
       </div>
@@ -40,7 +46,7 @@ export default function StudyPage(): ReactNode {
           </li>
           <li>可准入知识点：{admitted.length} 项</li>
           <li>可用题目：{questions.length} 道（每道题始终显示原题 / 材料改写 / AI 新编标签）</li>
-          <li>教师讲解与课堂推进尚未接入：本页不会自动播放，也不会替学习者推进步骤</li>
+          <li>在课程页审核讲解卡并操作会话；本页不自动播放或替学习者推进步骤</li>
         </ol>
       </div>
 
@@ -88,6 +94,7 @@ export default function StudyPage(): ReactNode {
             </thead>
             <tbody>
               {questions.map((question) => (
+                <Fragment key={question.questionId}>
                 <tr key={question.questionId} id={`q-${question.questionId}`} style={{ scrollMarginTop: 'var(--sew-space-6)' }}>
                   <td>{question.stem}</td>
                   <td>
@@ -98,6 +105,9 @@ export default function StudyPage(): ReactNode {
                   <td className="muted">{question.originDetail ?? '—'}</td>
                   <td className="mono muted">{question.knowledgeIds.join('、')}</td>
                 </tr>
+                <tr><td colSpan={4}><PersonalPractice key={`${session.projectId}:${session.generation}:${question.questionId}`} projectId={session.projectId} generation={session.generation} questionId={question.questionId}
+                  assessment={question.assessment ? { type: question.assessment.type, options: question.assessment.options, maxScore: question.assessment.maxScore, answerVersion: question.assessment.answerVersion } : null} /></td></tr>
+                </Fragment>
               ))}
             </tbody>
           </table>

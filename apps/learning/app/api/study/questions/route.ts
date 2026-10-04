@@ -30,6 +30,7 @@ export const POST = route(async (request: Request) => {
     knowledgeIds: body.knowledgeIds,
     requestedOrigin: body.requestedOrigin,
     originRecord: body.originRecord,
+    assessment: body.assessment,
   });
 
   return ok({ ...result, question: toQuestionDetailDto(result.question) });

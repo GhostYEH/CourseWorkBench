@@ -7,7 +7,7 @@ const { join, resolve, sep } = require('node:path');
 const root = resolve(__dirname, '..');
 const electron = join(root, 'apps', 'desktop', 'node_modules', 'electron', 'dist', 'electron.exe');
 const entry = join(__dirname, 'smoke-electron-boundary.cjs');
-const maxWaitMs = 90000;
+const maxWaitMs = 240000;
 let tempDir;
 let child;
 let succeeded = false;

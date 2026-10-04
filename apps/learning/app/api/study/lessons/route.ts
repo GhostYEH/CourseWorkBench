@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   StudyError,
   lessonBundleBuildSchema,
+  lessonDocumentAssembleSchema,
   lessonDraftSchema,
   lessonPublishSchema,
   lessonReviewSchema,
@@ -10,12 +11,15 @@ import {
 import { parseBody, route, ok } from '../../../../lib/server/http';
 import { assertScope, requireSession } from '../../../../lib/server/service';
 import { toLessonReviewDto, toLessonVersionDto } from '../../../../lib/server/dto';
+import { attachFormalLessonDocument } from '../../../../lib/server/classroom-service';
+import { abortActiveModelCalls } from '../../../../lib/server/model-call';
 
 export const dynamic = 'force-dynamic';
 
 const bodySchema = z.discriminatedUnion('action', [
   lessonBundleBuildSchema,
   lessonDraftSchema,
+  lessonDocumentAssembleSchema,
   lessonReviewSchema,
   lessonPublishSchema,
   lessonWithdrawSchema,
@@ -62,6 +66,11 @@ export const POST = route(async (request: Request) => {
     return ok({ bundleId: bundle.bundleId, digest: bundle.digest, frozenAt: bundle.frozenAt, bundle: bundle.bundle });
   }
 
+  if (body.action === 'attach-document') {
+    const document = attachFormalLessonDocument(session, body.lessonId, body.version);
+    return ok({ document });
+  }
+
   if (body.action === 'review') {
     const review = session.store.reviewLesson({
       projectId,
@@ -74,6 +83,8 @@ export const POST = route(async (request: Request) => {
   }
 
   if (body.action === 'withdraw') {
+    // 课程停用后课堂已不可教：先中止本项目在途的模型请求，再落库撤回结果。
+    abortActiveModelCalls({ projectId, reason: '课程已撤回或停用' });
     const lesson = session.store.withdrawLesson({ projectId, lessonId: body.lessonId, reason: body.reason });
     return ok({ lesson: toLessonVersionDto(lesson), link: session.store.getLessonClassroomLink(body.lessonId, projectId) });
   }

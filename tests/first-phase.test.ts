@@ -331,7 +331,10 @@ describe('第一阶段闭环', () => {
     });
     expect(first.deduplicated).toBe(false);
     expect(first.attempt.kind).toBe('real');
-    expect(store.getKnowledge(knowledgeId)?.masteryStatus).toBe('passed');
+    // 旧题没有登记评分规则，即使文本与参考答案一致也不授予掌握。
+    expect(first.attempt.grading?.status).toBe('pending_review');
+    expect(first.attempt.masteryAfter).toBeNull();
+    expect(store.getKnowledge(knowledgeId)?.masteryStatus).toBe('untested');
 
     // 提交后响应前崩溃：重试同一幂等键读取既有收据，不重复写入
     const retry = store.submitAttempt({

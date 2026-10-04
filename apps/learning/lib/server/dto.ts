@@ -63,7 +63,8 @@ export const toClassroomSessionDto = (row: ClassroomSessionRow): ClassroomSessio
   awaitingReason: row.awaitingReason, currentSceneId: row.currentSceneId,
   roundIndex: row.roundIndex, roundCalls: row.roundCalls,
   roundPeerTurns: row.roundPeerTurns, lessonCalls: row.lessonCalls,
-  peersEnabled: row.peersEnabled, createdAt: row.createdAt, updatedAt: row.updatedAt,
+  peersEnabled: row.peersEnabled, peersEngagement: row.peersEngagement,
+  createdAt: row.createdAt, updatedAt: row.updatedAt,
 });
 
 export const toMaterialDto = (row: MaterialRow): MaterialDto => ({
@@ -175,6 +176,7 @@ export const toSyllabusItemDto = (row: SyllabusItemRow): SyllabusItemDto => ({  
 
 /** 列表项：不含答案与解析，供未授权列表与客户端缓存使用。 */
 export const toQuestionListItemDto = (row: QuestionRow): QuestionListItemDto => ({
+  assessment: row.assessment ? { type: row.assessment.type, options: row.assessment.options, maxScore: row.assessment.maxScore, answerVersion: row.assessment.answerVersion } : null,
   questionId: row.questionId,
   stem: row.stem,
   knowledgeIds: row.knowledgeIds,
@@ -188,11 +190,13 @@ export const toQuestionListItemDto = (row: QuestionRow): QuestionListItemDto => 
 /** 详情：仅在授权判分或明确需要答案的流程中返回。 */
 export const toQuestionDetailDto = (row: QuestionRow): QuestionDto => ({
   ...toQuestionListItemDto(row),
+  assessment: row.assessment,
   answer: row.answer,
   solution: row.solution,
 });
 
 export const toAttemptDto = (row: AttemptRow, deduplicated = false): AttemptDto => ({
+  questionRevision: row.questionRevision, answerVersion: row.answerVersion, grading: row.grading,
   recordScope: row.recordScope,
   attemptId: row.attemptId,
   questionId: row.questionId,

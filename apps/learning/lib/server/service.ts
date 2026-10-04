@@ -20,6 +20,7 @@ import {
   writeManifest,
   type ProjectManifest,
 } from '@sew/study-storage';
+import { getLearnerProfile } from './learner-profile';
 
 export interface Session {
   projectId: string;
@@ -28,6 +29,7 @@ export interface Session {
   generation: number;
   store: StudyStore;
   openedAt: string;
+  learnerUid: string;
 }
 
 interface SessionHolder {
@@ -80,10 +82,15 @@ const openProject = (root: string): Session => {
 
   // Prepare the replacement fully before closing the currently usable project.
   const store = StudyStore.open({ file: paths.databaseFile });
+  let learnerUid: string;
   try {
     if (!store.getProject(manifest.projectId)) {
       store.createProject({ projectId: manifest.projectId, displayName: manifest.displayName });
     }
+    // A trusted native/environment open authorizes the local legacy association.
+    // Its provenance stays legacy_local; it does not establish an online identity.
+    learnerUid = getLearnerProfile().uid;
+    store.bindLocalLearner(manifest.projectId, learnerUid);
   } catch (error) {
     store.close();
     throw error;
@@ -107,6 +114,7 @@ const openProject = (root: string): Session => {
     generation: holder.generationCounter,
     store,
     openedAt: new Date().toISOString(),
+    learnerUid,
   };
   holder.current = session;
   holder.authorizedPaths.clear();
@@ -131,7 +139,11 @@ export const closeProject = (): void => {
   }
 };
 
-export const getSession = (): Session | null => holder.current;
+export const getSession = (): Session | null => {
+  const session = holder.current;
+  if (session && session.learnerUid !== getLearnerProfile().uid) throw new StudyError('PROJECT_NOT_AUTHORIZED', { reason: 'active_project_learner_uid_mismatch' }, '当前个人档案与项目身份不一致，请关闭项目后重新打开。');
+  return session;
+};
 
 export const requireSession = (): Session => {
   // 服务启动时已按环境变量打开项目；这里兜底一次，避免先调接口时没有会话。
@@ -139,7 +151,7 @@ export const requireSession = (): Session => {
   if (!holder.current) {
     throw new StudyError('PROJECT_NOT_AUTHORIZED', { reason: 'no_open_project' });
   }
-  return holder.current;
+  return getSession()!;
 };
 
 /** 项目切换后，旧请求与旧模型响应携带的代次失效。 */
@@ -178,11 +190,11 @@ export const updateProjectSettings = (
 
 /** 服务启动时按环境变量打开项目（`pnpm dev` 与随包启动都走这里）。 */
 export const bootstrapFromEnvironment = (): Session | null => {
-  if (holder.environmentBootstrapSuppressed) return holder.current;
+  if (holder.environmentBootstrapSuppressed) return getSession();
   const root = process.env.SEW_PROJECT_ROOT;
   if (!root) return null;
   const canonicalRoot = canonicalPath(root);
-  if (holder.current && canonicalRoot && holder.current.displayPath === canonicalRoot) return holder.current;
+  if (holder.current && canonicalRoot && holder.current.displayPath === canonicalRoot) return getSession();
   return openProject(root);
 };
 

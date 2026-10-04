@@ -765,6 +765,15 @@ tbody tr:hover {
   font-size: 13px;
 }
 
+/* 教师面板挂在课堂侧栏里：去掉外层卡片的边框与留白，避免出现「卡中卡」。 */
+.card-nested {
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .role-card .role-name {
   font-weight: 650;
   display: flex;

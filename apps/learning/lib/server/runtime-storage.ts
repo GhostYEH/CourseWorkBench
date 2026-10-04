@@ -1,12 +1,12 @@
 /** Scope and server-assigned identity for the classroom RuntimeStore/KV routes. */
-import { z } from 'zod';
 import { NextResponse } from 'next/server';
 import { StudyError } from '@sew/study-contracts';
 import { RuntimeAppendConflictError } from '@openmaic/storage';
-import { assertScope, requireSession, type Session } from './service';
+import { assertScope, type Session } from './service';
+import { scopedRequest } from './scoped-request';
+import { readBoundedBody } from './bounded-body';
+import { mapHttpError } from './http';
 
-const PROJECT_HEADER = 'x-sew-project-id';
-const GENERATION_HEADER = 'x-sew-generation';
 
 export interface RuntimeRequestScope {
   projectId: string;
@@ -25,21 +25,12 @@ export class RuntimeHttpError extends Error {
   }
 }
 
-export const CLASSROOM_OWNER_LEARNER_KEY = 'sew:classroom:owner:v1';
+export { LEGACY_LOCAL_LEARNER_KEY as CLASSROOM_OWNER_LEARNER_KEY } from '@sew/study-contracts';
 export const CLASSROOM_SIMULATION_LEARNER_KEY = 'sew:classroom:simulation:v1';
 
-export const runtimeRequestScope = (request: Request): { scope: RuntimeRequestScope; session: Session } => {
-  const projectId = request.headers.get(PROJECT_HEADER);
-  const rawGeneration = request.headers.get(GENERATION_HEADER);
-  const generation = rawGeneration === null ? NaN : Number(rawGeneration);
-  if (!projectId || !Number.isSafeInteger(generation) || generation < 1) {
-    requireSession();
-    throw new RuntimeHttpError(400, 'VALIDATION_FAILED', 'Missing classroom project scope headers', {
-      requiredHeaders: [PROJECT_HEADER, GENERATION_HEADER],
-    });
-  }
-  return { scope: { projectId, generation }, session: assertScope({ projectId, generation }) };
-};
+export const runtimeRequestScope = (request: Request): { scope: RuntimeRequestScope; session: Session } =>
+  scopedRequest(request, requiredHeaders => new RuntimeHttpError(400, 'VALIDATION_FAILED',
+    'Missing classroom project scope headers', { requiredHeaders }));
 
 export const revalidateRuntimeScope = (scope: RuntimeRequestScope): Session => assertScope(scope);
 
@@ -82,35 +73,18 @@ export const readBoundedRuntimeJson = async (
   scope: RuntimeRequestScope,
   maxBytes = MAX_RUNTIME_BODY_BYTES,
 ): Promise<unknown> => {
-  const rawLength = request.headers.get('content-length');
-  if (rawLength !== null && /^\d+$/.test(rawLength) && Number(rawLength) > maxBytes) {
-    throw new RuntimeHttpError(413, 'PAYLOAD_TOO_LARGE', 'Runtime JSON body exceeds the request limit', { limit: maxBytes });
-  }
-  if (!request.body) throw new RuntimeHttpError(400, 'VALIDATION_FAILED', 'Runtime JSON body is required');
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    while (true) {
-      const part = await reader.read();
-      if (part.done) break;
-      total += part.value.byteLength;
-      if (total > maxBytes) {
-        await reader.cancel().catch(() => undefined);
-        throw new RuntimeHttpError(413, 'PAYLOAD_TOO_LARGE', 'Runtime JSON body exceeds the request limit', { limit: maxBytes });
-      }
-      chunks.push(part.value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
+  const bytes = await readBoundedBody(request, maxBytes, reason => reason === 'too_large'
+    ? new RuntimeHttpError(413, 'PAYLOAD_TOO_LARGE', 'Runtime JSON body exceeds the request limit', { limit: maxBytes })
+    : new RuntimeHttpError(400, 'VALIDATION_FAILED', reason === 'missing'
+      ? 'Runtime JSON body is required' : 'Runtime request body could not be read'));
   revalidateRuntimeScope(scope);
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
   let parsed: unknown;
   try {
-    const replay = new Request(request.url, { method: 'POST', headers: request.headers, body: bytes });
+    // 复制成独立 ArrayBuffer 再交给 Request：Uint8Array 视图在本项目的 TS lib 下
+    // 不满足 BodyInit 的类型约束，直接传视图会在构建期报类型错误。
+    const bodyBytes = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(bodyBytes).set(bytes);
+    const replay = new Request(request.url, { method: 'POST', headers: request.headers, body: bodyBytes });
     parsed = await replay.json();
   } catch {
     throw new RuntimeHttpError(400, 'VALIDATION_FAILED', 'Runtime request body must be valid JSON');
@@ -128,10 +102,10 @@ export const runtimeRouteError = (error: unknown): NextResponse => {
     });
   }
   if (error instanceof StudyError) {
-    const status = error.code === 'PROJECT_GENERATION_STALE' ? 409 : error.code === 'PROJECT_NOT_AUTHORIZED' ? 403 : 400;
-    return NextResponse.json({ error: { code: error.code, message: error.message, details: error.details } }, {
-      status,
-      headers: { 'cache-control': 'no-store', 'x-error-code': error.code },
+    const mapped = mapHttpError(error);
+    return NextResponse.json({ error: mapped.error }, {
+      status: mapped.status,
+      headers: { 'cache-control': 'no-store', 'x-error-code': mapped.error.code },
     });
   }
   if (error instanceof RuntimeAppendConflictError) {
@@ -158,8 +132,3 @@ export const runtimeRouteError = (error: unknown): NextResponse => {
 export const error = (status: number, code: string, message: string, details?: Record<string, unknown>): never => {
   throw new RuntimeHttpError(status, code, message, details);
 };
-
-export const runtimeScopeHeaders = z.object({
-  projectId: z.string().min(1),
-  generation: z.number().int().positive(),
-});

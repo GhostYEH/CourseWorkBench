@@ -26,13 +26,13 @@ export interface ModelCallGuardFacts {
   /** 上课用途必须给出课程事实；草案生成的课程为 null。 */
   lesson: { status: LessonStatus | null; reviewApproved: boolean } | null;
   /** 本 run 已累计的调用次数与 token（含失败尝试）。 */
-  usage: { calls: number; tokens: number };
-  limits: { maxCalls: number; maxTokens: number };
+  usage: { calls: number; tokens: number; activeElapsedMs?: number };
+  limits: { maxCalls: number; maxTokens: number; maxWallClockMs?: number };
 }
 
 const TERMINAL_RUN_STATES: readonly RunState[] = ['completed', 'cancelled', 'failed'];
 
-/** 阻断顺序：任务状态 → 额度 → 来源版本漂移 → 单点准入 → 课程审核发布。 */
+/** 阻断顺序：任务状态 → 额度（次数/Token/执行时限）→ 来源版本漂移 → 单点准入 → 课程审核发布。 */
 export const assertModelCallAdmitted = (facts: ModelCallGuardFacts): void => {
   if (!facts.run) throw new StudyError('PLAN_NOT_CONFIRMED', { reason: 'no_run' });
   if (TERMINAL_RUN_STATES.includes(facts.run.state)) {
@@ -46,6 +46,13 @@ export const assertModelCallAdmitted = (facts: ModelCallGuardFacts): void => {
   if (facts.usage.tokens >= facts.limits.maxTokens) {
     throw new StudyError('BUDGET_EXCEEDED', {
       reason: 'tokens', used: facts.usage.tokens, limit: facts.limits.maxTokens,
+    });
+  }
+  // 执行时限只累计真正在跑的外部调用；等待本人输入的时间不计入（《规划书》6.4）。
+  if (facts.limits.maxWallClockMs !== undefined && facts.usage.activeElapsedMs !== undefined
+    && facts.usage.activeElapsedMs >= facts.limits.maxWallClockMs) {
+    throw new StudyError('BUDGET_EXCEEDED', {
+      reason: 'wall_clock', used: facts.usage.activeElapsedMs, limit: facts.limits.maxWallClockMs,
     });
   }
   if (facts.run.frozen.knowledgeTableDigest !== facts.currentKnowledgeTableDigest) {

@@ -16,6 +16,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['packages/**/*.test.ts', 'tests/**/*.test.ts'],
+    setupFiles: ['tests/user-data-isolation.ts'],
     testTimeout: 20_000,
     // 沙箱环境禁止派生新进程，使用 worker 线程池。
     pool: 'threads',

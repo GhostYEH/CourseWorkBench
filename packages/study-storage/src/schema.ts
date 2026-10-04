@@ -825,6 +825,126 @@ CREATE TABLE classroom_action_receipts (
 CREATE INDEX idx_classroom_action_receipts_session ON classroom_action_receipts(session_id, at, step_key);
 `,
   },
+  { version: 16, name: 'question_assessment', sql: `
+ALTER TABLE questions ADD COLUMN assessment_json TEXT;
+ALTER TABLE attempts ADD COLUMN question_revision INTEGER;
+ALTER TABLE attempts ADD COLUMN answer_version INTEGER;
+ALTER TABLE attempts ADD COLUMN grading_json TEXT;
+` },
+{ version: 17, name: 'append_only_attempt_grading', sql: `
+CREATE TABLE attempt_grade_candidates (candidate_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, attempt_id TEXT NOT NULL REFERENCES attempts(attempt_id), candidate_json TEXT NOT NULL);
+CREATE INDEX idx_grade_candidates_attempt ON attempt_grade_candidates(project_id, attempt_id);
+CREATE TABLE attempt_grade_reviews (review_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, attempt_id TEXT NOT NULL REFERENCES attempts(attempt_id), review_version INTEGER NOT NULL, review_json TEXT NOT NULL, UNIQUE(project_id,attempt_id,review_version));
+CREATE TABLE attempt_grade_receipts (project_id TEXT NOT NULL, request_id TEXT NOT NULL, action TEXT NOT NULL, attempt_id TEXT NOT NULL, intent_json TEXT NOT NULL, result_json TEXT NOT NULL, PRIMARY KEY(project_id,request_id));
+` },
+{ version: 18, name: 'durable_grading_generation', sql: `
+CREATE TABLE attempt_grade_generation_calls (
+  project_id TEXT NOT NULL, request_id TEXT NOT NULL, attempt_id TEXT NOT NULL REFERENCES attempts(attempt_id),
+  expected_review_version INTEGER NOT NULL,
+  run_id TEXT NOT NULL REFERENCES runs(run_id), reserved_tokens INTEGER NOT NULL CHECK (reserved_tokens > 0),
+  state TEXT NOT NULL CHECK (state IN ('started','failed','completed')),
+  failure_json TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  PRIMARY KEY(project_id,request_id)
+);
+` },
+{ version: 19, name: 'local_learner_identity_binding', sql: `
+CREATE TABLE learner_identity_bindings (
+  project_id TEXT PRIMARY KEY REFERENCES projects(project_id),
+  learner_key TEXT NOT NULL,
+  learner_uid TEXT NOT NULL,
+  origin TEXT NOT NULL CHECK (origin IN ('created_local','legacy_local')),
+  created_at TEXT NOT NULL
+);
+` },
+{ version: 20, name: 'local_classroom_room_authority', sql: `
+CREATE TABLE classroom_rooms (
+  project_id TEXT NOT NULL REFERENCES projects(project_id), room_id TEXT NOT NULL,
+  room_json TEXT NOT NULL, snapshot_json TEXT NOT NULL, lease_json TEXT,
+  PRIMARY KEY(project_id,room_id)
+);
+CREATE TABLE classroom_room_members (
+  project_id TEXT NOT NULL, room_id TEXT NOT NULL, uid TEXT NOT NULL, member_json TEXT NOT NULL,
+  PRIMARY KEY(project_id,room_id,uid),
+  FOREIGN KEY(project_id,room_id) REFERENCES classroom_rooms(project_id,room_id)
+);
+CREATE TABLE classroom_room_assets (
+  project_id TEXT NOT NULL, room_id TEXT NOT NULL, asset_id TEXT NOT NULL, bytes BLOB NOT NULL,
+  PRIMARY KEY(project_id,room_id,asset_id),
+  FOREIGN KEY(project_id,room_id) REFERENCES classroom_rooms(project_id,room_id)
+);
+CREATE TABLE classroom_room_receipts (
+  project_id TEXT NOT NULL REFERENCES projects(project_id), request_id TEXT NOT NULL,
+  actor_uid TEXT NOT NULL, action TEXT NOT NULL CHECK(action IN ('create','scene','close')),
+  intent_json TEXT NOT NULL, result_json TEXT NOT NULL, PRIMARY KEY(project_id,request_id)
+);
+CREATE TABLE classroom_room_session_bindings (
+  project_id TEXT NOT NULL, room_id TEXT NOT NULL, session_id TEXT NOT NULL REFERENCES classroom_sessions(session_id),
+  PRIMARY KEY(project_id,room_id), UNIQUE(project_id,session_id),
+  FOREIGN KEY(project_id,room_id) REFERENCES classroom_rooms(project_id,room_id)
+);
+` },
+{ version: 21, name: 'reviewed_classroom_board', sql: `
+CREATE TABLE classroom_board_items (item_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, lesson_id TEXT NOT NULL, lesson_version INTEGER NOT NULL, item_json TEXT NOT NULL);
+CREATE TABLE classroom_board_effects (project_id TEXT NOT NULL, session_id TEXT NOT NULL, seq INTEGER NOT NULL, item_id TEXT NOT NULL, effect_json TEXT NOT NULL, PRIMARY KEY(project_id,session_id,seq), UNIQUE(project_id,session_id,item_id));
+CREATE TABLE classroom_board_receipts (project_id TEXT NOT NULL, request_id TEXT NOT NULL, action TEXT NOT NULL, intent_json TEXT NOT NULL, result_json TEXT NOT NULL, PRIMARY KEY(project_id,request_id));
+` },
+{ version: 22, name: 'personal_feedback_and_review', sql: `
+CREATE TABLE feedback_originals(project_id TEXT NOT NULL,uid TEXT NOT NULL,attempt_id TEXT NOT NULL UNIQUE,snapshot_json TEXT NOT NULL,PRIMARY KEY(project_id,uid,attempt_id));
+CREATE TABLE feedback_entries(project_id TEXT NOT NULL,uid TEXT NOT NULL,attempt_id TEXT NOT NULL,version INTEGER NOT NULL,entry_id TEXT NOT NULL UNIQUE,entry_json TEXT NOT NULL,PRIMARY KEY(project_id,uid,attempt_id,version));
+CREATE TABLE feedback_review_tasks(project_id TEXT NOT NULL,uid TEXT NOT NULL,task_id TEXT NOT NULL,attempt_id TEXT NOT NULL,due_at TEXT NOT NULL,task_json TEXT NOT NULL,PRIMARY KEY(project_id,uid,task_id));
+CREATE TABLE feedback_receipts(project_id TEXT NOT NULL,uid TEXT NOT NULL,request_id TEXT NOT NULL,intent_json TEXT NOT NULL,result_json TEXT NOT NULL,PRIMARY KEY(project_id,uid,request_id));
+` },
+{ version: 23, name: 'durable_shared_model_usage', sql: `
+CREATE TABLE model_usage_calls(project_id TEXT NOT NULL,request_id TEXT NOT NULL,run_id TEXT NOT NULL,call_json TEXT NOT NULL,PRIMARY KEY(project_id,request_id));
+` },
+{ version: 24, name: 'classroom_peers_and_recovery', sql: `
+-- AI 同学发言（PEER-01）。分区列由服务端写死为 simulation：同学的示范与练习
+-- 不能通过与本人作答相同的读路径被当成「本人完成」。
+CREATE TABLE classroom_peer_turns (
+  turn_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  session_id TEXT NOT NULL REFERENCES classroom_sessions(session_id),
+  role_profile_id TEXT NOT NULL,
+  round_index INTEGER NOT NULL,
+  turn_index INTEGER NOT NULL,
+  partition TEXT NOT NULL CHECK (partition IN ('simulation')),
+  actor_type TEXT NOT NULL CHECK (actor_type IN ('peer_ai')),
+  turn_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (project_id, session_id, round_index, turn_index)
+);
+CREATE INDEX idx_classroom_peer_turns_session ON classroom_peer_turns(project_id, session_id, round_index, turn_index);
+-- 同学参与度单独一张表，而不是给 classroom_sessions 加列：
+-- SQLite 没有 ADD COLUMN IF NOT EXISTS，加列会让「重建旧库」这类路径无法重跑。
+CREATE TABLE classroom_session_peer_settings (
+  project_id TEXT NOT NULL,
+  session_id TEXT NOT NULL REFERENCES classroom_sessions(session_id),
+  engagement TEXT NOT NULL CHECK (engagement IN ('quiet', 'balanced', 'active')),
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, session_id)
+);
+` },
+{ version: 25, name: 'grading_generation_accounting', sql: `
+-- 评分生成调用的结算计量（BUDGET-01）。
+-- 没有这三列时，「已结算的评分」在共享预算报告里会整个消失，且未知用量会被
+-- 静默按 0 计。加上之后评分与生成在同一份报告里可核对。
+ALTER TABLE attempt_grade_generation_calls ADD COLUMN accounted_tokens INTEGER;
+ALTER TABLE attempt_grade_generation_calls ADD COLUMN token_measurement TEXT;
+ALTER TABLE attempt_grade_generation_calls ADD COLUMN elapsed_ms INTEGER;
+` },
 ];
 
-export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
+
+
+
+
+
+
+
+
+
+// Registration order is part of the upgrade protocol; reject duplicate, skipped, or reordered versions.
+for (let index = 0; index < MIGRATIONS.length; index += 1) {
+  if (MIGRATIONS[index]?.version !== index + 1) throw new Error('Database migrations must be consecutive and ordered');
+}
+export const SCHEMA_VERSION = MIGRATIONS.length;

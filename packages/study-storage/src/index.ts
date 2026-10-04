@@ -2,6 +2,8 @@ export { createNodeSqliteDriver } from './driver';
 export type { SqlDatabase, SqliteDriver, SqlRunResult, SqlStatement } from './driver';
 export { SCHEMA_VERSION } from './schema';
 export { StudyStore } from './store';
+export type { CreateLocalClassroomRoomInput, ClassroomRoomSceneInput, ClassroomRoomCloseInput, ClassroomTeacherLeaseAcquireInput, ClassroomTeacherLeaseCheckInput, ClassroomRoomWriteResult } from './repositories/classroom-room';
+export type { SaveAttemptGradeCandidateInput, ReviewAttemptGradeInput, RejectAttemptGradeCandidateInput } from './repositories/attempt-grading';
 export type {
   AttemptRow, ClassroomAssetBindingRow, ClassroomAssetInfo, ClassroomAssetRow,
   ClassroomDocumentRow, ClassroomSceneSourceRow, ClassroomStateRow, DocumentFolderRow,
@@ -35,3 +37,6 @@ export {
 export type { ProjectManifest, ProjectPaths } from './project-layout';
 export { decodeJson, encodeJson } from './json-codec';
 export type { DecodeResult } from './json-codec';
+export { ClassroomBoardRepository } from './repositories/classroom-board';
+export type { CreateClassroomBoardInput, ReviewClassroomBoardInput, PlayClassroomBoardInput } from './repositories/classroom-board';
+export type { StartModelUsageCallInput, SettleModelUsageCallInput } from './repositories/model-usage';

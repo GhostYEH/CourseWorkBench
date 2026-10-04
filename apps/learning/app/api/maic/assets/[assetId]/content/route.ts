@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { fail } from '../../../../../../lib/server/http';
+import { mapHttpError } from '../../../../../../lib/server/http';
 import { ClassroomAssetQuotaExceededError, ClassroomAssetReferencedError } from '@sew/study-storage';
 import {
   AssetHttpError,
@@ -19,11 +19,9 @@ const typedError = async (error: unknown): Promise<NextResponse> => {
   if (error instanceof ClassroomAssetReferencedError) return NextResponse.json({ error: { code: error.code, message: error.message } }, { status: 409, headers: { 'x-error-code': error.code, 'cache-control': 'no-store' } });
   if (error instanceof ClassroomAssetQuotaExceededError) return NextResponse.json({ error: { code: 'ASSET_QUOTA_EXCEEDED', message: '项目课堂资源总量超过上限' } }, { status: 507, headers: { 'x-error-code': 'ASSET_QUOTA_EXCEEDED', 'cache-control': 'no-store' } });
   if (error instanceof AssetHttpError) return NextResponse.json({ error: { code: error.code, message: error.message, ...(error.details ? { details: error.details } : {}) } }, { status: error.status, headers: { 'x-error-code': error.code, 'cache-control': 'no-store' } });
-  const mapped = fail(error);
-  const body = await mapped.json() as { error?: { code?: string } };
-  const errorBody = body.error;
-  const code = errorBody?.code ?? 'INTERNAL';
-  return NextResponse.json({ error: errorBody }, { status: mapped.status, headers: { 'x-error-code': code, 'cache-control': 'no-store' } });
+  const mapped = mapHttpError(error);
+  return NextResponse.json({ error: mapped.error }, { status: mapped.status,
+    headers: { 'x-error-code': mapped.error.code, 'cache-control': 'no-store' } });
 };
 
 const renderableMediaTypes = new Set([

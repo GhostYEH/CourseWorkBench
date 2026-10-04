@@ -90,8 +90,18 @@ export type RunEventType = (typeof RUN_EVENT_TYPES)[number];
 /**
  * 模型调用用途。诊断用途不在此列：连接测试有独立限额，且不能用来产出教学内容。
  * `lesson_draft` 只产出待人工审核的草案；`teaching_prompt` 要求课程已发布并审核通过。
+ *
+ * BUDGET-01 起，课堂教师、AI 同学与后续的错因归因、复习建议共用同一份 run 额度，
+ * 所以它们也必须作为独立用途出现在这里，才能在同一张台账上分开明细、合并计数。
  */
-export const MODEL_CALL_PURPOSE = ['lesson_draft', 'teaching_prompt'] as const;
+export const MODEL_CALL_PURPOSE = [
+  'lesson_draft',
+  'teaching_prompt',
+  'peer_turn',
+  'attempt_grading',
+  'error_attribution',
+  'review_suggestion',
+] as const;
 export type ModelCallPurpose = (typeof MODEL_CALL_PURPOSE)[number];
 
 /** 运行状态机（《规划书》6.3）。 */

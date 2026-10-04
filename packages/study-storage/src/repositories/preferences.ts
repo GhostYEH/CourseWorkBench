@@ -6,8 +6,8 @@
  */
 
 import type { SqlDatabase } from '../driver';
-import { arbitrarySchema, decodeJson, encodeJson } from '../json-codec';
-import { defaultJsonPolicy, num, type Row } from './types';
+import { arbitrarySchema, encodeJson } from '../json-codec';
+import { defaultJsonPolicy, readJsonColumn, num, type Row } from './types';
 
 export interface StoredPreference<T> {
   value: T | null;
@@ -15,9 +15,7 @@ export interface StoredPreference<T> {
 }
 
 const decodeValue = <T>(value: unknown, context: string): T | null => {
-  const decoded = decodeJson<unknown>(value, arbitrarySchema, null, context);
-  if (!decoded.ok && decoded.error) defaultJsonPolicy.warn(decoded.error);
-  return decoded.ok ? (decoded.value as T) : null;
+  return readJsonColumn(value, arbitrarySchema, null, context, defaultJsonPolicy) as T | null;
 };
 
 export class PreferencesRepository {

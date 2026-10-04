@@ -384,8 +384,34 @@ export class LessonRepository {
       );
   }
 
-  getLink(lessonId: string, projectId: string): ClassroomLinkRow | null {
-    const row = this.db
+  /**
+   * 把已装配的课件文档挂到「当前已发布的这个版本」上。
+   *
+   * 只更新课堂映射，不改课程状态：课件文本全部来自该版本已审核并冻结的证据包，
+   * 挂接动作不产生新的学科事实，因此不需要新的审核结论，但仍要求版本仍处发布态。
+   */
+  attachDocument(input: {
+    projectId: string;
+    lessonId: string;
+    version: number;
+    stageId: string;
+    documentDigest: string;
+  }): ClassroomLinkRow {
+    const now = new Date().toISOString();
+    const result = this.db
+      .prepare('UPDATE classroom_links SET stage_id = ?, stage_document_version = ?, document_digest = ?, updated_at = ? WHERE lesson_id = ? AND project_id = ? AND lesson_version = ? AND status = ?')
+      .run(input.stageId, 1, input.documentDigest, now, input.lessonId, input.projectId, input.version, 'published');
+    if (result.changes !== 1) {
+      throw new StudyError('STEP_ALREADY_COMMITTED', {
+        reason: 'lesson_not_currently_published', lessonId: input.lessonId, version: input.version,
+      });
+    }
+    const link = this.getLink(input.lessonId, input.projectId);
+    if (!link) throw new StudyError('INTERNAL', { lessonId: input.lessonId });
+    return link;
+  }
+
+  getLink(lessonId: string, projectId: string): ClassroomLinkRow | null {    const row = this.db
       .prepare('SELECT * FROM classroom_links WHERE lesson_id = ? AND project_id = ?')
       .get(lessonId, projectId) as Row | undefined;
     if (!row) return null;

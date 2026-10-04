@@ -19,8 +19,10 @@ import type {
   MasteryStatus,
   MaterialRawArchiveDto,
   MechanicalCheckDto,
+  PeerEngagement,
   PlanPayloadDto,
   QuestionOrigin,
+  QuestionAssessmentDto, AssessmentGradingDto,
   RecordScope,
   ReviewProvenance,
   RoleExplanation,
@@ -30,7 +32,7 @@ import type {
   ScopeStatus,
   SourceStatus,
 } from '@sew/study-contracts';
-import { LESSON_STATUS, RUN_STATE, StudyError } from '@sew/study-contracts';
+import { assessmentGradingSchema, questionAssessmentSchema, LESSON_STATUS, RUN_STATE, StudyError } from '@sew/study-contracts';
 import type { OriginRecord } from '@sew/study-domain';
 import { z } from 'zod';
 import {
@@ -177,6 +179,7 @@ export interface KnowledgeRow {
 }
 
 export interface QuestionRow {
+  assessment: QuestionAssessmentDto | null;
   questionId: string;
   stem: string;
   answer: string;
@@ -196,6 +199,9 @@ export interface QuestionRow {
 }
 
 export interface AttemptRow {
+  questionRevision: number | null;
+  answerVersion: number | null;
+  grading: AssessmentGradingDto | null;
   recordScope: RecordScope;
   attemptId: string;
   questionId: string;
@@ -302,6 +308,8 @@ export interface ClassroomSessionRow {
   roundPeerTurns: number;
   lessonCalls: number;
   peersEnabled: boolean;
+  /** 同学参与度：只影响开口频率，不是权限旋钮。 */
+  peersEngagement: PeerEngagement;
   createdAt: string;
   updatedAt: string;
 }
@@ -433,7 +441,7 @@ export const defaultJsonPolicy: JsonColumnPolicy = {
 /** 解析 JSON 列：损坏时按策略处理，并返回显式 fallback。 */
 export const readJsonColumn = <T>(
   value: unknown,
-  schema: z.ZodType<T>,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
   fallback: T,
   context: string,
   policy: JsonColumnPolicy,
@@ -448,7 +456,7 @@ export const readJsonColumn = <T>(
 /** 权威 JSON 列：损坏即拒绝，避免用空值掩盖事实。 */
 export const readAuthoritativeJsonColumn = <T>(
   value: unknown,
-  schema: z.ZodType<T>,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
   context: string,
   policy: JsonColumnPolicy,
 ): T => {
@@ -462,6 +470,20 @@ export const readAuthoritativeJsonColumn = <T>(
   }
   return result;
 };
+
+/** Required JSON values share the decoder while preserving the caller's diagnostic reason. */
+export const readRequiredJsonColumn = <T>(
+  value: unknown,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  context: string,
+  details: Record<string, unknown>,
+): T => readAuthoritativeJsonColumn(value, schema, context, {
+  warn: defaultJsonPolicy.warn,
+  onAuthoritativeFailure: diagnostic => {
+    defaultJsonPolicy.warn(diagnostic);
+    throw new StudyError('INTERNAL', details);
+  },
+});
 
 export const mapProject = (row: Row): ProjectRow => ({
   projectId: str(row['project_id']),
@@ -587,6 +609,7 @@ export const mapKnowledge = (row: Row, policy: JsonColumnPolicy): KnowledgeRow =
 });
 
 export const mapQuestion = (row: Row, policy: JsonColumnPolicy): QuestionRow => ({
+  assessment: row['assessment_json'] == null ? null : readAuthoritativeJsonColumn(row['assessment_json'], questionAssessmentSchema, 'questions.assessment_json', policy),
   questionId: str(row['question_id']),
   stem: str(row['stem']),
   answer: str(row['answer']),
@@ -616,6 +639,9 @@ export const mapQuestion = (row: Row, policy: JsonColumnPolicy): QuestionRow => 
 });
 
 export const mapAttempt = (row: Row): AttemptRow => ({
+  questionRevision: intOrNull(row['question_revision']),
+  answerVersion: intOrNull(row['answer_version']),
+  grading: row['grading_json'] == null ? null : readAuthoritativeJsonColumn(row['grading_json'], assessmentGradingSchema, 'attempts.grading_json', defaultJsonPolicy),
   recordScope: recordScope(row['record_scope']),
   attemptId: str(row['attempt_id']),
   questionId: str(row['question_id']),

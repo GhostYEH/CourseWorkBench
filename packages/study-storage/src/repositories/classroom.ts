@@ -15,6 +15,7 @@ import {
   nullableStr,
   num,
   readAuthoritativeJsonColumn,
+  recordScope,
   str,
   type Row,
 } from './types';
@@ -163,7 +164,7 @@ export class ClassroomRepository {
     return rows.map((row) => {
       const stage = (this.mapDocument(row).document as { stage?: Row })?.stage ?? {};
       return {
-        recordScope: row['record_scope'] === 'demo' ? 'demo' : 'formal',
+        recordScope: recordScope(row['record_scope']),
         stageId: str(row['stage_id']),
         lessonId: str(row['lesson_id']),
         name: str(stage['name']),
@@ -183,7 +184,7 @@ export class ClassroomRepository {
     for (const row of rows) {
       const sceneId = str(row['scene_id']);
       out.set(sceneId, {
-        recordScope: row['record_scope'] === 'demo' ? 'demo' : 'formal',
+        recordScope: recordScope(row['record_scope']),
         sceneId,
         knowledgeIds: readAuthoritativeJsonColumn<string[]>(
           row['knowledge_ids_json'],
@@ -292,7 +293,7 @@ export class ClassroomRepository {
     const stageId = str(row['stage_id']);
     const context = `classroom_documents.document_json[${stageId}]`;
     return {
-      recordScope: row['record_scope'] === 'demo' ? 'demo' : 'formal',
+      recordScope: recordScope(row['record_scope']),
       projectId: str(row['project_id']),
       stageId,
       lessonId: str(row['lesson_id']),

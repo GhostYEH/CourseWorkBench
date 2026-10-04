@@ -1,12 +1,12 @@
-import type { ReactNode } from 'react';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
+import { ExamSourceVerification } from '../../../components/exam-source-verification';
 import { MaterialImportForm } from '../../../components/material-import-form';
 import { MaterialOriginal } from '../../../components/material-original';
-import { ExamSourceVerification } from '../../../components/exam-source-verification';
 import { Empty } from '../../../components/ui';
-import { assertScope, bootstrapFromEnvironment, getSession } from '../../../lib/server/service';
-import { readWorkbenchMaterials } from '../../../lib/server/workbench-data';
 import { toMaterialDto } from '../../../lib/server/dto';
+import { assertScope,requireSession } from '../../../lib/server/service';
+import { readWorkbenchMaterials } from '../../../lib/server/workbench-data';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +21,7 @@ const sourceHref = (materialId: string, revision: number, segment?: string): str
 };
 
 export default async function MaterialsPage({ searchParams }: PageProps): Promise<ReactNode> {
-  const session = (getSession() ?? bootstrapFromEnvironment())!;
+  const session = requireSession();
   const query = await searchParams;
   assertScope({ projectId: session.projectId, generation: session.generation });
   const materials = readWorkbenchMaterials(session);

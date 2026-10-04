@@ -1,12 +1,12 @@
-import type { ReactNode } from 'react';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { AdmissionChecker } from '../../../components/admission-checker';
 import { CandidateReview } from '../../../components/candidate-review';
 import { ProposalForm } from '../../../components/proposal-form';
-import { Empty, MasteryPill, SourcePill } from '../../../components/ui';
-import { bootstrapFromEnvironment, getSession } from '../../../lib/server/service';
-import { readSegmentChoices, readSyllabusItems, readWorkbenchKnowledge, readWorkbenchProposals } from '../../../lib/server/workbench-data';
+import { Empty,MasteryPill,SourcePill } from '../../../components/ui';
 import { toProposalDto } from '../../../lib/server/dto';
+import { requireSession } from '../../../lib/server/service';
+import { readSegmentChoices,readSyllabusItems,readWorkbenchKnowledge,readWorkbenchProposals } from '../../../lib/server/workbench-data';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +15,7 @@ interface PageProps {
 }
 
 export default async function KnowledgePage({ searchParams }: PageProps): Promise<ReactNode> {
-  const session = (getSession() ?? bootstrapFromEnvironment())!;
+  const session = requireSession();
   const tab = (await searchParams).tab ?? 'confirmed';
   const view = readWorkbenchKnowledge(session);
   const knowledge = view.rows;

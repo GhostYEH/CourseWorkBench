@@ -196,6 +196,7 @@ describe('SQLite 作答完整性', () => {
     expect(retry.deduplicated).toBe(true);
     expect(retry.attempt.attemptId).toBe(receipt.attempt.attemptId);
     expect(store.listAttempts('real')).toHaveLength(1);
-    expect(store.getKnowledge(knowledgeId)?.masteryStatus).toBe('passed');
+    expect(retry.attempt.grading?.status).toBe('pending_review');
+    expect(store.getKnowledge(knowledgeId)?.masteryStatus).toBe('untested');
   });
 });

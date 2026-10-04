@@ -170,10 +170,20 @@ for (const file of layerFiles) {
 
 // JSON 解析必须集中：这些是经校验或属于受控握手/工具链的唯一允许点。
 const JSON_PARSE_ALLOWLIST = new Set([
+  // 多选答案是跨 HTTP 的 JSON 文本，在评分入口解析后立即做严格 schema 校验。
+  'packages/study-domain/src/assessment.ts',
   'packages/study-storage/src/json-codec.ts',
   'packages/study-storage/src/project-layout.ts',
   'apps/learning/lib/attempt-submission.ts',
+  // 课堂多选草稿恢复：JSON 解码后校验选项值，拒绝损坏数据。
+  'apps/learning/lib/quiz-answer.ts',
+  // Model output is decoded at this single boundary and validated as a grading proposal.
+  'apps/learning/lib/server/attempt-grading-model.ts',
+  // 同一模式：错因/复习候选的模型正文只在这里解码，随后立刻用严格 schema 校验。
+  'apps/learning/lib/server/feedback-model.ts',
   'apps/learning/lib/server/global-preferences.ts',
+  // User identity files are decoded only here, then validated by the strict shared schema.
+  'apps/learning/lib/server/learner-profile.ts',
   'apps/learning/lib/server/model-connection.ts',
   'apps/desktop/src/service-lifecycle.cjs',
   'apps/desktop/src/settings.cjs',

@@ -27,12 +27,13 @@ export function SceneRenderer({
           <div style={{ width: '100%', aspectRatio: '16 / 9', background: 'var(--sew-surface-document)' }}>
             <SlideCanvas slide={scene.content.canvas} />
           </div>
-          <p className="muted">本页为演示课件，来源与审核记录见右侧。</p>
+          <p className="muted">本页的来源与审核记录见右侧。</p>
         </div>
       ) : <p role="alert">幻灯片场景结构无效。</p>;
     case 'quiz':
       return scene.content.type === 'quiz' ? (
         <QuizSceneView
+          key={`${scope.projectId}:${scope.generation}:${scene.stageId}:${scene.id}:${binding?.questionId ?? ''}`}
           content={scene.content}
           sceneId={scene.id}
           stageId={scene.stageId}

@@ -11,6 +11,7 @@ import { apiResponses } from '@sew/study-contracts';
 
 import { useState } from 'react';
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type {
   EvidenceBundleViewDto,
@@ -21,6 +22,7 @@ import type {
 } from '@sew/study-contracts';
 import { Empty, Notice } from './ui';
 import { apiFetch, describeApiError } from '../lib/client';
+import { FormalInteractionAuthor } from './formal-interaction-author';
 
 interface StatementRow {
   knowledgeId: string;
@@ -37,6 +39,7 @@ const LESSON_RESPONSES = {
   review: apiResponses.lessonReview,
   publish: apiResponses.lessonPublish,
   withdraw: apiResponses.lessonWithdraw,
+  'attach-document': apiResponses.lessonDocument,
 } as const;
 
 const STATUS_LABEL: Record<LessonVersionDto['status'], string> = {  draft: '草案',
@@ -61,6 +64,7 @@ export const LessonWorkbench = ({
   reviews,
   knowledge,
   questions,
+  documents = [],
 }: {
   projectId: string;
   generation: number;
@@ -70,6 +74,8 @@ export const LessonWorkbench = ({
   reviews: LessonReviewRecordDto[];
   knowledge: Array<KnowledgePointDto & { admitted: boolean }>;
   questions: QuestionListItemDto[];
+  /** 已挂接课件文档的课堂映射：按「课程 + 版本」匹配，新版本必须重新挂接。 */
+  documents?: Array<{ lessonId: string; lessonVersion: number; stageId: string; documentDigest: string; sceneIds: string[] }>;
 }): ReactNode => {
   const router = useRouter();
   const [rows, setRows] = useState<StatementRow[]>(() =>
@@ -107,6 +113,34 @@ export const LessonWorkbench = ({
         body: JSON.stringify({ scope: { projectId, generation }, ...body }),
       });
       setNote(successText);
+      router.refresh();
+    } catch (caught) {
+      setError(describeApiError(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * 生成课件文档并挂接课堂映射。
+   *
+   * 文档内容由服务端从该版本冻结的证据包装配，界面只提交版本编号；
+   * 返回的跳过项直接显示，避免「场景变少了」被当成正常结果。
+   */
+  const attach = async (lessonId: string, version: number): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    try {
+      const result = await apiFetch('/api/study/lessons', apiResponses.lessonDocument, {
+        method: 'POST',
+        body: JSON.stringify({ scope: { projectId, generation }, action: 'attach-document', lessonId, version }),
+      });
+      const skipped = result.document.skipped.length > 0
+        ? `；${result.document.skipped.length} 项未进入课件：${result.document.skipped[0]!.reason}`
+        : '';
+      setNote(`v${version} 课件文档已挂接：${result.document.sceneCount} 个场景，`
+        + `指纹 ${result.document.digest.slice(0, 12)}…${skipped}`);
       router.refresh();
     } catch (caught) {
       setError(describeApiError(caught));
@@ -282,6 +316,7 @@ export const LessonWorkbench = ({
             <tbody>
               {versions.map((lesson) => {
                 const review = reviews.find((item) => item.lessonId === lesson.lessonId && item.version === lesson.version);
+                const attached = documents.find((item) => item.lessonId === lesson.lessonId && item.lessonVersion === lesson.version);
                 return (
                   <tr key={`${lesson.lessonId}-v${lesson.version}`}>
                     <td className="mono">{lesson.lessonId}</td>
@@ -301,6 +336,7 @@ export const LessonWorkbench = ({
                     </td>
                     <td className="mono" title={lesson.bundleDigest}>{lesson.bundleDigest.slice(0, 12)}…</td>
                     <td>
+                      {lesson.status === 'draft' && !review ? <FormalInteractionAuthor scope={{ projectId, generation }} lessonId={lesson.lessonId} lessonVersion={lesson.version} statements={(bundles.find(b => b.bundleId === lesson.bundleId)?.bundle.statements ?? []).filter(s => lesson.statementIds.includes(s.statementId))} /> : null}
                       <div className="row-inline">
                         {lesson.status === 'draft' ? (
                           <>
@@ -344,17 +380,35 @@ export const LessonWorkbench = ({
                           </>
                         ) : null}
                         {lesson.status === 'published' ? (
-                          <button
-                            type="button"
-                            className="btn"
-                            disabled={busy}
-                            onClick={() => void call(
-                              { action: 'withdraw', lessonId: lesson.lessonId, reason: withdrawReason },
-                              `课程 ${lesson.lessonId} 已撤回，课堂入口随即阻断。`,
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              disabled={busy}
+                              onClick={() => void attach(lesson.lessonId, lesson.version)}
+                              title="文档内容由服务端按该版本冻结的证据包装配，来源失效即拒绝挂接"
+                            >
+                              {attached ? '重新生成课件文档' : '生成课件文档并挂接'}
+                            </button>
+                            {attached ? (
+                              <Link className="btn" href={`/classroom/${lesson.lessonId}`}>
+                                进入课堂（{attached.sceneIds.length} 个场景）
+                              </Link>
+                            ) : (
+                              <span className="muted">课件文档未挂接，课堂尚不可用</span>
                             )}
-                          >
-                            撤回
-                          </button>
+                            <button
+                              type="button"
+                              className="btn"
+                              disabled={busy}
+                              onClick={() => void call(
+                                { action: 'withdraw', lessonId: lesson.lessonId, reason: withdrawReason },
+                                `课程 ${lesson.lessonId} 已撤回，课堂入口随即阻断。`,
+                              )}
+                            >
+                              撤回
+                            </button>
+                          </>
                         ) : null}
                       </div>
                     </td>

@@ -41,8 +41,8 @@ describe('M1 renderer response integration', () => {
   });
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'sew-response-flow-'));
-    session = openProjectFromDisk(root);
     vi.stubEnv('SEW_USER_DATA_DIR', join(root, 'test-profile'));
+    session = openProjectFromDisk(root);
     vi.stubGlobal('fetch', async (path: string, options?: RequestInit) => {
       if (path === '/api/study/assets' && !options?.method) return assetGet();
       const materialMatch = path.match(/^\/api\/study\/materials\/([^/]+)\/(raw|exam-verification)(?:\?.*)?$/);

@@ -11,6 +11,8 @@ export default function WorkbenchOverview(): ReactNode {
   const session = getSession() ?? bootstrapFromEnvironment();
   if (!session) redirect('/no-project');
   const state = readWorkbenchState(session);
+  const reviewTasks = session.store.listReviewTasks(session.projectId, session.learnerUid);
+  const dueReviewTasks = reviewTasks.filter(task => task.status === 'confirmed' && task.dueAt <= new Date().toISOString());
 
   return (
     <div className="page-wide">
@@ -60,6 +62,7 @@ export default function WorkbenchOverview(): ReactNode {
 
       <div className="card">
         <h2>下一步</h2>
+        <p><Link href="/workbench/mistakes">到期复习：{dueReviewTasks.length} 项 · 查看原作答、错因审核与复习安排</Link></p>
         <ol className="reading" style={{ margin: 0, paddingLeft: '1.2em' }}>
           {state.counts.materials === 0 ? <li>导入考纲或教材节选（支持 txt / md）。</li> : null}
           {state.counts.materials > 0 && state.counts.knowledgeVerified === 0 ? (

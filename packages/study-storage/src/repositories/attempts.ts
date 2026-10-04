@@ -5,11 +5,15 @@
  * 掌握状态更新属于跨域协调，由调用方在同一事务内通过 knowledge repository 完成。
  */
 
+import { encodeJson } from '../json-codec';
 import type { SqlDatabase } from '../driver';
 import { mapAttempt, num, type AttemptRow, type Row } from './types';
 
 export interface InsertAttemptInput {
   attemptId: string;
+  questionRevision: number;
+  answerVersion: number | null;
+  grading: AttemptRow['grading'];
   questionId: string;
   kind: 'real' | 'simulation';
   /** 请求声明的 kind，用于幂等命中时拒绝「同键不同声明」。 */
@@ -45,8 +49,8 @@ export class AttemptsRepository {
   insertAttempt(input: InsertAttemptInput): AttemptRow {
     this.db
       .prepare(
-        `INSERT INTO attempts (attempt_id, question_id, kind, requested_kind, actor_type, answer_text, process_text, mastery_after, attribution_status, idempotency_key, submitted_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO attempts (attempt_id, question_id, kind, requested_kind, actor_type, answer_text, process_text, mastery_after, attribution_status, idempotency_key, submitted_at, question_revision, answer_version, grading_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.attemptId,
@@ -60,6 +64,7 @@ export class AttemptsRepository {
         input.attributionStatus,
         input.idempotencyKey,
         input.submittedAt,
+        input.questionRevision, input.answerVersion, input.grading ? encodeJson(input.grading) : null,
       );
     const row = this.db.prepare(`SELECT attempts.*, questions.record_scope AS record_scope
       FROM attempts JOIN questions USING (question_id) WHERE attempts.attempt_id = ?`).get(input.attemptId) as Row;

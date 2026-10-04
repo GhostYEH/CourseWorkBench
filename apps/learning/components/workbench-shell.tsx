@@ -40,6 +40,7 @@ const SECTION_TABS: Record<string, Array<{ label: string; href: string }>> = {
     { label: '总览', href: '/workbench' },
     { label: '材料与来源', href: '/workbench/materials' },
     { label: '科目设置', href: '/workbench/settings' },
+    { label: '个人档案与 UID', href: '/profile' },
     { label: '外观与阅读', href: '/workbench/appearance' },
   ],
   knowledge: [
@@ -55,7 +56,8 @@ const SECTION_TABS: Record<string, Array<{ label: string; href: string }>> = {
   lesson: [{ label: '课程与证据包', href: '/workbench/lessons' }],
   study: [
     { label: '今日学习', href: '/workbench/study' },
-    { label: '课堂', href: '/classroom/lesson-001' },
+    { label: '课堂与成员', href: '/workbench/rooms' },
+    { label: '课堂演示', href: '/classroom/lesson-demo-monotonicity-1' },
   ],
   mistakes: [
     { label: '错题本', href: '/workbench/mistakes' },
@@ -69,6 +71,7 @@ const sectionOf = (pathname: string): string => {
   if (['materials', 'settings', 'appearance'].includes(segment)) return 'project';
   if (segment === 'syllabus') return 'knowledge';
   if (segment === 'lessons') return 'lesson';
+  if (segment === 'rooms') return 'study';
   if (['knowledge', 'review', 'plan', 'study', 'mistakes', 'eval'].includes(segment)) return segment;
   return 'project';
 };

@@ -174,7 +174,7 @@ describe('reviewed classroom demo assets', () => {
     const response = await GET(new Request('http://service.local/api/maic/demo-assets/stage-demo-monotonicity-1', {
       headers: projectScopeHeaders(session.projectId, session.generation),
     }), { params: Promise.resolve({ stageId: reviewedLesson.stageId }) });
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(409);
     expect((await response.json() as { error: { code: string } }).error.code).toBe('KNOWLEDGE_NOT_VERIFIED');
   });
 

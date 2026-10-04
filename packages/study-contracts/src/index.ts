@@ -27,18 +27,22 @@ export {
   bundleStatementSchema, bundleQuestionSchema, evidenceBundleSchema, evidenceBundleRowSchema,
   lessonVersionSchema, lessonDraftSchema, lessonPublishSchema, lessonReviewSchema,
   lessonWithdrawSchema, lessonReviewRecordSchema, lessonBundleBuildSchema,
+  lessonDocumentAssembleSchema, formalLessonSceneSchema, formalLessonDocumentSchema,
 } from './lesson';
 export type {
   LessonStatus, LessonReviewDecision, BundleStatementDto, BundleQuestionDto, EvidenceBundleDto, EvidenceBundleViewDto,
   LessonVersionDto, LessonDraftInput, LessonPublishInput, LessonReviewInput, LessonWithdrawInput,
   LessonReviewRecordDto, LessonBundleBuildInput,
+  LessonDocumentAssembleInput, FormalLessonSceneDto, FormalLessonDocumentDto,
 } from './lesson';
 export {
-  EXPLANATION_KIND, EXPLANATION_ORIGIN, EXPLANATION_STATUS,
+  EXPLANATION_KIND, EXPLANATION_ORIGIN, EXPLANATION_STATUS, EXPLANATION_TEXT_MAX_LENGTH,
   CLASSROOM_SESSION_STATUS, CLASSROOM_ACTION_KINDS,
   CLASSROOM_ROUND_LIMITS, CLASSROOM_LESSON_MAX_CALLS,
+  PEER_ENGAGEMENT, PEER_ENGAGEMENT_LABEL,
   explanationCardSchema, explanationCreateSchema, explanationEditSchema, explanationReviewSchema,
   classroomSessionSchema, classroomActionSchema, classroomActionPayloadSchema, classroomStateSchema,
+  classroomPeerTurnSchema, classroomPeersSchema, classroomPeerTurnSchemaInput,
   classroomOpenSchema, classroomPlaySchema, classroomHandbackSchema, classroomAnsweredSchema,
   classroomAdvanceSchema, classroomCloseSchema, classroomCommandSchema,
 } from './teaching';
@@ -46,6 +50,7 @@ export type {
   ExplanationKind, ExplanationOrigin, ExplanationStatus, ClassroomSessionStatus, ClassroomActionKind,
   ExplanationCardDto, ExplanationCreateInput, ExplanationEditInput, ExplanationReviewInput,
   ClassroomSessionDto, ClassroomActionDto, ClassroomActionPayloadDto, ClassroomStateDto,
+  PeerEngagement, ClassroomPeerTurnDto, ClassroomPeersInput, ClassroomPeerTurnInput,
   ClassroomOpenInput, ClassroomPlayInput, ClassroomHandbackInput, ClassroomAnsweredInput,
   ClassroomAdvanceInput, ClassroomCloseInput, ClassroomCommand,
 } from './teaching';
@@ -132,3 +137,33 @@ export type {
   RecentProjectDto, ClassroomSceneBinding, ApiSuccess, ApiFailure, ApiEnvelope,
   InteractionSubmitInput, InteractionSubmissionDto, InteractionStateDto,
 } from './api';
+
+export { selectedAnswerSetSchema, questionAssessmentSchema, questionAssessmentMetadataSchema, assessmentGradingSchema } from './assessment';
+export type { QuestionAssessmentDto, QuestionAssessmentMetadataDto, AssessmentGradingDto } from './assessment';
+export { attemptGradeCandidateSchema, attemptGradeReviewSchema, attemptGradingContextSchema, attemptGradingCommandSchema } from './attempt-grading';
+export type { AttemptGradeCandidateDto, AttemptGradeReviewDto, AttemptGradingContextDto, AttemptGradingCommand } from './attempt-grading';
+export { LEGACY_LOCAL_LEARNER_KEY, learnerUidSchema, learnerProfileSchema, learnerProfileUpdateSchema } from './learner-profile';
+export type { LearnerProfileDto, LearnerProfileUpdateInput } from './learner-profile';
+export { classroomRoomCourseSchema, classroomSharedSceneSchema, classroomSharedAssetSchema, classroomSharedCourseSchema, classroomRoomMemberSchema, classroomRoomSchema, classroomInvitationSchema, classroomTeacherLeaseSchema, classroomRoomCreateSchema, classroomRoomCommandSchema } from './classroom-room';
+export type { ClassroomSharedCourseDto, ClassroomRoomDto, ClassroomInvitationDto, ClassroomTeacherLeaseDto } from './classroom-room';
+export { classroomBoardContentSchema, classroomBoardBindingSchema, classroomBoardItemSchema, classroomBoardEffectSchema, classroomBoardStateSchema, classroomBoardItemResultSchema, classroomBoardPlayResultSchema, classroomBoardCommandSchema } from './classroom-board';
+export type { ClassroomBoardBindingDto, ClassroomBoardContentDto, ClassroomBoardItemDto, ClassroomBoardEffectDto, ClassroomBoardStateDto, ClassroomBoardCommand } from './classroom-board';
+export { formalInteractionDefinitionSchema, formalInteractionPublicDefinitionSchema, formalInteractionFrozenSchema, formalInteractionValuesSchema, formalInteractionBindingSchema, formalInteractionRecordSchema, formalInteractionReceiptSchema, formalInteractionStateSchema, formalInteractionCommandSchema } from './formal-interaction';
+export type { FormalInteractionDefinitionDto, FormalInteractionFrozenDto, FormalInteractionCommand, FormalInteractionStateDto, FormalInteractionBindingDto, FormalInteractionValuesDto, FormalInteractionRecordDto } from './formal-interaction';
+export { errorTagSchema, processEvidenceSchema, errorConclusionSchema, feedbackEntrySchema, feedbackSnapshotSchema, feedbackContextSchema, reviewTaskSchema, feedbackReviewCommandSchema, feedbackResultSchema, personalAttemptSubmitResultSchema, feedbackModelInputSchema, feedbackModelResultSchema, reviewSuggestionOutputSchema } from './feedback-review';
+export type { FeedbackReviewCommand, FeedbackContextDto, ReviewTaskDto, FeedbackModelInput, FeedbackModelResultDto } from './feedback-review';
+export {
+  modelUsageCallSchema, modelUsageSummarySchema, modelUsageBreakdownSchema, modelUsageReportSchema,
+  MODEL_USAGE_PURPOSE, MODEL_USAGE_MEASUREMENT, MODEL_COST_MEASUREMENT, measurementOf,
+} from './model-usage';
+export type {
+  ModelUsageCallDto, ModelUsageSummaryDto, ModelUsageBreakdownDto, ModelUsageReportDto,
+  ModelUsagePurpose, ModelUsageMeasurement, ModelCostMeasurement,
+} from './model-usage';
+export {
+  recoveryCheckpointSchema, recoveryLayerResultSchema, recoveryQuerySchema,
+  RECOVERY_LAYERS, RECOVERY_LAYER_LABEL, RECOVERY_STATUS,
+} from './recovery';
+export type {
+  RecoveryCheckpointDto, RecoveryLayerResultDto, RecoveryQueryInput, RecoveryLayer, RecoveryStatus,
+} from './recovery';

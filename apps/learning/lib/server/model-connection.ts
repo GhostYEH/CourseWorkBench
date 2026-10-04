@@ -19,12 +19,15 @@ const responseSchema = z.object({
  * 预算必须反映实际发生的尝试，而不是只反映成功的尝试。
  */
 export interface ModelGenerateOutcome {
+  dispatched: boolean;
   ok: boolean;
   message: string;
   text: string | null;
   totalTokens: number;
   requestedModel: string | null;
   elapsedMs: number;
+  returnedModel?: string | null;
+  providerTokens?: number | null;
 }
 
 /** Count actual bytes before JSON parsing; never reflect untrusted bodies. */
@@ -152,8 +155,9 @@ export const createModelConnectionRuntime = ({
     options: { maxTokens?: number; signal?: AbortSignal } = {},
   ): Promise<ModelGenerateOutcome> => {
     const started = now();
+    let dispatched = false;
     const failed = (message: string): ModelGenerateOutcome => ({
-      ok: false, message, text: null, totalTokens: 0, requestedModel: null,
+      dispatched, ok: false, message, text: null, totalTokens: 0, requestedModel: config?.model ?? null, returnedModel: null, providerTokens: null,
       elapsedMs: Math.max(0, now() - started),
     });
     if (stopped) return failed('模型服务正在退出，不能开始新的生成');
@@ -180,6 +184,7 @@ export const createModelConnectionRuntime = ({
     options.signal?.addEventListener('abort', abort, { once: true });
     let outcome: ModelGenerateOutcome;
     try {
+      dispatched = true;
       const response = await fetcher(`${input.baseUrl}/chat/completions`, {
         method: 'POST', redirect: 'error', signal: controller.signal,
         headers: { 'content-type': 'application/json', authorization: `Bearer ${input.apiKey}` },
@@ -201,13 +206,16 @@ export const createModelConnectionRuntime = ({
         } else {
           const returnedModel = parsed.data.model;
           outcome = {
+            dispatched: true,
             ok: true,
             message: '模型已返回草案文本，仍需人工审核后才能用于教学',
             text: content.slice(0, 20_000),
             totalTokens: parsed.data.usage?.total_tokens ?? 0,
-            requestedModel: returnedModel && /^[\w.\-:/]{1,200}$/.test(returnedModel) && !returnedModel.includes(input.apiKey)
+            providerTokens: parsed.data.usage?.total_tokens ?? null,
+            requestedModel: input.model,
+            returnedModel: returnedModel && /^[\w.\-:/]{1,200}$/.test(returnedModel) && !returnedModel.includes(input.apiKey)
               ? returnedModel
-              : input.model,
+              : null,
             elapsedMs: Math.max(0, now() - started),
           };
         }
@@ -222,7 +230,7 @@ export const createModelConnectionRuntime = ({
       if (active === controller) active = null;
     }
     if (revision !== epoch || options.signal?.aborted || (controller.signal.aborted && !timedOut)) {
-      return failed('生成已取消，配置已变化或应用正在退出');
+      return { ...outcome, ok: false, text: null, message: '生成已取消，配置已变化或应用正在退出' };
     }
     return outcome;
   };

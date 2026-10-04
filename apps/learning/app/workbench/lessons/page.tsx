@@ -1,12 +1,14 @@
-import type { ReactNode } from 'react';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { LessonDraftGeneration } from '../../../components/lesson-draft-generation';
 import { LessonTeaching } from '../../../components/lesson-teaching';
 import { LessonWorkbench } from '../../../components/lesson-workbench';
-import { bootstrapFromEnvironment, getSession } from '../../../lib/server/service';
-import { readWorkbenchKnowledge, readWorkbenchQuestions } from '../../../lib/server/workbench-data';
-import { toExplanationDto, toKnowledgePointDto, toLessonReviewDto, toLessonVersionDto } from '../../../lib/server/dto';
+import { QuestionAuthoring } from '../../../components/question-authoring';
+import { TeachingClassroom } from '../../../components/teaching-classroom';
+import { toClassroomSessionDto,toExplanationDto,toKnowledgePointDto,toLessonReviewDto,toLessonVersionDto } from '../../../lib/server/dto';
 import { modelConnection } from '../../../lib/server/model-connection';
+import { requireSession } from '../../../lib/server/service';
+import { readWorkbenchKnowledge,readWorkbenchQuestions } from '../../../lib/server/workbench-data';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +19,7 @@ export const dynamic = 'force-dynamic';
  * 来源之后失效不会改写已发布课程，而是让课堂入口与生成入口按准入受阻。
  */
 export default function LessonsPage(): ReactNode {
-  const session = (getSession() ?? bootstrapFromEnvironment())!;
+  const session = requireSession();
   const projectId = session.projectId;
   const view = readWorkbenchKnowledge(session);
   const knowledge = view.rows.map((point) => ({
@@ -38,6 +40,32 @@ export default function LessonsPage(): ReactNode {
     .filter((review): review is NonNullable<typeof review> => review !== null)
     .map(toLessonReviewDto);
   const confirmedPlan = session.store.getConfirmedPlan(projectId);
+  const activeSession = session.store.getOpenClassroomSession(projectId);
+
+  /** 已发布版本 → 已挂接的课件文档（场景编号取自文档本身，不从讲解卡反推）。 */
+  const classroomDocuments = versions
+    .filter((version) => version.status === 'published')
+    .map((version) => {
+      const link = session.store.getLessonClassroomLink(version.lessonId, projectId);
+      if (!link || link.status !== 'published' || link.lessonVersion !== version.version || !link.stageId) return null;
+      const stored = session.store.getClassroomDocument(projectId, link.stageId);
+      const sceneIds = stored
+        ? ((stored.document as { scenes?: Array<{ id?: string }> }).scenes ?? [])
+          .map((scene) => String(scene?.id ?? ''))
+          .filter((sceneId) => sceneId.length > 0)
+        : [];
+      return {
+        lessonId: version.lessonId,
+        lessonVersion: version.version,
+        stageId: link.stageId,
+        documentDigest: link.documentDigest ?? '',
+        sceneIds,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
+  const documentOf = (lessonId: string, lessonVersion: number): (typeof classroomDocuments)[number] | null =>
+    classroomDocuments.find((item) => item.lessonId === lessonId && item.lessonVersion === lessonVersion) ?? null;
+
   // 教学工作面只挂在已发布版本上：卡片、播放与课堂都引用这一份证据包。
   const teaching = versions
     .filter((version) => version.status === 'published')
@@ -47,6 +75,21 @@ export default function LessonsPage(): ReactNode {
         lesson: version,
         statements: bundle?.bundle.statements ?? [],
         cards: session.store.listExplanationCards(version.lessonId, version.version, projectId).map(toExplanationDto),
+        document: documentOf(version.lessonId, version.version),
+      };
+    });
+  const classroomLessons = versions
+    .filter((version) => version.status === 'published'
+      || (version.lessonId === activeSession?.lessonId && version.version === activeSession.lessonVersion))
+    .map((version) => {
+      const attached = documentOf(version.lessonId, version.version);
+      const sceneIds = attached && attached.sceneIds.length > 0
+        ? attached.sceneIds
+        : [...new Set(session.store.listExplanationCards(version.lessonId, version.version, projectId).map((card) => card.sceneId))];
+      return {
+        lessonId: version.lessonId, version: version.version, title: version.title,
+        stageId: attached?.stageId ?? null,
+        sceneIds: sceneIds.length > 0 ? sceneIds : ['scene-1'],
       };
     });
 
@@ -67,6 +110,7 @@ export default function LessonsPage(): ReactNode {
         </div>
       </div>
 
+      <QuestionAuthoring projectId={projectId} generation={session.generation} knowledge={knowledge} />
       <LessonWorkbench
         projectId={projectId}
         generation={session.generation}
@@ -76,6 +120,7 @@ export default function LessonsPage(): ReactNode {
         reviews={reviews}
         knowledge={knowledge}
         questions={questions}
+        documents={classroomDocuments}
       />
 
       <LessonDraftGeneration
@@ -94,8 +139,16 @@ export default function LessonsPage(): ReactNode {
           lesson={item.lesson}
           statements={item.statements}
           cards={item.cards}
+          sceneIds={item.document?.sceneIds ?? []}
         />
       ))}
+      <TeachingClassroom
+        key={activeSession?.sessionId ?? 'classroom-prepare'}
+        projectId={projectId}
+        generation={session.generation}
+        lessons={classroomLessons}
+        activeSession={activeSession ? toClassroomSessionDto(activeSession) : null}
+      />
     </div>
   );
 }

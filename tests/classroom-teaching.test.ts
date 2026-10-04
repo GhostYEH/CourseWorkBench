@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { StudyError, newId, type PlanPayloadDto } from '@sew/study-contracts';
+import { StudyError, newId, classroomOpenSchema, classroomStateSchema, EXPLANATION_TEXT_MAX_LENGTH, type PlanPayloadDto } from '@sew/study-contracts';
 import { assertClassroomBudget, nextPlayableCard } from '@sew/study-domain';
 import { StudyStore, ensureProjectLayout, projectPaths, type ExplanationRow } from '@sew/study-storage';
 
@@ -154,13 +154,83 @@ describe('讲解卡与课堂会话', () => {
     expect(store.listClassroomSessions(projectId)).toHaveLength(1);
   });
 
+  it('空场景开课在 HTTP 合同与存储入口都被拒绝，不留下会话', () => {
+    expect(classroomOpenSchema.safeParse({
+      scope: { projectId, generation: 1 }, action: 'open', lessonId, stageId: null, sceneId: '',
+    }).success).toBe(false);
+    expectCode(() => openSession(''), 'INTERNAL', 'invalid_classroom_session');
+    expect(store.listClassroomSessions(projectId)).toHaveLength(0);
+  });
+
+  it.each([
+    { sceneId: '', text: '有效长度的正文' },
+    { sceneId: SCENE, text: '短' },
+    { sceneId: SCENE, text: '长'.repeat(EXPLANATION_TEXT_MAX_LENGTH + 1) },
+  ])('无效讲解卡不落库：场景 $sceneId、正文长度不符合合同', (invalid) => {
+    expectCode(() => store.createExplanation({
+      projectId, lessonId, lessonVersion, ...invalid, kind: 'explain', origin: 'model_generated', statementIds: [],
+    }), 'INTERNAL', 'invalid_explanation_card');
+    expect(store.listExplanationCards(lessonId, lessonVersion, projectId)).toHaveLength(0);
+    const session = openSession();
+    expect(classroomStateSchema.safeParse(store.classroomState(projectId, session.sessionId)).success).toBe(true);
+  });
+
+  it('草案编辑同样拒绝无效正文并保留原卡片', () => {
+    const original = card('原始正文');
+    expectCode(() => store.updateExplanationDraft({ projectId, explanationId: original.explanationId, text: '短' }),
+      'INTERNAL', 'invalid_explanation_card');
+    expect(store.getExplanation(original.explanationId, projectId)).toEqual(original);
+  });
+
+  it('场景往返可以再次进入旧场景，每次明确切换只开一轮', () => {
+    const first = card('第一场景的讲解');
+    const second = store.createExplanation({
+      projectId, lessonId, lessonVersion, sceneId: 'scene-2', kind: 'explain', origin: 'teacher_authored',
+      text: '第二场景的讲解', statementIds: [statementId],
+    });
+    for (const row of [first, second]) {
+      store.reviewExplanation({ projectId, explanationId: row.explanationId, decision: 'approved', note: '' });
+    }
+    const session = openSession();
+    for (const [index, target] of ['scene-2', SCENE, 'scene-2'].entries()) {
+      const advanced = store.advanceClassroomScene(projectId, session.sessionId, target, newId('scene'));
+      expect(advanced).toMatchObject({ deduplicated: false, session: { currentSceneId: target, roundIndex: index + 2 } });
+    }
+    const actions = store.listClassroomActions(session.sessionId, projectId).filter((row) => row.kind === 'scene_advanced');
+    expect(actions).toHaveLength(3);
+  });
+
+  it('切场景请求重启后仍去重，旧请求重试不改当前场景或清空预算', () => {
+    const session = openSession();
+    const requestId = newId('scene');
+    store.advanceClassroomScene(projectId, session.sessionId, 'scene-2', requestId);
+    reopen();
+    expect(store.advanceClassroomScene(projectId, session.sessionId, 'scene-2', requestId))
+      .toMatchObject({ deduplicated: true, session: { currentSceneId: 'scene-2', roundIndex: 2 } });
+    store.advanceClassroomScene(projectId, session.sessionId, SCENE, newId('scene'));
+    store.noteClassroomModelCall({ projectId, sessionId: session.sessionId, purpose: 'teaching_prompt', ok: true, totalTokens: 10 });
+    expect(store.advanceClassroomScene(projectId, session.sessionId, 'scene-2', requestId))
+      .toMatchObject({ deduplicated: true, session: { currentSceneId: SCENE, roundIndex: 3, roundCalls: 1 } });
+    expectCode(() => store.advanceClassroomScene(projectId, session.sessionId, 'scene-3', requestId),
+      'VERSION_CONFLICT', 'scene_request_context_changed');
+    expect(store.listClassroomActions(session.sessionId, projectId).filter((row) => row.kind === 'scene_advanced')).toHaveLength(2);
+  });
+
+  it('切到当前场景不能重置本轮预算', () => {
+    const session = openSession();
+    store.noteClassroomModelCall({ projectId, sessionId: session.sessionId, purpose: 'teaching_prompt', ok: true, totalTokens: 10 });
+    expectCode(() => store.advanceClassroomScene(projectId, session.sessionId, SCENE, newId('scene')),
+      'INVALID_ARGUMENT', 'scene_already_current');
+    expect(store.getClassroomSession(session.sessionId, projectId)).toMatchObject({ roundIndex: 1, roundCalls: 1 });
+  });
+
   it('待核卡片不能播放，审核通过后按位置顺序进入队列', () => {
     const pending = card('待核内容');
     const session = openSession();
-    expect(store.playNextExplanation(projectId, session.sessionId).card).toBeNull();
+    expect(store.playNextExplanation(projectId, session.sessionId, newId('play')).card).toBeNull();
 
     store.reviewExplanation({ projectId, explanationId: pending.explanationId, decision: 'approved', note: '与原文一致' });
-    const played = store.playNextExplanation(projectId, session.sessionId);
+    const played = store.playNextExplanation(projectId, session.sessionId, newId('play'));
     expect(played.deduplicated).toBe(false);
     expect(played.card?.explanationId).toBe(pending.explanationId);
     expect(played.playedIds).toEqual([pending.explanationId]);
@@ -174,14 +244,51 @@ describe('讲解卡与课堂会话', () => {
   it('重复请求播放同一张卡读回既有收据，不二次播报', () => {
     const approved = card('第一张');
     store.reviewExplanation({ projectId, explanationId: approved.explanationId, decision: 'approved', note: '' });
+    const second = card('第二张');
+    store.reviewExplanation({ projectId, explanationId: second.explanationId, decision: 'approved', note: '' });
     const session = openSession();
-    const first = store.playNextExplanation(projectId, session.sessionId);
-    const replay = store.playNextExplanation(projectId, session.sessionId);
+    const requestId = newId('play');
+    const first = store.playNextExplanation(projectId, session.sessionId, requestId);
+    const replay = store.playNextExplanation(projectId, session.sessionId, requestId);
     expect(first.deduplicated).toBe(false);
-    // 队列里只剩这一张已审核卡片，第二次取不到新卡，因此既没有二次播报也没有第二条收据。
-    expect(replay.card).toBeNull();
+    expect(replay.deduplicated).toBe(true);
+    expect(replay.card?.explanationId).toBe(approved.explanationId);
     const actions = store.listClassroomActions(session.sessionId, projectId);
     expect(actions.filter((action) => action.payload.kind === 'card_played')).toHaveLength(1);
+    expect(store.playNextExplanation(projectId, session.sessionId, newId('play')).card?.explanationId).toBe(second.explanationId);
+  });
+
+  it('撤回课程后当前会话不能再播，也不能重取既有播放收据', () => {
+    const approved = card('已审核讲解');
+    store.reviewExplanation({ projectId, explanationId: approved.explanationId, decision: 'approved', note: '' });
+    const session = openSession();
+    const requestId = newId('play');
+    store.playNextExplanation(projectId, session.sessionId, requestId);
+    store.withdrawLesson({ projectId, lessonId, reason: '撤回课程' });
+    expectCode(() => store.playNextExplanation(projectId, session.sessionId, requestId), 'CLASSROOM_LESSON_NOT_REVIEWED');
+    expectCode(() => store.playNextExplanation(projectId, session.sessionId, newId('play')), 'CLASSROOM_LESSON_NOT_REVIEWED');
+  });
+
+  it('发布新版本不能把旧课堂会话按新版本准入放行', () => {
+    const session = openSession();
+    const next = store.createLessonDraft({
+      projectId, lessonId, title: '新版本', bundleId, statementIds: [statementId], questionIds: [],
+    });
+    store.reviewLesson({ projectId, lessonId, version: next.version, decision: 'approved', note: '' });
+    store.publishLesson({ projectId, lessonId, version: next.version });
+    expectCode(() => store.playNextExplanation(projectId, session.sessionId, newId('play')), 'CLASSROOM_LESSON_NOT_REVIEWED', 'session_lesson_version_changed');
+  });
+
+  it('空队列结果同样冻结，响应丢失后重试不播放后来审核的卡', () => {
+    const draft = card('稍后才审核');
+    const session = openSession();
+    const requestId = newId('play');
+    expect(store.playNextExplanation(projectId, session.sessionId, requestId).card).toBeNull();
+    store.reviewExplanation({ projectId, explanationId: draft.explanationId, decision: 'approved', note: '' });
+    reopen();
+    const replay = store.playNextExplanation(projectId, session.sessionId, requestId);
+    expect(replay).toMatchObject({ card: null, deduplicated: true });
+    expect(store.playNextExplanation(projectId, session.sessionId, newId('play')).card?.explanationId).toBe(draft.explanationId);
   });
 
   it('交还本人后不再自动播报，切场景也被挡住；作答归来开启新一轮', () => {
@@ -190,8 +297,8 @@ describe('讲解卡与课堂会话', () => {
     const session = openSession();
     store.handBackToLearner(projectId, session.sessionId, '请本人完成第 3 题');
 
-    expectCode(() => store.playNextExplanation(projectId, session.sessionId), 'CLASSROOM_AWAITING_LEARNER', 'awaiting_learner');
-    expectCode(() => store.advanceClassroomScene(projectId, session.sessionId, 'scene-2'), 'CLASSROOM_AWAITING_LEARNER', 'awaiting_learner');
+    expectCode(() => store.playNextExplanation(projectId, session.sessionId, newId('play')), 'CLASSROOM_AWAITING_LEARNER', 'awaiting_learner');
+    expectCode(() => store.advanceClassroomScene(projectId, session.sessionId, 'scene-2', newId('scene')), 'CLASSROOM_AWAITING_LEARNER', 'awaiting_learner');
 
     reopen();
     const afterRestart = store.getClassroomSession(session.sessionId, projectId);
@@ -202,7 +309,7 @@ describe('讲解卡与课堂会话', () => {
     expect(resumed.status).toBe('in_class');
     expect(resumed.roundIndex).toBe(2);
     expect(resumed.awaitingReason).toBe('');
-    expect(store.playNextExplanation(projectId, session.sessionId).card?.explanationId).toBe(approved.explanationId);
+    expect(store.playNextExplanation(projectId, session.sessionId, newId('play')).card?.explanationId).toBe(approved.explanationId);
     expectCode(
       () => store.markLearnerAnswered(projectId, session.sessionId),
       'INVALID_ARGUMENT',
@@ -233,7 +340,7 @@ describe('讲解卡与课堂会话', () => {
     expect(edited.statementIds).toEqual([statementId]);
     store.reviewExplanation({ projectId, explanationId: generated.explanationId, decision: 'approved', note: '补来源后核对' });
     const session = openSession();
-    const played = store.playNextExplanation(projectId, session.sessionId);
+    const played = store.playNextExplanation(projectId, session.sessionId, newId('play'));
     expect(played.card?.explanationId).toBe(generated.explanationId);
     // 来源标记不因审核改写：仍是模型产生，界面据此显示出处。
     expect(played.card?.origin).toBe('model_generated');
@@ -268,7 +375,7 @@ describe('讲解卡与课堂会话', () => {
       materialType: 'md',
       rawText: '本章要求理解增函数的定义（表述已修订）。',
     });
-    expectCode(() => store.playNextExplanation(projectId, session.sessionId), 'KNOWLEDGE_INVALIDATED');
+    expectCode(() => store.playNextExplanation(projectId, session.sessionId, newId('play')), 'KNOWLEDGE_INVALIDATED');
   });
 
   it('课堂模型调用按每轮与整节课两级上限计数', () => {
@@ -285,7 +392,7 @@ describe('讲解卡与课堂会话', () => {
       'round_calls',
     );
     // 新一轮清空轮内计数，整节课累计继续保留。
-    store.advanceClassroomScene(projectId, session.sessionId, 'scene-2');
+    store.advanceClassroomScene(projectId, session.sessionId, 'scene-2', newId('scene'));
     const nextRound = store.noteClassroomModelCall({ projectId, sessionId: session.sessionId, purpose: 'teaching_prompt', ok: true, totalTokens: 10 });
     expect(nextRound.roundCalls).toBe(1);
     expect(nextRound.lessonCalls).toBe(5);
@@ -310,6 +417,18 @@ describe('讲解卡与课堂会话', () => {
     );
   });
 
+  it('调用额度用满后读回同一调用收据，不重复计数', () => {
+    const session = openSession();
+    const callId = newId('call');
+    const input = { projectId, sessionId: session.sessionId, purpose: 'teaching_prompt' as const, ok: true, totalTokens: 10, callId };
+    store.noteClassroomModelCall(input);
+    for (let index = 0; index < 3; index += 1) {
+      store.noteClassroomModelCall({ ...input, callId: newId('call') });
+    }
+    expect(store.noteClassroomModelCall(input)).toMatchObject({ roundCalls: 4, lessonCalls: 4 });
+    expect(store.listClassroomActions(session.sessionId, projectId)).toHaveLength(4);
+  });
+
   it('同学发言在未启用时被拒绝，启用后仍受每轮次数上限', () => {
     const session = openSession();
     expectCode(
@@ -331,9 +450,9 @@ describe('讲解卡与课堂会话', () => {
   it('结束或取消后不再执行任何课堂动作', () => {
     const session = openSession();
     store.closeClassroomSession(projectId, session.sessionId, 'cancelled', '教师中断');
-    expectCode(() => store.playNextExplanation(projectId, session.sessionId), 'RUN_TERMINATED');
+    expectCode(() => store.playNextExplanation(projectId, session.sessionId, newId('play')), 'RUN_TERMINATED');
     expectCode(() => store.handBackToLearner(projectId, session.sessionId, '再交还'), 'RUN_TERMINATED');
-    expectCode(() => store.advanceClassroomScene(projectId, session.sessionId, 'scene-2'), 'RUN_TERMINATED');
+    expectCode(() => store.advanceClassroomScene(projectId, session.sessionId, 'scene-2', newId('scene')), 'RUN_TERMINATED');
     expectCode(
       () => store.noteClassroomModelCall({ projectId, sessionId: session.sessionId, purpose: 'teaching_prompt', ok: true, totalTokens: 1 }),
       'RUN_TERMINATED',

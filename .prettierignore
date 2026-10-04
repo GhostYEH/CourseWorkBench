@@ -1,0 +1,13 @@
+node_modules/
+**/dist/
+**/release/
+**/.next/
+**/.next-build/
+.task-cache/
+pnpm-lock.yaml
+# These copies retain their registered upstream source for provenance checks.
+apps/learning/lib/classroom/playback-engine.ts
+apps/learning/lib/classroom/timing.ts
+apps/learning/lib/classroom/action-navigation.ts
+apps/learning/lib/classroom/cursor.ts
+apps/learning/lib/classroom/demo-assets.ts

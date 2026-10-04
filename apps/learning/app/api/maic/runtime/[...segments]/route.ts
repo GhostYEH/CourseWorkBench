@@ -8,6 +8,7 @@ import {
   validateRuntimeSession,
 } from '@openmaic/dsl';
 import { RuntimeAppendConflictError } from '@openmaic/storage';
+import { classroomDocumentDigest, gradeQuestionAssessment } from '@sew/study-domain';
 import { RuntimeAppendConflict, RuntimeSessionExists } from '@sew/study-storage';
 import {
   CLASSROOM_OWNER_LEARNER_KEY,
@@ -22,6 +23,8 @@ import { loadRenderableDocument } from '../../../../../lib/server/classroom-serv
 import { INTERACTION_SESSION_KIND, INTERACTION_SESSION_PREFIX } from '../../../../../lib/server/interaction-service';
 import { toAttemptDto } from '../../../../../lib/server/dto';
 import type { RuntimeRecordRow, RuntimeSessionRow } from '@sew/study-storage';
+
+const isProtectedInteraction = (kind: string, id: string): boolean => kind === INTERACTION_SESSION_KIND || id.startsWith(INTERACTION_SESSION_PREFIX) || kind === 'formalInteractionDefinition' || kind === 'formalInteractionObservation' || id.startsWith('sew-formal-interaction-');
 
 export const dynamic = 'force-dynamic';
 
@@ -126,7 +129,7 @@ const dispatch = async (request: Request, context: RouteContext): Promise<NextRe
   }
   if (segments.length === 1 && segments[0] === 'sessions' && method === 'POST') {
     const input = await parseJson(request, createSessionSchema, scope);
-    if (input.kind === INTERACTION_SESSION_KIND || input.id.startsWith(INTERACTION_SESSION_PREFIX)) error(403, 'INTERACTION_WRITE_FORBIDDEN', 'Personal interaction observations are committed only by the interaction service');
+    if (isProtectedInteraction(input.kind, input.id)) error(403, 'INTERACTION_WRITE_FORBIDDEN', 'Personal interaction observations are committed only by the interaction service');
     const current = revalidateRuntimeScope(scope);
     if (!current.store.getClassroomDocument(current.projectId, input.stageId)) {
       error(404, 'STAGE_NOT_FOUND', `Classroom stage ${JSON.stringify(input.stageId)} was not found`);
@@ -164,7 +167,7 @@ const dispatch = async (request: Request, context: RouteContext): Promise<NextRe
     if (segments.length === 2 && method === 'DELETE') {
       const current = revalidateRuntimeScope(scope);
       const owned = runtime.getSession(current.projectId, sessionId);
-      if (owned?.kind === INTERACTION_SESSION_KIND) error(403, 'INTERACTION_WRITE_FORBIDDEN', 'Saved personal observations cannot be deleted');
+      if ((owned && isProtectedInteraction(owned.kind, owned.id))) error(403, 'INTERACTION_WRITE_FORBIDDEN', 'Saved personal observations cannot be deleted');
       if (owned?.learnerKey === CLASSROOM_OWNER_LEARNER_KEY && owned.kind === 'quizAttempt' && owned.status === 'completed') {
         error(403, 'SESSION_DELETE_FORBIDDEN', 'A completed scored quiz attempt cannot be deleted');
       }
@@ -179,7 +182,7 @@ const dispatch = async (request: Request, context: RouteContext): Promise<NextRe
       }
       const current = revalidateRuntimeScope(scope);
       const owned = getOwnedSession(current, sessionId);
-      if (owned.kind === INTERACTION_SESSION_KIND) error(403, 'INTERACTION_WRITE_FORBIDDEN', 'Saved personal observation sessions cannot be archived');
+      if (isProtectedInteraction(owned.kind, owned.id)) error(403, 'INTERACTION_WRITE_FORBIDDEN', 'Saved personal observation sessions cannot be archived');
       if (owned.kind === 'quizAttempt' && owned.status === 'completed') {
         error(403, 'SESSION_ARCHIVE_FORBIDDEN', 'A completed scored quiz attempt must keep its review receipt linked');
       }
@@ -199,7 +202,7 @@ const dispatch = async (request: Request, context: RouteContext): Promise<NextRe
       if (input.sessionTransition) error(403, 'REVIEW_REQUIRES_SERVER_SCORING', 'Session transitions are only allowed with server-scored records');
       const current = revalidateRuntimeScope(scope);
       const owned = getOwnedSession(current, sessionId);
-      if (owned.kind === INTERACTION_SESSION_KIND) error(403, 'INTERACTION_WRITE_FORBIDDEN', 'Personal interaction records are written only by the interaction service');
+      if (isProtectedInteraction(owned.kind, owned.id)) error(403, 'INTERACTION_WRITE_FORBIDDEN', 'Personal interaction records are written only by the interaction service');
       validateQuizAppend(owned, input.payload);
       const init = {
         id: input.id,
@@ -235,7 +238,7 @@ const dispatch = async (request: Request, context: RouteContext): Promise<NextRe
     if (segments[3] !== CLASSROOM_OWNER_LEARNER_KEY) error(403, 'FORBIDDEN_LEARNER', 'Runtime learner partition is assigned by the service');
     const current = revalidateRuntimeScope(scope);
     const sessions = runtime.listSessions(current.projectId, segments[1] ?? '', CLASSROOM_OWNER_LEARNER_KEY);
-    if (sessions.some((session) => session.kind === INTERACTION_SESSION_KIND || (session.kind === 'quizAttempt' && session.status === 'completed'))) {
+    if (sessions.some((session) => isProtectedInteraction(session.kind, session.id) || (session.kind === 'quizAttempt' && session.status === 'completed'))) {
       error(403, 'FORBIDDEN', 'Completed quiz evidence and receipts cannot be removed by the learner');
     }
     runtime.deleteLearnerRuntime(current.projectId, segments[1] ?? '', CLASSROOM_OWNER_LEARNER_KEY);
@@ -286,12 +289,12 @@ async function submitQuizAttempt(request: Request, headerScope: { projectId: str
   const runtimeSession = getOwnedSession(session, body.sessionId);
   const priorReceipt = session.store.runtime.getQuizReceipt(session.projectId, body.idempotencyKey);
   if (priorReceipt) {
-    if (priorReceipt.sessionId !== body.sessionId || priorReceipt.questionId !== body.questionId) {
+    if (priorReceipt.sessionId !== body.sessionId || priorReceipt.questionId !== body.questionId || runtimeSession.kind !== 'quizAttempt') {
       throw new RuntimeHttpError(409, 'VERSION_CONFLICT', 'Idempotency key is already bound to another quiz submission');
     }
     const attempt = session.store.getAttemptByIdempotencyKey(body.idempotencyKey);
     const record = session.store.runtime.getRecord(session.projectId, body.sessionId, priorReceipt.recordId);
-    if (!attempt || !record || attempt.answerText !== body.answerText || attempt.processText !== body.processText) {
+    if (!attempt || !record || record.sceneId !== body.sceneId || attempt.actorType !== 'human_learner' || attempt.requestedKind !== 'real' || attempt.answerText !== body.answerText || attempt.processText !== body.processText) {
       throw new RuntimeHttpError(409, 'VERSION_CONFLICT', 'Quiz submission retry does not match its durable receipt');
     }
     return response({ ok: true, data: { attempt: toAttemptDto(attempt, true), record: recordDto(record), deduplicated: true } });
@@ -329,16 +332,24 @@ async function submitQuizAttempt(request: Request, headerScope: { projectId: str
   if (!dslQuestionId || dslQuestionListMismatch(questionList, dslQuestionId, question.stem)) {
     throw new RuntimeHttpError(403, 'QUESTION_BINDING_MISMATCH', 'Quiz document no longer matches the bound question');
   }
-  const expectedChoice = singleChoiceAnswer(dslQuestion ?? {});
-  if (expectedChoice === null) {
-    error(422, 'QUIZ_SCORING_UNSUPPORTED', 'This quiz question type cannot be scored by the local runtime');
-  }
-  if (body.answerText.length === 0 || body.answerText.length > 10_000) {
+  if (body.answerText.trim().length === 0 || body.answerText.length > 10_000) {
     error(400, 'VALIDATION_FAILED', 'Quiz answer text is empty or exceeds the limit');
   }
   if (body.processText.length > 10_000) error(400, 'VALIDATION_FAILED', 'Quiz process text exceeds the limit');
-  if (question.answer !== expectedChoice) {
-    error(403, 'QUESTION_BINDING_MISMATCH', 'The scored answer key differs from the reviewed quiz document');
+  const assessment = question.assessment;
+  const expectedChoice = singleChoiceAnswer(dslQuestion ?? {});
+  if (assessment) {
+    if (dslQuestion?.['type'] !== assessment.type ||
+        classroomDocumentDigest(dslQuestion?.['options'] ?? []) !== classroomDocumentDigest(assessment.options) ||
+        classroomDocumentDigest(dslQuestion?.['answer']) !== classroomDocumentDigest(assessment.correctAnswers) ||
+        dslQuestion?.['points'] !== assessment.maxScore) {
+      error(403, 'QUESTION_BINDING_MISMATCH', 'Quiz document differs from the reviewed assessment');
+    }
+    // 校验选择值/答案集合，简答仅记录不可变提交并保持待判分。
+    gradeQuestionAssessment(assessment, body.answerText);
+  } else {
+    if (expectedChoice === null) error(422, 'QUIZ_SCORING_UNSUPPORTED', 'This quiz question type cannot be scored by the local runtime');
+    if (question.answer !== expectedChoice) error(403, 'QUESTION_BINDING_MISMATCH', 'The answer key differs from the reviewed quiz document');
   }
   if (session.store.getAttemptByIdempotencyKey(body.idempotencyKey)) {
     error(409, 'VERSION_CONFLICT', 'Attempt already exists without a matching runtime receipt');
@@ -368,21 +379,20 @@ async function submitQuizAttempt(request: Request, headerScope: { projectId: str
       if (attempt.attempt.kind !== 'real') {
         throw new RuntimeHttpError(403, 'SIMULATION_WRITE_FORBIDDEN', 'This quiz submission is not eligible for本人记录');
       }
-      const correct = body.answerText === expectedChoice;
-      if (attempt.attempt.masteryAfter !== null &&
-          (attempt.attempt.masteryAfter === 'passed') !== correct) {
+      const grading = attempt.attempt.grading ?? {
+        status: body.answerText === expectedChoice ? 'correct' as const : 'incorrect' as const,
+        correct: body.answerText === expectedChoice,
+        earned: body.answerText === expectedChoice ? numericPoints(dslQuestion?.['points']) : 0,
+        maxScore: numericPoints(dslQuestion?.['points']), answerVersion: null,
+        basis: '登记的演示单选答案',
+      };
+      if (attempt.attempt.masteryAfter !== null && grading.correct !== null &&
+          (attempt.attempt.masteryAfter === 'passed') !== grading.correct) {
         throw new RuntimeHttpError(409, 'QUESTION_SCORING_MISMATCH', 'Runtime grading disagrees with the stored answer key');
       }
       const payload = {
-        payloadVersion: 1,
-        phase: 'reviewed' as const,
-        answers,
-        results: [{
-          questionId: dslQuestionId,
-          correct,
-          status: correct === true ? 'correct' as const : 'incorrect' as const,
-          earned: correct === true ? numericPoints(dslQuestion?.['points']) : 0,
-        }],
+        payloadVersion: 1, phase: 'reviewed' as const, answers,
+        results: [{ questionId: dslQuestionId, ...grading }],
       };
       const recordInput = {
         id: recordId,

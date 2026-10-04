@@ -72,6 +72,7 @@ const proposal = (id: string, passed: boolean): ProposalDto => ({
 });
 
 const question = (id: string): QuestionListItemDto => ({
+  assessment: null,
   questionId: id,
   stem: `题干${id}：判断函数在区间上的单调性`,
   knowledgeIds: ['kp1'],

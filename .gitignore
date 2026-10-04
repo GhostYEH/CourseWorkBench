@@ -14,6 +14,8 @@ tmp/
 .workbuddy-ai/
 .electron-user-data/
 .sew-user-data/
+.task-cache/
+.eslintcache
 
 # 项目数据目录（用户项目由原生目录选择器创建，不进仓库）
 **/.study/

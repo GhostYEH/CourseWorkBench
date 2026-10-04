@@ -2,8 +2,8 @@ import type { ReactNode } from 'react';
 import { PlanActions } from '../../../components/plan-actions';
 import { PlanTasks } from '../../../components/plan-tasks';
 import { RunPanel } from '../../../components/run-panel';
-import { Empty, Stat } from '../../../components/ui';
-import { bootstrapFromEnvironment, getSession } from '../../../lib/server/service';
+import { Empty,Stat } from '../../../components/ui';
+import { requireSession } from '../../../lib/server/service';
 import { readWorkbenchRun } from '../../../lib/server/workbench-data';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic';
  * 草案任务逐条人工确认，确认整版后才启动 run；未确认任务转入待核范围而不是被静默删除。
  */
 export default function PlanPage(): ReactNode {
-  const session = (getSession() ?? bootstrapFromEnvironment())!;
+  const session = requireSession();
   const projectId = session.projectId;
   const latest = session.store.getLatestPlan(projectId);
   const confirmed = session.store.getConfirmedPlan(projectId);

@@ -1,14 +1,13 @@
-import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { decodeJson } from '@sew/study-storage';
-import { assertScope, requireSession, type Session } from './service';
+import { assertScope, type Session } from './service';
+import { scopedRequest } from './scoped-request';
+import { readBoundedBody } from './bounded-body';
 
 export const MAX_ASSET_BYTES = 32 * 1024 * 1024;
 export const MAX_ASSET_METADATA_BYTES = 64 * 1024;
 export const MAX_ASSET_REQUEST_BYTES = 33 * 1024 * 1024;
 export const MAX_PROJECT_ASSET_BYTES = 128 * 1024 * 1024;
-const PROJECT_HEADER = 'x-sew-project-id';
-const GENERATION_HEADER = 'x-sew-generation';
 const metadataSchema = z.record(z.string(), z.unknown());
 
 export class AssetHttpError extends Error {
@@ -20,15 +19,8 @@ export class AssetHttpError extends Error {
 
 export const scopedAssetSession = (request: Request): { scope: { projectId: string; generation: number }; session: Session } => {
   if (request.url.includes('?')) throw new AssetHttpError(400, 'VALIDATION_FAILED', '课堂资源地址不能包含查询参数');
-  const projectId = request.headers.get(PROJECT_HEADER);
-  const rawGeneration = request.headers.get(GENERATION_HEADER);
-  const generation = rawGeneration === null ? NaN : Number(rawGeneration);
-  if (!projectId || !Number.isSafeInteger(generation) || generation < 1) {
-    // Still authenticate first to keep the service's unauthenticated behavior consistent.
-    requireSession();
-    throw new AssetHttpError(400, 'VALIDATION_FAILED', '缺少有效的课堂项目范围', { requiredHeaders: [PROJECT_HEADER, GENERATION_HEADER] });
-  }
-  return { scope: { projectId, generation }, session: assertScope({ projectId, generation }) };
+  return scopedRequest(request, requiredHeaders => new AssetHttpError(400, 'VALIDATION_FAILED',
+    '缺少有效的课堂项目范围', { requiredHeaders }));
 };
 
 export const revalidateAssetScope = (scope: { projectId: string; generation: number }): Session => assertScope(scope);
@@ -37,37 +29,10 @@ export const rejectEncodedBody = (request: Request): void => {
   if (request.headers.has('content-encoding')) throw new AssetHttpError(400, 'VALIDATION_FAILED', '不支持压缩的课堂资源请求体');
 };
 
-export const boundedBody = async (request: Request): Promise<Uint8Array> => {
-  const length = request.headers.get('content-length');
-  if (length !== null && /^\d+$/.test(length) && Number(length) > MAX_ASSET_REQUEST_BYTES) {
-    throw new AssetHttpError(413, 'PAYLOAD_TOO_LARGE', '课堂资源请求体超过上限', { limit: MAX_ASSET_REQUEST_BYTES });
-  }
-  if (!request.body) throw new AssetHttpError(400, 'VALIDATION_FAILED', '课堂资源请求体为空');
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    while (true) {
-      const part = await reader.read();
-      if (part.done) break;
-      total += part.value.byteLength;
-      if (total > MAX_ASSET_REQUEST_BYTES) {
-        await reader.cancel().catch(() => undefined);
-        throw new AssetHttpError(413, 'PAYLOAD_TOO_LARGE', '课堂资源请求体超过上限', { limit: MAX_ASSET_REQUEST_BYTES });
-      }
-      chunks.push(part.value);
-    }
-  } catch (error) {
-    if (error instanceof AssetHttpError) throw error;
-    throw new AssetHttpError(400, 'VALIDATION_FAILED', '无法读取课堂资源请求体');
-  } finally {
-    reader.releaseLock();
-  }
-  const body = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
-  return body;
-};
+export const boundedBody = (request: Request): Promise<Uint8Array> =>
+  readBoundedBody(request, MAX_ASSET_REQUEST_BYTES, reason => reason === 'too_large'
+    ? new AssetHttpError(413, 'PAYLOAD_TOO_LARGE', '课堂资源请求体超过上限', { limit: MAX_ASSET_REQUEST_BYTES })
+    : new AssetHttpError(400, 'VALIDATION_FAILED', reason === 'missing' ? '课堂资源请求体为空' : '无法读取课堂资源请求体'));
 
 export const parseAssetMultipart = async (request: Request, rawBody: Uint8Array, metadataRequired = true): Promise<{ mediaType: string; metadata: Record<string, unknown>; hasMetadata: boolean; bytes: Uint8Array }> => {
   if (request.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() !== 'multipart/form-data') {
@@ -129,5 +94,3 @@ export const parseAssetMultipart = async (request: Request, rawBody: Uint8Array,
   if (bytes.byteLength > MAX_ASSET_BYTES) throw new AssetHttpError(413, 'PAYLOAD_TOO_LARGE', '课堂资源文件超过上限', { limit: MAX_ASSET_BYTES });
   return { mediaType, metadata, hasMetadata: metadataPart instanceof File, bytes };
 };
-
-export const assetDigest = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');

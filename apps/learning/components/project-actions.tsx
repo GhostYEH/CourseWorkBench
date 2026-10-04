@@ -1,6 +1,7 @@
 'use client';
 
 import { Notice } from './ui';
+import { describeProjectActionError } from '../lib/project-action-error';
 
 import { useEffect, useRef, useState } from 'react';
 
@@ -47,8 +48,8 @@ export const ProjectActions = ({ mode }: { mode: 'choose' | 'manage' }) => {
 
       // A full request avoids reusing an RSC payload from the previous project session.
       window.location.assign(action === 'close' ? '/no-project' : '/workbench');
-    } catch {
-      setError('项目操作失败，请确认所选目录可访问后重试。');
+    } catch (caught) {
+      setError(describeProjectActionError(caught));
     } finally {
       running.current = false;
       setBusy(null);

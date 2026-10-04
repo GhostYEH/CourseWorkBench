@@ -64,7 +64,7 @@ const assert = (condition, message) => {
 };
 
 const startService = () => new Promise((resolveReady, reject) => {
-  serviceChild = spawn(nodeBinary, [serverEntry, '--project-root', ''], {
+  serviceChild = spawn(nodeBinary, [serverEntry, '--project-root', '', '--user-data', app.getPath('userData')], {
     cwd: join(projectRoot, 'apps', 'learning'),
     env: { ...process.env, NODE_ENV: 'production', SEW_DEV: '0', SEW_PROJECT_ROOT: '' },
     windowsHide: true,
@@ -104,10 +104,11 @@ const startService = () => new Promise((resolveReady, reject) => {
   });
 });
 
-const serviceRequest = async (method, path, body) => {
+const serviceRequest = async (method, path, body, extraHeaders = {}) => {
   const response = await fetch(`${ready.origin}${path}`, {
     method,
     headers: {
+      ...extraHeaders,
       'content-type': 'application/json',
       origin: ready.origin,
       'x-sew-session': ready.sessionToken,
@@ -212,6 +213,7 @@ const run = async () => {
       nodeIntegration: false,
       webSecurity: true,
       allowRunningInsecureContent: false,
+      backgroundThrottling: false,
     },
   });
   markStep('window-created', { servicePid: serviceChild.pid ?? null });
@@ -519,6 +521,13 @@ const run = async () => {
     `分区导航没有恰好一个当前项：${JSON.stringify(tabState)}`);
   assert(!tabState.fakeTablist, '分区导航仍声明为 tablist，但它并不控制面板');
   cover('workbench section navigation marks exactly one current page without a fake tablist');
+
+  await require('./smoke-formal-quiz.cjs')({
+    window, origin: ready.origin, projectDirectory: tempRoot, serviceRequest, waitForText, cover,
+  });
+  await require('./smoke-learner-profile.cjs')({
+    window, origin: ready.origin, projectDirectory: tempRoot, serviceRequest, cover,
+  });
 
   const closeButton = await window.webContents.executeJavaScript(`(() => {
     const button = [...document.querySelectorAll('button')].find((item) => item.textContent.includes('关闭项目'));

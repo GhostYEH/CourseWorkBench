@@ -1,17 +1,20 @@
+import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { ProjectSettingsForm } from '../../../components/project-settings-form';
 import { TeachingSettings } from '../../../components/appearance-settings';
-import { ModelConnectionSettings } from '../../../components/model-connection-settings';
-import { RoleProfiles } from '../../../components/role-profiles';
 import { AssetReclaim } from '../../../components/asset-reclaim';
-import { bootstrapFromEnvironment, getSession } from '../../../lib/server/service';
-import { readTeachingPreference } from '../../../lib/server/state';
+import { ModelConnectionSettings } from '../../../components/model-connection-settings';
+import { ModelUsagePanel } from '../../../components/model-usage-panel';
+import { ProjectSettingsForm } from '../../../components/project-settings-form';
+import { RoleProfiles } from '../../../components/role-profiles';
 import { toRoleProfileDto } from '../../../lib/server/dto';
+import { DEFAULT_MODEL_CALL_LIMITS } from '../../../lib/server/model-call';
+import { requireSession } from '../../../lib/server/service';
+import { readTeachingPreference } from '../../../lib/server/state';
 
 export const dynamic = 'force-dynamic';
 
 export default function SettingsPage(): ReactNode {
-  const session = (getSession() ?? bootstrapFromEnvironment())!;
+  const session = requireSession();
   const project = session.store.getProject(session.projectId)!;
   const teaching = readTeachingPreference(session);
 
@@ -39,10 +42,18 @@ export default function SettingsPage(): ReactNode {
           learningMode: project.learningMode,
         }}
       />
+      <div className="card"><h2>个人档案</h2><p>个人 UID 和昵称跨科目保留。</p><Link className="btn" href="/profile">查看个人档案与 UID</Link></div>
 
       <TeachingSettings initial={teaching} projectId={session.projectId} generation={session.generation} />
 
       <ModelConnectionSettings />
+      <ModelUsagePanel
+        calls={session.store.listModelUsageCalls(session.projectId)}
+        usage={session.store.getLatestRun() ? session.store.modelCallUsage(session.store.getLatestRun()!.runId) : { calls: 0, tokens: 0 }}
+        report={session.store.getLatestRun()
+          ? session.store.modelUsageReport(session.store.getLatestRun()!.runId, DEFAULT_MODEL_CALL_LIMITS)
+          : null}
+      />
 
       <RoleProfiles
         projectId={session.projectId}

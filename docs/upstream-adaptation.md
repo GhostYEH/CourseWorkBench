@@ -168,3 +168,72 @@ Stage、PlaybackChromeRoot、SceneRenderer 与 QuizSceneView 的视图胶水仍�
 第一次安装比目录包缺少 1,090 个文件（包含 265 个 JS/CJS/MJS），路径集中在 256—378 字符；失败报告保留，未把缺失视为成功。修复采用确定的根版本选择和最近祖先依赖解析，避免无差别深层复制；版本冲突仍在消费者局部保留。无法安全纯物化的跨版本循环明确报错，不能无限展开或默默解析到错误版本。最终服务清单含 12,024 个文件，最长相对路径 132 字符。
 
 准备脚本据实际清单生成 NSIS 路径预算；当前完整安装目录预算为 98 字符，交互目录页另预留 builder 可能追加的目录后缀。超过预算的静默安装以 code 2 拒绝，实测 149 字符目录未解压资源。目录包支持 Node 长路径不意味着 NSIS 解压器具有相同能力；新增依赖须重新组装和计算预算，不能只换安装位置绕过完整性检查。
+
+### 7.7 N1 分发验证记录（2026-10-04，早于当前 M2）
+
+N1 的构建 `lRAF-MacCtj9Lt1oUz7dc` 完成运行时响应 schema 与显式课程 DTO 补强；完整检查为 47 个文件 / 311 个用例，跳过 0。随包服务 14/14、[目录包 30/30](../apps/desktop/release/pack01-verification-2026-10-04T03-24-40.757Z.json)、[实际 Electron 课堂 50/50](../apps/desktop/release/m0-classroom-ui-2026-10-04T03-26-37.716Z.json) 通过，包含课堂互动、离线重试、崩溃恢复与材料历史读回。服务清单 12,132 个文件，最长相对路径 132 字符；对应源码为 191 个文件，摘要 `ae2bc1b56ea53b424fb9ab39c993ace7dc8878f321d929fd7d378fa8a30129dc`。
+
+该轮生成的安装包为 194,169,810 字节，SHA-256 `166b5bcd836115b9f663b4b3de143b3842dc53dbd2e0819834f1f6741ec88f0b`，外部验收包已同步，但未重做安装/卸载及独立环境验收。此分发产物早于 M2 的课程审核与课堂会话提交，不作为当前 M2 的安装证据。
+
+### 7.8 当前 M2 源码复核（2026-10-04）
+
+提交基准 `abe159e` 已包含证据包、课程版本审核/发布/撤回、草案生成 guard、讲解卡与持久课堂会话。本次在该基准上修复撤回/取代后的旧会话播放、多卡重试推进、模型迟到结果写入及未派发调用错误计费，补齐原子事务与生产页面入口回归。剩余范围见[待办事项](待办事项.md)。
+
+生产构建 `b-NbUYfAKkVxyb0mjKVqm` 成功，对应源码 202 个文件、摘要 `a9042a38fa79222b4e93e3a1fa0e3266b9a5b4046674811b3627bfda2b23afe9`；类型检查、代码质量与公共边界检查、51 个测试文件 / 368 个用例全部通过，跳过 0，包含使用当前构建的生产 HTTP 测试。GPT-6 Luna / high 独立只读复核未发现四项修复中的确凿漏修。此次未重新打包或进行新的付费整课调用；正式 OpenMAIC 课件挂接、白板、多进程执行租约、崩溃结算、完整成本/时间预算与 PACK-02 独立环境验收仍保留。
+
+### 7.9 M2-E 正式测验适配（2026-10-04）
+
+新增三题型仍使用已固定的 `@openmaic/dsl@0.11.2` quiz 形状和 `@openmaic/storage@0.35.1` RuntimeStore。单选和多选的正确答案由冻结证据包提供，服务端精确判分；简答只提交答案与过程，保持待判分。返回渲染器前剥除答案、解析和评分标准，客户端不能写权威判分。课程版本仅装配其选中的陈述/题目，来源侧表逐场景绑定并与确定性文档复核，文档、挂接与测验事务均保留准入约束。
+
+`QuizSceneView` 支持单选、多选、简答以及每题独立的会话、草稿、不可变提交和重开恢复；它仍是本项目的窄视图适配，没有新增复制上游代码或变更依赖版本。schema v16 保存评分规则与作答题目/答案版本，旧证据包迁移保持字节及摘要不变。未登记规则的旧正式题待判分，固定演示仍使用原合同。
+
+生产构建 `KijbcQ6icl-s3UuPCVoyY` 对应 208 个输入文件、SHA-256 `ff42c9bf295565930139fca1b42c4a0ea4b2b201d191d3c9b59a226ba773af74`；`pnpm check` 为 55 文件 / 424 用例通过、跳过 0。实际 Electron 冒烟新增真实表单登记、三题型提交、未完成题与已提交题独立恢复、SQLite 项目重开读回及无重复作答检查；文字输入使用表单事件、控件使用浏览器鼠标事件。隐藏窗口的 `sendInputEvent` 未派发到控件，测试驱动改用原验收脚本已使用的 `Input.dispatchMouseEvent` 后验证通过，未修改业务逻辑以回避该问题。GPT-6.1 Sol / medium 独立只读审查提出的跨题会话复用及在途切题忙碌问题已修复、复审通过。
+
+本轮只验证本机回归材料，不签核真实科目、整课 provider 授课或 PACK-02；简答人工评分及模型评分候选、互动/PBL、白板与教师聚焦继续保留。
+
+### M2-F 简答审核适配（2026-10-04）
+
+本轮继续使用固定 DSL/RuntimeStore 包与本项目 QuizSceneView，没有新增复制上游代码或依赖版本变化。人工审核与模型待审候选属于本地学习域的追加记录，原始 Runtime review 及提交收据不改写；完成提交后通过明确范围的评分接口读取最新有效审核及参考依据，未提交时不下发这些内容。模型输出不是权威判分，只有人工语义审核确认才能更新有效评分和未被更晚作答覆盖的知识点。
+
+SQLite 升至 v18：v17 保存候选/审核/命令收据，v18 保存绑定 run 的派发前命令及共享额度预留。失败、取消、过期结果不产生有效评分；同 nonce 失败/未知结果不重复调用，未结算预留持续进入课程/教师/评分共用预算。已验证 SQLite 故障下没有第二次派发；实际成本与未知外部结果结算仍属于 BUDGET-01 的剩余范围。
+
+当前生产构建为 `O-oinHG8rYoy1vmD9FvWJ`，216 个输入文件，SHA-256 `7ce24e51f85ecd9f077216f25526d6fdeffe0ed441f0a90e031322fac86a1f9f`；`pnpm check` 为 60 文件 / 482 用例通过，无跳过。模型测试均使用假连接，未进行真实 provider 评分；真实材料语义效果、完整答案显示走查与新安装态验收继续保留。
+
+同构建的 Electron 沙箱实测通过简答部分分/满分两版人工表单审核与数据库重开后最新评分恢复；随包服务 14/14、新目录包 30/30 均通过，12,168 个服务文件按摘要验证。新目录位于 `apps/desktop/release/m2f-2026-10-04/win-unpacked`，报告 `apps/desktop/release/m2f-2026-10-04/pack01-verification.json`；未更新 NSIS 安装包，也未以目录包运行替代独立环境签核。
+
+M2-E 补充历史记录（早于 M2-F 及本阶段）：浏览器层暂停真实题 B 提交请求，切回题 A 并断言其草稿和可提交状态，放行原请求后确认 B 已持久判分。关闭隐藏窗口的后台节流并在滚动后等待两帧，完整 Electron 冒烟再次通过。随包服务已按该轮构建重新组装，清单 12,155 文件，最长相对路径 132 字符；`pnpm verify:service` 14/14 通过。
+
+上述 M2-E 目录包位于 `apps/desktop/release/m2e-2026-10-04/win-unpacked/`，使用本地同版本 Electron 38.8.6 组装，未更新安装包。[实际目录包 30/30](../apps/desktop/release/m2e-2026-10-04/pack01-verification.json) 通过：包内 10 个桌面 CJS 摘要、runtime 元数据、12,155 个服务文件及该轮构建来源均匹配；从临时中文空格路径启动实际 exe，生产 SSR、沙箱 preload、认证边界、隔离 profile 与受控关闭均通过。复跑命令为 `node scripts/verify-packaged-desktop.mjs --app-dir apps/desktop/release/m2e-2026-10-04/win-unpacked`。这是历史本机目录包证据，不等于本阶段安装/卸载或独立 Windows 环境验收。
+
+### 本阶段：本地房间、白板与正式互动（2026-10-04）
+
+继续使用固定 `@openmaic/dsl@0.11.2`、`@openmaic/storage@0.35.1` 和现有 SlideCanvas，没有新增复制上游代码或依赖版本变化。`FormalInteractiveSceneView`、白板/房间和人工反馈面板为本地消费者实现；正式互动仍采用真实 interactive 场景形状，定义与 UID 个人观察使用专用受保护 Runtime 分区，不允许通用接口伪造。公开关系定义去掉正确目标，草稿/提交分别保存；观察不直接写知识或掌握。演示 iframe 增加随机 nonce、来源窗口/实例验证，保留 opaque origin 与仅 `allow-scripts`。
+
+schema v19—v23 依次新增旧本人 UID 映射、个人房间/快照/教师租约和会话绑定、审核白板、不可变本人反馈/复习记录及课程/教师模型调用持久账本。ROOM 公共投影仅支持文字幻灯片与无答案测验；任意 HTML/资源标签及未实现安全投影的互动/PBL 拒绝冻结。在线身份/邀请/同步/交流仍未实现，不能把本地房间视为双人协作签核。
+
+该阶段历史构建 `2oj_FjjcGYi2uTYty5UUh`，248 个输入文件，SHA-256 `7c6a5fe38a9fda0cd831cc928e78f3a1e7881e3eea064343a1f37f363eb7a7f8`；`pnpm check` **72 文件 / 588 用例通过，零跳过**。房间绑定、推进/结束原子同步与共享 HTML 边界有实际路由/SQLite 回归。原生 Electron 冒烟 29 组覆盖包含真实房间/白板/参数与关系互动、数据库重开和 UID 实际剪贴板；数据库重开不替代整应用崩溃或安装态功能验收。
+
+该历史随包服务为 12,254 文件，最长相对路径 132；服务 **14/14**、[目录包 **30/30**](../apps/desktop/release/stage-handoff-2026-10-04/pack01-verification.json) 通过。目录 `apps/desktop/release/stage-handoff-2026-10-04/win-unpacked` 使用本地同版本 Electron 38.8.6，早于后续同学/预算/恢复源码；未重建 NSIS、未安装/卸载、无真实付费 provider。当前验证见[项目说明](../README.md#当前验证)，剩余范围见[待办事项](待办事项.md)。用户暂缓真实材料金标准和真人双设备验收，85 项清单仍为 22 partial / 63 planned / 0 完整签核。
+
+### 本轮：AI 同学运行、共享预算与四层恢复（2026-10-04，接手轮）
+
+上游采用范围不变：仍固定 `@openmaic/dsl@0.11.2`、`@openmaic/renderer@0.1.11`、`@openmaic/storage@0.35.1`，没有新增复制上游代码、没有依赖版本变化，也没有放宽既有共享投影边界。本轮改动全部落在本项目自有的合同、领域、存储与服务层：
+
+- schema v24 新增 `classroom_peer_turns`（`partition`/`actor_type` 由 CHECK 固定为 `simulation`/`peer_ai`）与 `classroom_session_peer_settings`（同学参与度）。参与度用独立表而不是给 `classroom_sessions` 加列：SQLite 没有 `ADD COLUMN IF NOT EXISTS`，加列会让「重建旧库」路径无法重跑。
+- schema v25 给 `attempt_grade_generation_calls` 追加 `accounted_tokens`/`token_measurement`/`elapsed_ms`，用于保存评分计量；旧列为空的数据仍须按兼容策略归一，不改变原始作答和收据。
+- 新增 `packages/study-domain/src/peer.ts`（同学权限、参与度上限、来源约束、分区）与 `budget.ts`（共享额度、结算口径、费用口径、断线不重放），两者都是纯判断，不依赖 React/Electron/Next，也不做 IO。
+- 新增 `apps/learning/lib/server/classroom-peer.ts` 与 `classroom-recovery.ts`，以及 `/api/study/recovery` 只读核对入口与课堂面板里的同学/恢复两个子面板。
+- `MODEL_CALL_PURPOSE` 扩到六类用途并与 `MODEL_USAGE_PURPOSE` 同源；`modelUsageCallSchema` 追加角色归属与用量口径列。
+
+本轮没有引入真实付费 provider 调用、重建 NSIS 或创建 Git 提交。目录包与安装态、整应用/服务崩溃及跨版本冲突矩阵仍须验收；85 项清单仍为 22 partial / 63 planned / 0 完整签核。实现与验证范围见[项目说明](../README.md#当前验证)。
+
+### 本轮：M2 缺口（预测字段、教师聚焦、公式排版、ROOM 互动投影）（2026-10-04）
+
+上游采用范围不变：仍固定 `@openmaic/dsl@0.11.2`、`@openmaic/renderer@0.1.11`、`@openmaic/storage@0.35.1`，没有新增复制上游代码、没有依赖版本变化，也没有放宽共享投影边界。本轮新引入的唯一第三方运行时能力是**项目已声明的 `katex` 依赖**（此前仅作为演示字体来源登记），现在用于白板公式的数学排版，渲染固定 `trust:false`。
+
+- 新增 `packages/study-domain/src/formal-interaction.ts`：把互动定义的摘要、场景编号、定义/观察分区编号与「公开投影（去掉关系正确目标）」下沉为纯函数。此前这些只存在于 `apps/learning/lib/server/formal-interaction-definition-store.ts`，ROOM 冻结需要同一套规则；下沉后本地课堂与共享投影共用一份实现。
+- `packages/study-contracts`：`formal-interaction` 增加 `predictionRequired`/`prediction`/`predictionMatched`；`classroom-board` 增加 `focus` 内容类型与公式 `latex` 字段（含 LaTeX 专用安全黑名单）；`classroom-room` 的共享场景增加 `interactive` 变体。
+- `packages/study-storage`：房间冻结接受互动场景并投影公开定义；白板绑定校验改为同时接收内容，`focus` 的元素编号必须存在于该版本冻结课件。
+- `apps/learning`：互动服务加入预测强制与匹配判定；白板面板加入 KaTeX 渲染、聚焦元素下拉；房间页显示互动场景类型。
+
+本轮未调用真实付费 provider、创建 Git 提交或重建 NSIS。公式排版、独立预测与安全互动投影的验证和目录产物以[项目说明](../README.md#当前验证)为准；聚焦目前提供冻结元素绑定和审核白板说明，画布中的实际聚焦效果仍由[待办事项](待办事项.md)跟踪。85 项清单仍为 22 partial / 63 planned / 0 完整签核。

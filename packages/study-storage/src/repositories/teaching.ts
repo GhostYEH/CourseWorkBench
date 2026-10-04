@@ -6,13 +6,16 @@
  */
 
 import { StudyError, newId,
-  CLASSROOM_ACTION_KINDS,
   CLASSROOM_SESSION_STATUS,
   EXPLANATION_KIND,
   EXPLANATION_ORIGIN,
   EXPLANATION_STATUS,
+  PEER_ENGAGEMENT,
+  classroomPeerTurnSchema,
+  explanationCardSchema,
+  classroomSessionSchema,
   type ClassroomActionPayloadDto,
-  type ClassroomActionKind,
+  type ClassroomPeerTurnDto,
   type ExplanationKind,
   type ExplanationOrigin,
   type ExplanationStatus,
@@ -35,15 +38,6 @@ function oneOf<T extends string>(allowed: readonly T[], value: string, reason: s
   if ((allowed as readonly string[]).includes(value)) return value as T;
   throw new StudyError('INTERNAL', { reason, value, expected: allowed });
 }
-
-const mapActionKind = (row: Row): ClassroomActionKind => {
-  const payloadKind = mapActionPayload(row).kind;
-  const column = str(row['kind']);
-  if (column !== payloadKind) {
-    throw new StudyError('INTERNAL', { reason: 'classroom_action_kind_mismatch', column, payloadKind });
-  }
-  return oneOf(CLASSROOM_ACTION_KINDS, column, 'invalid_classroom_action_kind');
-};
 
 const mapCard = (row: Row): ExplanationRow => {
   const explanationId = str(row['explanation_id']);
@@ -87,6 +81,8 @@ const mapSession = (row: Row): ClassroomSessionRow => ({
   roundPeerTurns: num(row['round_peer_turns']),
   lessonCalls: num(row['lesson_calls']),
   peersEnabled: num(row['peers_enabled']) > 0,
+  // 参与度存在单独的设置表里；默认值由这里给出，读取路径再按 session 覆盖。
+  peersEngagement: 'balanced',
   createdAt: str(row['created_at']),
   updatedAt: str(row['updated_at']),
 });
@@ -98,15 +94,22 @@ const mapActionPayload = (row: Row): ClassroomActionPayloadDto => readAuthoritat
   defaultJsonPolicy,
 );
 
-const mapAction = (row: Row): ClassroomActionRow => ({
-  stepKey: str(row['step_key']),
-  sessionId: str(row['session_id']),
-  projectId: str(row['project_id']),
-  kind: mapActionKind(row),
-  sceneId: str(row['scene_id']),
-  payload: mapActionPayload(row),
-  at: str(row['at']),
-});
+const mapAction = (row: Row): ClassroomActionRow => {
+  const payload = mapActionPayload(row);
+  const column = str(row['kind']);
+  if (column !== payload.kind) {
+    throw new StudyError('INTERNAL', { reason: 'classroom_action_kind_mismatch', column, payloadKind: payload.kind });
+  }
+  return {
+    stepKey: str(row['step_key']),
+    sessionId: str(row['session_id']),
+    projectId: str(row['project_id']),
+    kind: payload.kind,
+    sceneId: str(row['scene_id']),
+    payload,
+    at: str(row['at']),
+  };
+};
 
 export interface CreateExplanationInput {
   projectId: string;
@@ -144,6 +147,16 @@ export class TeachingRepository {
     const position = num(maxPosition?.['max_position']) + 1;
     const explanationId = newId<string>('exp');
     const now = new Date().toISOString();
+    const checked = explanationCardSchema.safeParse({
+      ...input, explanationId, position, status: 'draft',
+      statementIds: [...new Set(input.statementIds)], reviewNote: '', createdAt: now, updatedAt: now,
+    });
+    if (!checked.success) {
+      throw new StudyError('INTERNAL', {
+        reason: 'invalid_explanation_card',
+        issues: checked.error.issues.map((issue) => `${issue.path.join('.')} ${issue.message}`),
+      });
+    }
     this.db
       .prepare(
         `INSERT INTO lesson_explanations (explanation_id, project_id, lesson_id, lesson_version, scene_id, position, kind, origin, status, text, statement_ids_json, review_note, created_at, updated_at)
@@ -192,6 +205,19 @@ export class TeachingRepository {
     projectId: string,
     patch: { text?: string; statementIds?: string[] },
   ): ExplanationRow {
+    const current = this.getCard(explanationId, projectId);
+    if (!current || current.status !== 'draft') throw new StudyError('STEP_ALREADY_COMMITTED', { reason: 'card_not_draft' });
+    const checked = explanationCardSchema.safeParse({
+      ...current,
+      text: patch.text ?? current.text,
+      statementIds: patch.statementIds ?? current.statementIds,
+    });
+    if (!checked.success) {
+      throw new StudyError('INTERNAL', {
+        reason: 'invalid_explanation_card',
+        issues: checked.error.issues.map((issue) => `${issue.path.join('.')} ${issue.message}`),
+      });
+    }
     const sets: string[] = ['updated_at = ?'];
     const values: Array<string | number> = [new Date().toISOString()];
     if (patch.text !== undefined) {
@@ -226,6 +252,18 @@ export class TeachingRepository {
   createSession(input: CreateSessionInput): ClassroomSessionRow {
     const sessionId = newId<string>('cls');
     const now = new Date().toISOString();
+    const checked = classroomSessionSchema.safeParse({
+      ...input, sessionId, status: 'in_class', awaitingReason: '', roundIndex: 1,
+      roundCalls: 0, roundPeerTurns: 0, lessonCalls: 0, peersEnabled: false,
+      peersEngagement: 'balanced',
+      createdAt: now, updatedAt: now,
+    });
+    if (!checked.success) {
+      throw new StudyError('INTERNAL', {
+        reason: 'invalid_classroom_session',
+        issues: checked.error.issues.map((issue) => `${issue.path.join('.')} ${issue.message}`),
+      });
+    }
     this.db
       .prepare(
         `INSERT INTO classroom_sessions (session_id, project_id, run_id, lesson_id, lesson_version, bundle_id, stage_id, learner_key, status, awaiting_reason, current_scene_id, round_index, round_calls, round_peer_turns, lesson_calls, peers_enabled, created_at, updated_at)
@@ -249,11 +287,24 @@ export class TeachingRepository {
     return created;
   }
 
+  /**
+   * 参与度存在单独的设置表里，读会话时补上。
+   *
+   * 没有设置行 = 从未调整过 = `balanced`，这是正常情况而不是缺数据。
+   */
+  private withEngagement(row: ClassroomSessionRow): ClassroomSessionRow {
+    const setting = this.db
+      .prepare('SELECT engagement FROM classroom_session_peer_settings WHERE project_id = ? AND session_id = ?')
+      .get(row.projectId, row.sessionId) as Row | undefined;
+    if (!setting) return row;
+    return { ...row, peersEngagement: oneOf(PEER_ENGAGEMENT, str(setting['engagement']), 'invalid_peers_engagement') };
+  }
+
   getSession(sessionId: string, projectId: string): ClassroomSessionRow | null {
     const row = this.db
       .prepare('SELECT * FROM classroom_sessions WHERE session_id = ? AND project_id = ?')
       .get(sessionId, projectId) as Row | undefined;
-    return row ? mapSession(row) : null;
+    return row ? this.withEngagement(mapSession(row)) : null;
   }
 
   /** 本项目仍在进行或正在等待本人的会话；一个课堂同时只允许一个活动会话。 */
@@ -261,20 +312,20 @@ export class TeachingRepository {
     const row = this.db
       .prepare("SELECT * FROM classroom_sessions WHERE project_id = ? AND status IN ('in_class', 'awaiting_learner') ORDER BY created_at DESC, session_id LIMIT 1")
       .get(projectId) as Row | undefined;
-    return row ? mapSession(row) : null;
+    return row ? this.withEngagement(mapSession(row)) : null;
   }
 
   listSessions(projectId: string): ClassroomSessionRow[] {
     const rows = this.db
       .prepare('SELECT * FROM classroom_sessions WHERE project_id = ? ORDER BY created_at DESC, session_id')
       .all(projectId) as Row[];
-    return rows.map(mapSession);
+    return rows.map((row) => this.withEngagement(mapSession(row)));
   }
 
   updateSession(
     sessionId: string,
     projectId: string,
-    patch: Partial<Pick<ClassroomSessionRow, 'status' | 'awaitingReason' | 'currentSceneId' | 'roundIndex' | 'roundCalls' | 'roundPeerTurns' | 'lessonCalls' | 'peersEnabled'>>,
+    patch: Partial<Pick<ClassroomSessionRow, 'status' | 'awaitingReason' | 'currentSceneId' | 'roundIndex' | 'roundCalls' | 'roundPeerTurns' | 'lessonCalls' | 'peersEnabled' | 'peersEngagement'>>,
   ): ClassroomSessionRow {
     const sets: string[] = ['updated_at = ?'];
     const values: Array<string | number> = [new Date().toISOString()];
@@ -310,6 +361,19 @@ export class TeachingRepository {
     if (patch.peersEnabled !== undefined) {
       sets.push('peers_enabled = ?');
       values.push(patch.peersEnabled ? 1 : 0);
+    }
+    if (patch.peersEngagement !== undefined) {
+      if (!(PEER_ENGAGEMENT as readonly string[]).includes(patch.peersEngagement)) {
+        throw new StudyError('INTERNAL', { reason: 'invalid_peers_engagement' });
+      }
+      // 参与度写单独的表：upsert 而不是改 classroom_sessions 的列。
+      this.db
+        .prepare(
+          `INSERT INTO classroom_session_peer_settings (project_id, session_id, engagement, updated_at)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(project_id, session_id) DO UPDATE SET engagement = excluded.engagement, updated_at = excluded.updated_at`,
+        )
+        .run(projectId, sessionId, patch.peersEngagement, new Date().toISOString());
     }
     this.db
       .prepare(`UPDATE classroom_sessions SET ${sets.join(', ')} WHERE session_id = ? AND project_id = ?`)
@@ -370,13 +434,101 @@ export class TeachingRepository {
 
   /** 已播放卡片编号：从收据派生，不另存一份可能漂移的进度列。 */
   playedCardIds(sessionId: string, projectId: string): string[] {
-    return this.listActions(sessionId, projectId)
-      .filter((action) => action.payload.kind === 'card_played')
-      .map((action) => (action.payload.kind === 'card_played' ? action.payload.explanationId : ''))
-      .filter((id) => id.length > 0);
+    const rows = this.db
+      .prepare("SELECT * FROM classroom_action_receipts WHERE session_id = ? AND project_id = ? AND kind = 'card_played' ORDER BY at, step_key")
+      .all(sessionId, projectId) as Row[];
+    return rows.flatMap((row) => {
+      const action = mapAction(row);
+      return action.payload.kind === 'card_played' ? [action.payload.explanationId] : [];
+    });
   }
 
-  setPeersEnabled(sessionId: string, projectId: string, enabled: boolean): ClassroomSessionRow {
-    return this.updateSession(sessionId, projectId, { peersEnabled: enabled });
+  // —— AI 同学发言（PEER-01）——
+
+  /**
+   * 落一次同学发言。
+   *
+   * `partition` 与 `actorType` 由 SQL 的 CHECK 约束固定为 `simulation` / `peer_ai`，
+   * 写入方没有机会把同学发言记成别的分区——这是「同学不能替本人作答」的存储层保证。
+   * 同一会话同一轮同一序号只能有一条，重试会撞唯一索引而不是产生第二条发言。
+   */
+  createPeerTurn(input: {
+    projectId: string;
+    sessionId: string;
+    sceneId: string;
+    roundIndex: number;
+    roleProfileId: string;
+    peerName: string;
+    kind: 'question' | 'discussion' | 'example';
+    text: string;
+    statementIds: string[];
+    reviewedExampleId: string | null;
+    /** 调用方可以指定编号，让收据里记的 turnId 与实际发言行一致。 */
+    turnId?: string;
+  }): ClassroomPeerTurnDto {
+    const turnIndex = this.peerTurnCount(input.sessionId, input.projectId, input.roundIndex) + 1;
+    const turnId = input.turnId ?? newId<string>('peer');
+    const createdAt = new Date().toISOString();
+    const checked = classroomPeerTurnSchema.safeParse({
+      turnId,
+      projectId: input.projectId,
+      sessionId: input.sessionId,
+      sceneId: input.sceneId,
+      roundIndex: input.roundIndex,
+      roleProfileId: input.roleProfileId,
+      peerName: input.peerName,
+      turnIndex,
+      kind: input.kind,
+      text: input.text,
+      statementIds: input.statementIds,
+      reviewedExampleId: input.reviewedExampleId,
+      actorType: 'peer_ai',
+      partition: 'simulation',
+      createdAt,
+    });
+    if (!checked.success) {
+      throw new StudyError('INTERNAL', {
+        reason: 'invalid_peer_turn',
+        issues: checked.error.issues.map((issue) => `${issue.path.join('.')} ${issue.message}`),
+      });
+    }
+    this.db
+      .prepare(
+        `INSERT INTO classroom_peer_turns (turn_id, project_id, session_id, role_profile_id, round_index, turn_index, partition, actor_type, turn_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'simulation', 'peer_ai', ?, ?)`,
+      )
+      .run(turnId, input.projectId, input.sessionId, input.roleProfileId, input.roundIndex, turnIndex, encodeJson(checked.data), createdAt);
+    return checked.data;
+  }
+
+  /** 单轮的同学发言条数：与 `round_peer_turns` 计数列互相印证，不替代它。 */
+  peerTurnCount(sessionId: string, projectId: string, roundIndex: number): number {
+    const row = this.db
+      .prepare('SELECT COUNT(*) AS n FROM classroom_peer_turns WHERE project_id = ? AND session_id = ? AND round_index = ?')
+      .get(projectId, sessionId, roundIndex) as { n: number } | undefined;
+    return row ? Number(row.n) : 0;
+  }
+
+  listPeerTurns(sessionId: string, projectId: string, roundIndex?: number): ClassroomPeerTurnDto[] {
+    const rows = roundIndex === undefined
+      ? this.db
+        .prepare('SELECT * FROM classroom_peer_turns WHERE project_id = ? AND session_id = ? ORDER BY round_index, turn_index')
+        .all(projectId, sessionId) as Row[]
+      : this.db
+        .prepare('SELECT * FROM classroom_peer_turns WHERE project_id = ? AND session_id = ? AND round_index = ? ORDER BY turn_index')
+        .all(projectId, sessionId, roundIndex) as Row[];
+    return rows.map((row) => {
+      const decoded = readAuthoritativeJsonColumn(
+        row['turn_json'],
+        classroomPeerTurnSchema,
+        `classroom_peer_turns.turn_json[${str(row['turn_id'])}]`,
+        defaultJsonPolicy,
+      );
+      // 分区列与 JSON 必须一致：任何一侧被外部改写都要能被发现，而不是放行。
+      if (decoded.partition !== str(row['partition']) || decoded.actorType !== str(row['actor_type'])) {
+        throw new StudyError('INTERNAL', { reason: 'peer_turn_partition_mismatch', turnId: str(row['turn_id']) });
+      }
+      return decoded;
+    });
   }
 }

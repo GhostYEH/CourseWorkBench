@@ -23,12 +23,19 @@ export interface DecodeResult<T> {
 const describe = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-/** 解析并校验 JSON 文本；null/undefined/空串视为「未写入」，回退但不报错。 */
+/**
+ * 解析并校验 JSON 文本；null/undefined/空串视为「未写入」，回退但不报错。
+ *
+ * `normalize` 用于**版本升级补形状**：历史行缺少后来新增的字段是正常情况，
+ * 不是损坏。补完再交给 strict schema 校验，补不齐的仍然按失败处理——
+ * 这样「兼容旧版本」不会变成「放宽校验」。
+ */
 export const decodeJson = <T>(
   value: unknown,
-  schema: z.ZodType<T>,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
   fallback: T,
   context: string,
+  normalize?: (raw: unknown) => unknown,
 ): DecodeResult<T> => {
   const fail = (reason: string): DecodeResult<T> => ({
     value: fallback,
@@ -54,7 +61,8 @@ export const decodeJson = <T>(
     return fail(`JSON 解析失败：${describe(error)}`);
   }
 
-  const result = schema.safeParse(parsed);
+  const candidate = normalize ? normalize(parsed) : parsed;
+  const result = schema.safeParse(candidate);
   if (!result.success) {
     const detail = result.error.issues
       .map((issue) => `${issue.path.join('.') || '(root)'} ${issue.message}`)

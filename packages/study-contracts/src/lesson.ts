@@ -7,6 +7,7 @@
  */
 
 import { z } from 'zod';
+import { questionAssessmentSchema } from './assessment';
 import { RECORD_SCOPE, REVIEW_PROVENANCE } from './status';
 import { GENERATED_ID_PATTERN } from './ids';
 import { evidenceRefSchema, projectScopeSchema } from './api';
@@ -40,6 +41,7 @@ export type BundleStatementDto = z.infer<typeof bundleStatementSchema>;
 export const bundleQuestionSchema = z
   .object({
     questionId: z.string().min(1),
+    snapshot: z.object({ stem: z.string(), answer: z.string(), solution: z.string(), assessment: questionAssessmentSchema.nullable() }).strict().optional(),
     /** 题目与答案版本一起冻结，旧课不会跟着新题本悄悄改写。 */
     revision: z.number().int().positive(),
     origin: z.string().min(1),
@@ -133,6 +135,50 @@ export const lessonPublishSchema = z
   })
   .strict();
 export type LessonPublishInput = z.infer<typeof lessonPublishSchema>;
+
+/** 正式课件文档装配命令（LESSON-02）：只指定课程版本，文档内容由服务端从证据包生成。 */
+export const lessonDocumentAssembleSchema = z
+  .object({
+    scope: projectScopeSchema,
+    action: z.literal('attach-document'),
+    lessonId: z.string().min(1),
+    version: z.number().int().positive(),
+  })
+  .strict();
+export type LessonDocumentAssembleInput = z.infer<typeof lessonDocumentAssembleSchema>;
+
+export const formalLessonSceneSchema = z
+  .object({
+    sceneId: z.string().min(1),
+    sceneType: z.string().min(1),
+    title: z.string(),
+    knowledgeIds: z.array(z.string().min(1)).min(1),
+    questionId: z.string().nullable(),
+    /** 课堂侧栏要显示真实审核出处，不能由页面另编一句。 */
+    reviewedBy: z.string().min(1),
+    reviewNote: z.string(),
+  })
+  .strict();
+export type FormalLessonSceneDto = z.infer<typeof formalLessonSceneSchema>;
+
+export const formalLessonDocumentSchema = z
+  .object({
+    lessonId: z.string().min(1),
+    lessonVersion: z.number().int().positive(),
+    stageId: z.string().min(1),
+    digest: z.string().min(1),
+    dslVersion: z.string().min(1),
+    sceneCount: z.number().int().nonnegative(),
+    scenes: z.array(formalLessonSceneSchema),
+    /** 未进入课件的陈述/题目与原因：缺口必须显示，不能静默省略。 */
+    skipped: z.array(z.object({ kind: z.enum(['statement', 'question']), id: z.string(), reason: z.string() }).strict()),
+    reused: z.boolean(),
+    /** 课件是否已挂到该版本的课堂映射上；未挂接时课堂会给出明确指引而不是空白页。 */
+    attached: z.boolean(),
+  })
+  .strict();
+export type FormalLessonDocumentDto = z.infer<typeof formalLessonDocumentSchema>;
+
 
 export const lessonReviewSchema = z
   .object({

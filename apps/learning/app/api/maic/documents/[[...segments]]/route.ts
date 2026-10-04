@@ -23,8 +23,10 @@ import { DSL_VERSION, validateScene, validateStage } from '@openmaic/dsl';
 import { StudyError } from '@sew/study-contracts';
 import { classroomDocumentDigest, dslVersionState } from '@sew/study-domain';
 import { decodeJson } from '@sew/study-storage';
-import { fail } from '../../../../../lib/server/http';
-import { assertScope, requireSession, type Session } from '../../../../../lib/server/service';
+import { mapHttpError, sanitizePublicValue } from '../../../../../lib/server/http';
+import { scopedRequest } from '../../../../../lib/server/scoped-request';
+import { readBoundedBody } from '../../../../../lib/server/bounded-body';
+import { assertScope, type Session } from '../../../../../lib/server/service';
 import {
   REVIEWED_DOCUMENT_DIGEST,
   assertReviewedDocumentWrite,
@@ -37,19 +39,6 @@ export const dynamic = 'force-dynamic';
 
 /** 与上游参考服务同量级的请求体上限（32 MiB），先按 Content-Length 拦截。 */
 const MAX_DOCUMENT_BODY_BYTES = 32 * 1024 * 1024;
-const PROJECT_HEADER = 'x-sew-project-id';
-const GENERATION_HEADER = 'x-sew-generation';
-const absolutePathPattern = /[A-Za-z]:[\\/]|\\\\[^\\]+\\|(?:^|[\s"'(=:])\/(?!\/)[^\s]/;
-
-const sanitizePublicValue = (value: unknown): unknown => {
-  if (typeof value === 'string') return absolutePathPattern.test(value) ? '[本地路径已隐藏]' : value;
-  if (Array.isArray(value)) return value.map(sanitizePublicValue);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizePublicValue(item)]));
-  }
-  return value;
-};
-
 interface Context {
   params: Promise<{ segments?: string[] }>;
 }
@@ -93,48 +82,11 @@ const refuseFutureVersion = (document: unknown): NextResponse | null => {
 };
 
 const parseJsonBody = async (request: Request): Promise<unknown> => {
-  const declared = Number(request.headers.get('content-length') ?? '0');
-  if (Number.isFinite(declared) && declared > MAX_DOCUMENT_BODY_BYTES) {
-    throw new StudyError('INVALID_ARGUMENT', { reason: 'payload_too_large', limit: MAX_DOCUMENT_BODY_BYTES });
-  }
-  const body = request.body;
-  if (!body) throw new StudyError('INVALID_ARGUMENT', { reason: 'empty_body' });
-
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  const textParts: string[] = [];
-  let bytesRead = 0;
-  try {
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) {
-        textParts.push(decoder.decode());
-        break;
-      }
-      bytesRead += chunk.value.byteLength;
-      if (bytesRead > MAX_DOCUMENT_BODY_BYTES) {
-        try {
-          await reader.cancel();
-        } catch {
-          // The size limit remains authoritative if the producer rejects cancellation.
-        }
-        throw new StudyError('INVALID_ARGUMENT', { reason: 'payload_too_large', limit: MAX_DOCUMENT_BODY_BYTES });
-      }
-      // Streaming decode retains partial UTF-8 sequences between chunks.
-      textParts.push(decoder.decode(chunk.value, { stream: true }));
-    }
-  } catch (error) {
-    if (error instanceof StudyError) throw error;
-    try {
-      await reader.cancel();
-    } catch {
-      // Preserve the original stream read failure.
-    }
-    throw new StudyError('INVALID_ARGUMENT', { reason: 'unreadable_body' });
-  } finally {
-    reader.releaseLock();
-  }
-  const text = textParts.join('');
+  const bytes = await readBoundedBody(request, MAX_DOCUMENT_BODY_BYTES, reason =>
+    new StudyError('INVALID_ARGUMENT', reason === 'too_large'
+      ? { reason: 'payload_too_large', limit: MAX_DOCUMENT_BODY_BYTES }
+      : { reason: reason === 'missing' ? 'empty_body' : 'unreadable_body' }));
+  const text = new TextDecoder().decode(bytes);
   // JSON 解析集中在 json-codec：这里只接受任意合法 JSON，形状稍后由 DSL 校验器裁定。
   const decoded = decodeJson<unknown>(text, z.unknown(), null, 'maic-document-body');
   if (!decoded.ok) {
@@ -153,27 +105,10 @@ const scenesOf = (document: unknown): unknown[] =>
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
-const requestScope = (request: Request): { projectId: string; generation: number } | NextResponse => {
-  const projectId = request.headers.get(PROJECT_HEADER);
-  const rawGeneration = request.headers.get(GENERATION_HEADER);
-  const generation = rawGeneration === null ? Number.NaN : Number(rawGeneration);
-  if (!projectId || !Number.isSafeInteger(generation) || generation < 1) {
-    return validationFailed('缺少有效的课堂项目范围', { requiredHeaders: [PROJECT_HEADER, GENERATION_HEADER] });
-  }
-  return { projectId, generation };
-};
-
-const scopedSession = (
-  request: Request,
-): { scope: { projectId: string; generation: number }; session: Session } | NextResponse => {
-  const scope = requestScope(request);
-  if (scope instanceof NextResponse) {
-    // Keep the unauthenticated service response consistent even when scope headers are absent.
-    requireSession();
-    return scope;
-  }
-  return { scope, session: assertScope(scope) };
-};
+const scopedSession = (request: Request): {
+  scope: { projectId: string; generation: number }; session: Session;
+} => scopedRequest(request, requiredHeaders => new StudyError('INVALID_ARGUMENT',
+  { requiredHeaders }, '缺少有效的课堂项目范围'));
 
 const docRoute = <Args extends unknown[]>(handler: (...args: Args) => Promise<NextResponse> | NextResponse) =>
   async (...args: Args): Promise<NextResponse> => {
@@ -182,11 +117,9 @@ const docRoute = <Args extends unknown[]>(handler: (...args: Args) => Promise<Ne
     } catch (error) {
       // Reuse the public HTTP boundary's sanitization and cross-package error mapping,
       // then restore the upstream DocumentStore's raw { error } contract.
-      const mapped = fail(error);
-      const payload = await mapped.json() as {
-        error?: { code?: string; message?: string; details?: Record<string, unknown> };
-      };
-      let code = payload.error?.code ?? 'INTERNAL';
+      const mapped = mapHttpError(error);
+      const payload = mapped;
+      let code: string = payload.error.code;
       let status = mapped.status;
       // The shared application boundary calls these INVALID_ARGUMENT; the upstream
       // DocumentStore contract uses VALIDATION_FAILED / PAYLOAD_TOO_LARGE.

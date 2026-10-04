@@ -1,6 +1,7 @@
 import { Notice } from '../../components/ui';
 import type { ReactNode } from 'react';
 import { ProjectActions } from '../../components/project-actions';
+import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,7 @@ export default function NoProjectPage(): ReactNode {
       <div className="card">
         <h2>选择一个项目</h2>
         <ProjectActions mode="choose" />
+        <p><Link href="/profile">查看个人档案与 UID</Link></p>
       </div>
       <Notice tone="pending">
         当前请求不属于任何已授权的打开项目，因此不会读写任何数据库。

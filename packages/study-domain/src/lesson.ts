@@ -30,6 +30,7 @@ export interface BundleQuestionRecord {
   revision: number;
   origin: QuestionOrigin;
   knowledgeIds: string[];
+  snapshot?: BundleQuestionDto['snapshot'];
 }
 
 export interface EvidenceBundleInput {
@@ -139,6 +140,7 @@ export const buildEvidenceBundle = (input: EvidenceBundleInput): { bundle: Evide
       revision: question.revision,
       origin: question.origin,
       knowledgeIds: [...question.knowledgeIds],
+      ...(question.snapshot === undefined ? {} : { snapshot: question.snapshot }),
     });
   }
 

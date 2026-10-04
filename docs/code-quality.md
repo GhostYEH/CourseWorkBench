@@ -25,7 +25,7 @@
   1. preload 生成物与 IPC 合同同步、沙箱可加载性；
   2. 全部 Electron CJS 与 `server.mjs` 的 Node 语法；
   3. **分层依赖方向**（可执行）：`study-contracts` 不得反向依赖领域/存储或框架；`study-domain` 不得依赖框架、存储或文件系统 IO；`study-storage` 不得依赖 Electron/React/Next 或应用层；Electron 主进程不得依赖领域/存储包；
-  4. **JSON 解析集中化**：`JSON.parse` 只允许出现在经校验或受控的少数文件（json-codec、项目 manifest、桌面状态/握手、全局偏好），其它位置必须改用 `json-codec` 或先经 schema 校验；
+  4. **JSON 解析集中化**：`JSON.parse` 只允许出现在经校验或受控的少数文件（json-codec、项目 manifest、桌面状态/握手、全局偏好），其它位置必须改用 `json-codec` 或先经 schema 校验；多选提交的领域入口 `study-domain/src/assessment.ts` 与客户端恢复入口 `learning/lib/quiz-answer.ts` 分别在解析后校验数组、重复值和允许选项，损坏内容拒绝进入判分/恢复路径；
   5. **IPC 通道声明同步**：合同里声明的通道必须都被 preload 白名单使用。
   6. 客户端只消费 DTO 合同，不导入存储/领域包或服务端模块；包根导出显式维护。
   7. 构建输入摘要与 BUILD_ID 绑定；服务清单与 Electron asar 源码按内容校验，拒绝陈旧或不一致产物。

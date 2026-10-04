@@ -16,6 +16,7 @@ import type { QuestionRow } from '@sew/study-storage';
  */
 
 const questionRow = (): QuestionRow => ({
+  assessment: null,
   questionId: 'q1',
   stem: '判断 f(x)=x^2 在 (0,+∞) 上的单调性',
   answer: '增函数',
@@ -45,7 +46,7 @@ describe('题目 DTO 边界', () => {
     expect(dto).not.toHaveProperty('solution');
     expect(dto).not.toHaveProperty('originRecord');
     expect(Object.keys(dto).sort()).toEqual(
-      ['knowledgeIds', 'origin', 'originDetail', 'originLabel', 'questionId', 'recordScope', 'revision', 'stem'].sort(),
+      ['assessment', 'knowledgeIds', 'origin', 'originDetail', 'originLabel', 'questionId', 'recordScope', 'revision', 'stem'].sort(),
     );
   });
 

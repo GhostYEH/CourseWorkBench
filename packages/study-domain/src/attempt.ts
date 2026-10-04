@@ -47,7 +47,7 @@ export const judgeAnswer = (expected: string, actual: string): AnswerVerdict => 
  * 计算作答落库决策。调用方必须先检查幂等键是否已有收据；
  * 命中收据时直接返回既有结果，不重复写入。
  */
-export const decideAttempt = (request: AttemptRequest, expectedAnswer: string): AttemptDecision => {
+export const decideAttempt = (request: AttemptRequest, expectedAnswer: string, authoritativeVerdict?: AnswerVerdict): AttemptDecision => {
   const isHuman = request.actorType === 'human_learner';
   const forcedSimulation = !isHuman && request.kind === 'real';
   const kind: AttemptKind = isHuman ? request.kind : 'simulation';
@@ -62,7 +62,7 @@ export const decideAttempt = (request: AttemptRequest, expectedAnswer: string): 
     };
   }
 
-  const verdict = judgeAnswer(expectedAnswer, request.answerText);
+  const verdict = authoritativeVerdict ?? judgeAnswer(expectedAnswer, request.answerText);
   const masteryAfter: MasteryStatus | null =
     verdict === 'correct' ? 'passed' : verdict === 'incorrect' ? 'to_reinforce' : null;
 

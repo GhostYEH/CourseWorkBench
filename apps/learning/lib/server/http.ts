@@ -24,6 +24,10 @@ const HTTP_STATUS: Partial<Record<StudyErrorCode, number>> = {
   QUESTION_ORIGIN_FORBIDDEN: 422,
   CLASSROOM_LESSON_NOT_REVIEWED: 403,
   CLASSROOM_SCENE_SOURCE_MISSING: 409,
+  // 来源失效/未准入是「当前状态不允许该操作」：重发同样的请求不会成功，用 409 而不是 400。
+  // 缺了这两项时它们会落到默认的 400，把「来源变了」误报成「入参写错了」。
+  KNOWLEDGE_INVALIDATED: 409,
+  KNOWLEDGE_NOT_VERIFIED: 409,
   // 等待本人、额度用满与未配置模型都是「当前状态不允许该操作」，不是客户端可重发的入参错误。
   CLASSROOM_AWAITING_LEARNER: 409,
   BUDGET_EXCEEDED: 409,
@@ -71,7 +75,10 @@ const redactPathStrings = (value: unknown): { value: unknown; changed: boolean }
   return { value, changed: false };
 };
 
-export const fail = (error: unknown): NextResponse => {
+export const sanitizePublicValue = (value: unknown): unknown => redactPathStrings(value).value;
+
+/** Map once to plain data so raw upstream routes can keep their own response contract. */
+export const mapHttpError = (error: unknown): { status: number; error: StudyErrorPayload } => {
   const payload = toErrorPayload(error);
   const safeMessage = redactPathStrings(payload.message);
   const safeDetails = payload.details === undefined ? undefined : redactPathStrings(payload.details);
@@ -86,7 +93,12 @@ export const fail = (error: unknown): NextResponse => {
     ...(safeDetails ? { details: safeDetails.value as Record<string, unknown> } : {}),
   };
   const status = HTTP_STATUS[payload.code] ?? 400;
-  return NextResponse.json({ ok: false, error: safePayload }, { status });
+  return { status, error: safePayload };
+};
+
+export const fail = (error: unknown): NextResponse => {
+  const mapped = mapHttpError(error);
+  return NextResponse.json({ ok: false, error: mapped.error }, { status: mapped.status });
 };
 
 export const route = <Args extends unknown[]>(

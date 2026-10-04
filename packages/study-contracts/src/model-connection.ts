@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { MODEL_CALL_PURPOSE } from './status';
 import { projectScopeSchema } from './api';
 
 /** User-entered secret is write-only; status and test results never include it. */
@@ -44,7 +43,8 @@ export type ModelChatMessage = z.infer<typeof modelChatMessageSchema>;
 /** 生成请求只给出用途与已冻结的证据包编号；陈述文本由服务端从证据包读取。 */
 export const modelGenerationInputSchema = z.object({
   scope: projectScopeSchema,
-  purpose: z.enum(MODEL_CALL_PURPOSE),
+  requestId: z.string().trim().min(1).max(200).optional(),
+  purpose: z.enum(['lesson_draft', 'teaching_prompt']),
   bundleId: z.string().min(1),
   /** teaching_prompt 必须给出课程；lesson_draft 尚未有课程身份。 */
   lessonId: z.string().min(1).nullable(),
@@ -69,6 +69,11 @@ export const modelGenerationResultSchema = z.object({
   totalTokens: z.number().int().nonnegative(),
   requestedModel: z.string().max(200).optional(),
   elapsedMs: z.number().nonnegative(),
+  requestId: z.string().optional(),
+  callState: z.enum(['started', 'failed', 'completed']).optional(),
+  returnedModel: z.string().max(200).optional(),
+  providerTokens: z.number().int().nonnegative().nullable().optional(),
+  estimatedCost: z.number().nonnegative().nullable().optional(),
   usage: modelGenerationUsageSchema,
   /** 剩余额度按同一份台账计算并显示，避免界面按「大概还能用几次」猜测。 */
   remainingCalls: z.number().int().nonnegative(),

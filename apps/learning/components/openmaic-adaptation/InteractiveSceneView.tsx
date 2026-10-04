@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { InteractiveContent } from '@openmaic/dsl';
 import { interactionDirectionSchema, interactionStateSchema, type InteractionStateDto } from '@sew/study-contracts';
 import { apiFetch, describeApiError } from '../../lib/client';
+import { FormalInteractiveSceneView } from './FormalInteractiveSceneView';
 
 type Scope = { projectId: string; generation: number };
 type Direction = 'increasing' | 'decreasing' | 'constant';
@@ -11,13 +12,19 @@ const directionLabel = { increasing: '递增', decreasing: '递减', constant: '
 
 /** Error capture precedes widget scripts; the sandbox remains a diagnostic source only. */
 export const interactiveSrcDoc = (html: string, instanceId: string): string => {
+  html = html.replace(/type:\s*'widget-observation',/g, `type: 'widget-observation', instanceId: ${JSON.stringify(instanceId)},`);
   const shim = `<script>(function(){var q=[];function report(kind,message){var m={__maicInteractive:true,kind:'runtime-error',errorKind:kind,message:String(message).slice(0,1200),instanceId:${JSON.stringify(instanceId)}};q.push(m);if(q.length>50)q.shift();parent.postMessage(m,'*')}window.addEventListener('error',function(e){report('error',e.message||'resource load error')},true);window.addEventListener('unhandledrejection',function(e){report('unhandledrejection',e.reason||'unhandled rejection')});window.addEventListener('message',function(e){if(e.source===parent&&e.data&&e.data.__maicErrorReplayRequest===true&&e.data.instanceId===${JSON.stringify(instanceId)})q.forEach(function(m){parent.postMessage(m,'*')})});})();</script>`;
   return /<head(?:\s[^>]*)?>/i.test(html)
     ? html.replace(/<head(?:\s[^>]*)?>/i, (head) => `${head}${shim}`)
     : `${shim}${html}`;
 };
 
-export function InteractiveSceneView({ sceneId, stageId, content, scope }: { sceneId: string; stageId: string; content: InteractiveContent; scope: Scope }) {
+export function InteractiveSceneView(props: { sceneId: string; stageId: string; content: InteractiveContent; scope: Scope }) {
+  if (props.sceneId.startsWith('scene_formal_interaction_')) return <FormalInteractiveSceneView stageId={props.stageId} sceneId={props.sceneId} scope={props.scope} />;
+  return <DemoInteractiveSceneView {...props} />;
+}
+
+function DemoInteractiveSceneView({ sceneId, stageId, content, scope }: { sceneId: string; stageId: string; content: InteractiveContent; scope: Scope }) {
   const html = content.html ?? '';
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const epochRef = useRef(0);
@@ -33,7 +40,10 @@ export function InteractiveSceneView({ sceneId, stageId, content, scope }: { sce
   const [saved, setSaved] = useState<InteractionStateDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const instanceId = useId();
-  const srcDoc = useMemo(() => interactiveSrcDoc(html, instanceId), [html, instanceId]);
+  const [frameNonce, setFrameNonce] = useState('');
+  useEffect(() => { setFrameNonce(crypto.randomUUID()); }, [html, stageId, sceneId]);
+  const frameInstanceId = `${instanceId}-${frameNonce}`;
+  const srcDoc = useMemo(() => interactiveSrcDoc(html, frameInstanceId), [html, frameInstanceId]);
   const headers = useMemo(() => ({ 'x-sew-project-id': scope.projectId, 'x-sew-generation': String(scope.generation) }), [scope.projectId, scope.generation]);
   const restore = useCallback(async (epoch: number): Promise<void> => {
     setError(null);
@@ -59,20 +69,21 @@ export function InteractiveSceneView({ sceneId, stageId, content, scope }: { sce
   useEffect(() => {
     setObservation(null); setRuntimeError(null); setFrameReady(false);
     const receive = (event: MessageEvent): void => {
-      if (event.source !== frameRef.current?.contentWindow || !event.data || typeof event.data !== 'object') return;
+      if (!frameNonce || event.origin !== 'null' || event.source !== frameRef.current?.contentWindow || !event.data || typeof event.data !== 'object') return;
       const data = event.data as Record<string, unknown>;
       if (data['__maicInteractive'] === true && data['kind'] === 'runtime-error') {
-        if (data['instanceId'] !== instanceId || typeof data['message'] !== 'string') return;
+        if (data['instanceId'] !== frameInstanceId || typeof data['message'] !== 'string') return;
         setRuntimeError(`互动组件运行错误（仅供诊断）：${data['message'].slice(0, 1200)}`);
       } else if (data['type'] === 'widget-observation') {
+        if (data['instanceId'] !== frameInstanceId) return;
         if (typeof data['a'] !== 'number' || !Number.isFinite(data['a']) || typeof data['direction'] !== 'string' || typeof data['nativeBridge'] !== 'string' || typeof data['nodeRequire'] !== 'string') return;
         setObservation(`组件自报 a=${data['a']}，方向=${data['direction'].slice(0, 60)}，nativeBridge=${data['nativeBridge'].slice(0, 30)}，nodeRequire=${data['nodeRequire'].slice(0, 30)}（低信任观察，不作为判分依据）`);
       }
     };
     window.addEventListener('message', receive);
-    frameRef.current?.contentWindow?.postMessage({ __maicErrorReplayRequest: true, instanceId }, '*');
+    frameRef.current?.contentWindow?.postMessage({ __maicErrorReplayRequest: true, instanceId: frameInstanceId }, '*');
     return () => window.removeEventListener('message', receive);
-  }, [instanceId, html]);
+  }, [frameInstanceId, frameNonce, html]);
   const submit = async (): Promise<void> => {
     if (!ready || busyRef.current) return;
     busyRef.current = true; setBusy(true); setError(null);
@@ -93,8 +104,8 @@ export function InteractiveSceneView({ sceneId, stageId, content, scope }: { sce
       <p className="secondary">调整参数并观察 f(x)=ax。下方由本人填写并明确提交，保存后可在重启时读回；不计入测验成绩或掌握状态。</p>
       <p className="muted">上方互动组件的即时参数会在离开场景或重启后重置；下方已提交的本人参数、预测和解释保留。</p>
       <p className="muted" role="status" data-interactive-ready>{frameReady ? '互动内容已加载' : '正在加载互动内容…'}</p>
-      <iframe key={html} ref={frameRef} title="参数实验互动" srcDoc={srcDoc} sandbox="allow-scripts" referrerPolicy="no-referrer"
-        onLoad={() => { setFrameReady(true); frameRef.current?.contentWindow?.postMessage({ __maicErrorReplayRequest: true, instanceId }, '*'); }}
+      <iframe key={`${html}-${frameNonce}`} ref={frameRef} title="参数实验互动" srcDoc={srcDoc} sandbox="allow-scripts" referrerPolicy="no-referrer"
+        onLoad={() => { setFrameReady(true); frameRef.current?.contentWindow?.postMessage({ __maicErrorReplayRequest: true, instanceId: frameInstanceId }, '*'); }}
         style={{ width: '100%', height: '320px', border: '1px solid var(--sew-border-divider)', background: 'var(--sew-surface-document)' }} />
       {observation ? <p className="muted" role="status" data-widget-observation>{observation}</p> : null}
       {runtimeError ? <p className="error-text" role="alert" data-interactive-runtime-error>{runtimeError}</p> : null}

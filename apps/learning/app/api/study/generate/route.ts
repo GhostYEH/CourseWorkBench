@@ -3,6 +3,7 @@ import { parseBody, route, ok } from '../../../../lib/server/http';
 import { assertScope } from '../../../../lib/server/service';
 import { modelConnection } from '../../../../lib/server/model-connection';
 import { generateGuarded } from '../../../../lib/server/model-call';
+import { assertRecoveryExecution } from '../../../../lib/server/classroom-recovery-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +17,11 @@ export const POST = route(async (request: Request) => {
   const body = await parseBody(request, modelGenerationInputSchema);
   const session = assertScope(body.scope);
   const result = await generateGuarded(
-    { store: session.store, projectId: session.projectId, connection: modelConnection },
+    {
+      store: session.store, projectId: session.projectId, learnerUid: session.learnerUid, connection: modelConnection,
+      revalidateScope: () => { assertScope(body.scope); },
+      verifyClassroom: sessionId => { assertRecoveryExecution(session, sessionId); },
+    },
     body,
     request.signal,
   );

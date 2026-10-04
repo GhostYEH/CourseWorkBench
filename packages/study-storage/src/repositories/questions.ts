@@ -5,7 +5,7 @@
  * 本层不做身份判断，只负责写入与读回。
  */
 
-import { StudyError, type QuestionOrigin, type RecordScope } from '@sew/study-contracts';
+import { StudyError, type QuestionOrigin, type QuestionAssessmentDto, type RecordScope } from '@sew/study-contracts';
 import type { OriginRecord } from '@sew/study-domain';
 import type { SqlDatabase } from '../driver';
 import { encodeJson } from '../json-codec';
@@ -13,6 +13,7 @@ import { defaultJsonPolicy, mapQuestion, type QuestionRow, type Row } from './ty
 
 export interface InsertQuestionInput {
   questionId: string;
+  assessment?: QuestionAssessmentDto | null;
   stem: string;
   answer: string;
   solution: string;
@@ -33,8 +34,8 @@ export class QuestionsRepository {
   insertQuestion(input: InsertQuestionInput): QuestionRow {
     this.db
       .prepare(
-        `INSERT INTO questions (question_id, stem, answer, solution, knowledge_ids_json, origin, origin_label, origin_detail, origin_record_json, requested_origin, forged_exam_claim, revision, created_at, record_scope)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        `INSERT INTO questions (question_id, stem, answer, solution, knowledge_ids_json, origin, origin_label, origin_detail, origin_record_json, requested_origin, forged_exam_claim, revision, created_at, record_scope, assessment_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
       )
       .run(
         input.questionId,
@@ -50,6 +51,7 @@ export class QuestionsRepository {
         input.forgedExamClaim ? 1 : 0,
         new Date().toISOString(),
         input.recordScope,
+        input.assessment ? encodeJson(input.assessment) : null,
       );
     const question = this.getQuestion(input.questionId);
     if (!question) throw new StudyError('INTERNAL', { questionId: input.questionId });

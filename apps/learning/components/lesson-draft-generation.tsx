@@ -9,14 +9,15 @@ import { apiResponses } from '@sew/study-contracts';
  * 返回的正文按「草案」展示，不写入知识清单或课程版本，因此不会因为没有人工审核就进入教学。
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import type { EvidenceBundleViewDto, LessonVersionDto, ModelCallPurpose } from '@sew/study-contracts';
+import type { EvidenceBundleViewDto, LessonVersionDto, ModelGenerationInput } from '@sew/study-contracts';
 import { Empty, Notice } from './ui';
 import { apiFetch, describeApiError } from '../lib/client';
 
-const PURPOSE_LABEL: Record<ModelCallPurpose, string> = {
+type LessonGenerationPurpose = ModelGenerationInput['purpose'];
+const PURPOSE_LABEL: Record<LessonGenerationPurpose, string> = {
   lesson_draft: '课程草案（本节要讲什么）',
   teaching_prompt: '课堂讲解/提示（须已发布并审核）',
 };
@@ -36,18 +37,27 @@ export const LessonDraftGeneration = ({
 }): ReactNode => {
   const router = useRouter();
   const [bundleId, setBundleId] = useState(bundles[0]?.bundleId ?? '');
-  const [purpose, setPurpose] = useState<ModelCallPurpose>('lesson_draft');
+  const [purpose, setPurpose] = useState<LessonGenerationPurpose>('lesson_draft');
   const [lessonId, setLessonId] = useState(publishedLessons[0]?.lessonId ?? '');
   const [instruction, setInstruction] = useState('');
   const [draft, setDraft] = useState<string | null>(null);
   const [usage, setUsage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const inflight = useRef<AbortController | null>(null);
+  const pendingRequest = useRef<{ key: string; id: string } | null>(null);
+
+  /** 停止：断开本次 HTTP 请求，服务端据此中止正在执行的 provider 调用。 */
+  const stop = (): void => {
+    inflight.current?.abort('教师已停止本次生成');
+    setError('已请求停止本次生成；已发出的调用仍计入预算，迟到的正文不会进入草案。');
+  };
 
   const activeBundle = bundles.find((bundle) => bundle.bundleId === bundleId) ?? null;
   const teaching = purpose === 'teaching_prompt';
 
   const run = async (): Promise<void> => {
+    if (inflight.current) return;
     if (teaching && !lessonId) {
       setError('课堂讲解/提示必须选择一节已发布的课程；没有已发布课程时请先完成审核与发布。');
       return;
@@ -59,11 +69,21 @@ export const LessonDraftGeneration = ({
     setBusy(true);
     setError(null);
     setDraft(null);
+    const controller = new AbortController();
+    inflight.current = controller;
     try {
+      const nonceKey = `sew-generation:${projectId}:${purpose}:${bundleId}:${lessonId}:${encodeURIComponent(instruction.trim())}`;
+      let persistedId: string | null = null;
+      try { persistedId = localStorage.getItem(nonceKey); } catch { /* Keep page-local retry identity. */ }
+      const requestId = persistedId ?? (pendingRequest.current?.key === nonceKey ? pendingRequest.current.id : crypto.randomUUID());
+      pendingRequest.current = { key: nonceKey, id: requestId };
+      try { localStorage.setItem(nonceKey, requestId); } catch { /* Cross-page persistence is unavailable. */ }
       const result = await apiFetch('/api/study/generate', apiResponses.modelGenerate, {
         method: 'POST',
+        signal: controller.signal,
         body: JSON.stringify({
           scope: { projectId, generation },
+          requestId,
           purpose,
           // 课堂讲解按已发布版本自带的证据包取来源，避免课程与证据包被拆开提交。
           bundleId: teaching ? (publishedLessons.find((lesson) => lesson.lessonId === lessonId)?.bundleId ?? '') : activeBundle!.bundleId,
@@ -71,9 +91,14 @@ export const LessonDraftGeneration = ({
           instruction,
         }),
       });
+      if (result.callState !== 'started') {
+        pendingRequest.current = null;
+        try { localStorage.removeItem(nonceKey); } catch { /* Page-local receipt already cleared. */ }
+      }
       setUsage(
         `本 run 已用 ${result.usage.callsUsed}/${result.usage.maxCalls} 次调用、`
-        + `${result.usage.tokensUsed}/${result.usage.maxTokens} token；剩余 ${result.remainingCalls} 次。`,
+        + `${result.usage.tokensUsed}/${result.usage.maxTokens} token（含未确认预留）；剩余 ${result.remainingCalls} 次。`
+        + ` 服务商本次用量：${result.providerTokens === null || result.providerTokens === undefined ? '未知' : result.providerTokens}；费用未知。`,
       );
       if (!result.ok) {
         setError(`${result.message}（${result.elapsedMs} ms）`);
@@ -85,6 +110,7 @@ export const LessonDraftGeneration = ({
     } catch (caught) {
       setError(describeApiError(caught));
     } finally {
+      inflight.current = null;
       setBusy(false);
     }
   };
@@ -105,10 +131,10 @@ export const LessonDraftGeneration = ({
             <select
               id="generate-purpose"
               value={purpose}
-              onChange={(event) => setPurpose(event.target.value as ModelCallPurpose)}
+              onChange={(event) => setPurpose(event.target.value as LessonGenerationPurpose)}
               disabled={busy}
             >
-              {(Object.keys(PURPOSE_LABEL) as ModelCallPurpose[]).map((value) => (
+              {(Object.keys(PURPOSE_LABEL) as LessonGenerationPurpose[]).map((value) => (
                 <option key={value} value={value}>{PURPOSE_LABEL[value]}</option>
               ))}
             </select>
@@ -169,6 +195,15 @@ export const LessonDraftGeneration = ({
             disabled={busy || !configured || (!teaching && activeBundle === null)}
           >
             {teaching ? '生成课堂讲解提示' : '生成课程草案'}
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={stop}
+            disabled={!busy}
+            title="断开本次请求；服务端会中止正在执行的模型调用"
+          >
+            停止本次生成
           </button>
           {!configured ? (
             <Notice tone="pending" style={{ marginTop: 'var(--sew-space-3)' }}>

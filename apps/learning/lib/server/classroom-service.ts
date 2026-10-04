@@ -11,9 +11,14 @@
 import { DSL_VERSION, validateScene, validateStage } from '@openmaic/dsl';
 import { StudyError, type ClassroomSceneBinding } from '@sew/study-contracts';
 import { assertSceneSourceBindings, classroomDocumentDigest, dslVersionState, normalizeMaterial, stripQuizAnswers, type SceneSourceBinding } from '@sew/study-domain';
-import type { ClassroomDocumentRow, QuestionRow } from '@sew/study-storage';
+import type { ClassroomDocumentRow, LessonVersionRow, QuestionRow } from '@sew/study-storage';
 import type { Session } from './service';
 import { ensureReviewedDemoAssets } from './classroom-demo-assets';
+import { readFormalInteractionDefinitions } from './formal-interaction-definition-store';
+import {
+  buildFormalLessonDocument,
+  formalStageId,
+} from '../classroom/formal-lesson-document';
 import {
   FIXED_KNOWLEDGE,
   FIXED_LESSON_ID,
@@ -299,7 +304,7 @@ export interface RenderableDocument {
  * 读取用于渲染的文档：先去掉测验判分依据，再按真实 DSL 校验器复验一次，
  * 保证交给渲染端的仍是一份合法文档。
  */
-export const loadRenderableDocument = (
+export const loadDemoRenderableDocument = (
   session: Session,
   stageId: string,
 ): RenderableDocument | null => {
@@ -398,3 +403,284 @@ export const assertReviewedDocumentWrite = (document: unknown): string => {
 };
 
 export const reviewedLesson = REVIEWED_FIXED_LESSON;
+
+// ————————————————————— 正式课件文档（LESSON-02 生成与挂接）—————————————————————
+
+export interface FormalLessonDocumentInfo {
+  stageId: string;
+  lessonId: string;
+  lessonVersion: number;
+  digest: string;
+  dslVersion: string;
+  scenes: Array<{
+    sceneId: string;
+    sceneType: ReturnType<typeof sceneTypeOf>;
+    title: string;
+    knowledgeIds: string[];
+    questionId: string | null;
+    reviewedBy: string;
+    reviewNote: string;
+  }>;
+}
+
+export interface FormalLessonDocumentSummary extends FormalLessonDocumentInfo {
+  sceneCount: number;
+  skipped: Array<{ kind: 'statement' | 'question'; id: string; reason: string }>;
+  reused: boolean;
+  attached: boolean;
+}
+
+export interface RenderableFormalDocument extends RenderableDocument, FormalLessonDocumentInfo {}
+
+const documentSceneList = (document: unknown): Array<{ id: string; type: ReturnType<typeof sceneTypeOf>; title: string }> => {
+  const scenes = (document as { scenes?: unknown }).scenes;
+  if (!Array.isArray(scenes)) return [];
+  return scenes.map((scene) => {
+    const record = (scene ?? {}) as Record<string, unknown>;
+    return {
+      id: String(record['id'] ?? ''),
+      type: sceneTypeOf(record),
+      title: String(record['title'] ?? ''),
+    };
+  });
+};
+
+/**
+ * 已落库正式课件的完整性复核：文档身份、指纹、来源绑定、知识点范围与准入一起判。
+ *
+ * 场景知识点必须全部落在该版本证据包内，否则课件就在讲这节课之外的事实；
+ * 准入按 formal 判定，和审核、发布、模型调用共用同一份口径。
+ */
+const verifyFormalLessonDocument = (
+  session: Session,
+  lesson: LessonVersionRow,
+  stored: ClassroomDocumentRow,
+): FormalLessonDocumentInfo => {
+  const stageId = stored.stageId;
+  const expectedStageId = formalStageId(lesson.lessonId, lesson.version);
+  if (stored.recordScope !== 'formal') {
+    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { stageId, reason: 'formal_scope_mismatch' });
+  }
+  if (stored.lessonId !== lesson.lessonId || stageId !== expectedStageId) {
+    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+      stageId, reason: 'formal_document_identity_mismatch', expectedStageId,
+    });
+  }
+  const digest = classroomDocumentDigest(stored.document);
+  if (stored.digest !== digest) {
+    throw new StudyError('VERSION_CONFLICT', { stageId, reason: 'formal_digest_mismatch', stored: stored.digest });
+  }
+  assertValidDocument(stored.document as { stage: unknown; scenes: unknown[] });
+  if (dslVersionState(stored.dslVersion, DSL_VERSION) === 'future') {
+    throw new StudyError('VERSION_CONFLICT', { reason: 'dsl_version_future', declared: stored.dslVersion, supported: DSL_VERSION });
+  }
+
+  const bundle = session.store.getEvidenceBundle(session.projectId, lesson.bundleId);
+  if (!bundle) throw new StudyError('INTERNAL', { bundleId: lesson.bundleId });
+  const expected = buildFormalLessonDocument({ bundle: bundle.bundle, bundleDigest: bundle.digest,
+    lessonId: lesson.lessonId, lessonVersion: lesson.version, title: lesson.title, frozenAt: bundle.frozenAt,
+    statementIds: lesson.statementIds, questionIds: lesson.questionIds,
+    interactions: readFormalInteractionDefinitions(session, lesson.lessonId, lesson.version)?.frozen.definitions });
+  if (digest !== classroomDocumentDigest(expected.document) || stored.dslVersion !== expected.dslVersion ||
+      stored.sceneCount !== expected.scenes.length) {
+    throw new StudyError('VERSION_CONFLICT', { stageId, reason: 'formal_document_not_frozen_version' });
+  }
+  const expectedBindings = new Map(expected.scenes.map((scene) => [scene.sceneId, scene]));
+
+  const documentScenes = documentSceneList(stored.document);
+  const sceneIds = documentScenes.map((scene) => scene.id);
+  const sources = session.store.listClassroomSceneSources(session.projectId, stageId);
+  assertSceneSourceBindings(sceneIds, sources);
+  if ([...sources.keys()].some((sceneId) => !sceneIds.includes(sceneId))) {
+    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { stageId, reason: 'scene_source_orphan' });
+  }
+
+  const knowledgeIds: string[] = [];
+  for (const [sceneId, binding] of sources) {
+    if (binding.recordScope !== 'formal') {
+      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { stageId, sceneId, reason: 'scene_record_scope_mismatch' });
+    }
+    const expectedBinding = expectedBindings.get(sceneId);
+    if (!expectedBinding || binding.questionId !== expectedBinding.questionId ||
+        classroomDocumentDigest(binding.knowledgeIds) !== classroomDocumentDigest(expectedBinding.knowledgeIds)) {
+      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { stageId, sceneId, reason: 'formal_scene_binding_mismatch' });
+    }
+    if (binding.questionId) {
+      const frozen = bundle.bundle.questions.find((item) => item.questionId === binding.questionId);
+      const current = session.store.getQuestion(binding.questionId, 'formal');
+      if (!frozen?.snapshot || !current || current.revision !== frozen.revision ||
+          current.stem !== frozen.snapshot.stem || current.answer !== frozen.snapshot.answer ||
+          current.solution !== frozen.snapshot.solution ||
+          classroomDocumentDigest(current.assessment) !== classroomDocumentDigest(frozen.snapshot.assessment)) {
+        throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { stageId, sceneId, reason: 'frozen_question_version_mismatch' });
+      }
+    }
+    for (const knowledgeId of binding.knowledgeIds) {
+      knowledgeIds.push(knowledgeId);
+    }
+  }
+  const admission = session.store.checkAdmission([...new Set(knowledgeIds)], 'formal');
+  if (!admission.allowed) {
+    throw new StudyError('KNOWLEDGE_NOT_VERIFIED', { stageId, blocked: admission.blocked });
+  }
+
+  return {
+    stageId,
+    lessonId: lesson.lessonId,
+    lessonVersion: lesson.version,
+    digest,
+    dslVersion: stored.dslVersion,
+    scenes: documentScenes.map((scene) => {
+      const binding = sources.get(scene.id)!;
+      return {
+        sceneId: scene.id,
+        sceneType: scene.type,
+        title: scene.title,
+        knowledgeIds: binding.knowledgeIds,
+        questionId: binding.questionId,
+        reviewedBy: binding.reviewedBy,
+        reviewNote: binding.reviewNote,
+      };
+    }),
+  };
+};
+
+/**
+ * 为「当前已发布的这个课程版本」装配正式课件文档并挂到课堂映射上。
+ *
+ * 两道前提都在服务端判：本版本已有人工审核通过记录（「这节课讲这些」属于版本审核，
+ * 不能由一次点击代替），且课堂映射正指向这个版本（撤回或被新版本取代后不能挂接）。
+ * 文档落库与映射更新在同一事务里完成：中途失败不会留下「文档已换但指纹仍是旧的」的半程状态，
+ * 课堂读取按指纹复验，宁可整节阻断也不按不匹配的内容授课。
+ */
+export const attachFormalLessonDocument = (
+  session: Session,
+  lessonId: string,
+  version: number,
+): FormalLessonDocumentSummary => {
+  const projectId = session.projectId;
+  const link = session.store.getLessonClassroomLink(lessonId, projectId);
+  if (!link || link.status !== 'published' || link.lessonVersion !== version) {
+    throw new StudyError('STEP_ALREADY_COMMITTED', {
+      reason: 'lesson_not_currently_published', lessonId, version, linkVersion: link?.lessonVersion ?? null,
+    });
+  }
+  const lesson = session.store.getLessonVersion(lessonId, version, projectId);
+  if (!lesson) throw new StudyError('NOT_FOUND', { lessonId, version });
+  const review = session.store.getLessonReview(lessonId, version, projectId);
+  if (review?.decision !== 'approved') {
+    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { reason: 'lesson_review_required', lessonId, version });
+  }
+  session.store.assertLessonClassroomReady(lessonId, projectId);
+  const bundle = session.store.getEvidenceBundle(projectId, lesson.bundleId);
+  if (!bundle) throw new StudyError('INTERNAL', { bundleId: lesson.bundleId });
+
+  const plan = buildFormalLessonDocument({
+    bundle: bundle.bundle,
+    bundleDigest: bundle.digest,
+    lessonId,
+    lessonVersion: version,
+    title: lesson.title,
+    frozenAt: bundle.frozenAt,
+    statementIds: lesson.statementIds,
+    questionIds: lesson.questionIds,
+    interactions: readFormalInteractionDefinitions(session, lessonId, version)?.frozen.definitions,
+  });
+  assertValidDocument(plan.document);
+  const digest = classroomDocumentDigest(plan.document);
+  const existing = session.store.getClassroomDocument(projectId, plan.stageId);
+  const reused = existing !== null && existing.digest === digest;
+
+  session.store.transaction(() => {
+    if (!reused) {
+      session.store.saveClassroomDocument({
+        recordScope: 'formal',
+        projectId,
+        stageId: plan.stageId,
+        lessonId,
+        dslVersion: plan.dslVersion,
+        document: plan.document,
+        digest,
+        sceneCount: plan.scenes.length,
+        scenes: plan.scenes.map((scene) => ({
+          sceneId: scene.sceneId,
+          knowledgeIds: scene.knowledgeIds,
+          questionId: scene.questionId,
+        })),
+        reviewedBy: `项目本地人工审核 · 课程 v${version}`,
+        reviewNote: review.note || '课程版本审核通过，课件由该版本的证据包装配',
+      });
+    }
+    session.store.attachLessonDocument({ projectId, lessonId, version, stageId: plan.stageId, documentDigest: digest });
+    const saved = session.store.getClassroomDocument(projectId, plan.stageId);
+    if (!saved) throw new StudyError('INTERNAL', { stageId: plan.stageId });
+    verifyFormalLessonDocument(session, lesson, saved);
+    session.store.assertLessonClassroomReady(lessonId, projectId);
+  });
+
+  const stored = session.store.getClassroomDocument(projectId, plan.stageId);
+  if (!stored) throw new StudyError('INTERNAL', { stageId: plan.stageId });
+  const info = verifyFormalLessonDocument(session, lesson, stored);
+  // 挂接之后再走一遍上课入口的统一复核，返回的就是课堂当时能读到的那份文档。
+  session.store.assertLessonClassroomReady(lessonId, projectId);
+  return { ...info, sceneCount: plan.scenes.length, skipped: plan.skipped, reused, attached: true };
+};
+
+/**
+ * 读取正式课堂的渲染文档。
+ *
+ * 返回 null 只有一种含义：课程已发布但课件文档还没生成；页面据此给出明确指引。
+ * 未发布、未审核、来源失效、指纹不符都按领域错误抛出，不能降级成「先上着再说」。
+ */
+export const loadRenderableFormalDocument = (
+  session: Session,
+  lessonId: string,
+): RenderableFormalDocument | null => {
+  const ready = session.store.assertLessonClassroomReady(lessonId, session.projectId);
+  if (!ready.link.stageId) return null;
+  const stored = session.store.getClassroomDocument(session.projectId, ready.link.stageId);
+  if (!stored) {
+    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { stageId: ready.link.stageId, reason: 'lesson_document_missing' });
+  }
+  const info = verifyFormalLessonDocument(session, ready.lesson, stored);
+  if (ready.link.documentDigest !== info.digest) {
+    throw new StudyError('VERSION_CONFLICT', {
+      reason: 'lesson_link_digest_mismatch', stageId: info.stageId,
+      linked: ready.link.documentDigest, current: info.digest,
+    });
+  }
+  const stripped = stripQuizAnswers(stored.document);
+  for (const scene of (stripped.document as { scenes?: unknown[] }).scenes ?? []) {
+    const result = validateScene(scene);
+    if (!result.valid) {
+      throw new StudyError('INTERNAL', {
+        reason: 'stripped_scene_invalid',
+        sceneId: String((scene as { id?: unknown }).id ?? ''),
+        errors: result.errors,
+      });
+    }
+  }
+  return { ...info, document: stripped.document, sceneCount: info.scenes.length };
+};
+
+/**
+ * 渲染文档的统一读取入口：按落库的记录范围分派。
+ *
+ * 客户端 `HttpDocumentStore` 也走这里，因此正式课件不会绕过演示课件那套准入判定，
+ * 而演示课件的固定指纹守卫也不会套用（更不会被绕过）到正式课时上。
+ */
+export const loadRenderableDocument = (
+  session: Session,
+  stageId: string,
+): RenderableDocument | null => {
+  const stored = session.store.getClassroomDocument(session.projectId, stageId);
+  if (!stored) return null;
+  if (stored.recordScope === 'formal') {
+    const document = loadRenderableFormalDocument(session, stored.lessonId);
+    if (document?.stageId !== stageId) {
+      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { stageId, reason: 'stage_not_current_published_version' });
+    }
+    return document;
+  }
+  return loadDemoRenderableDocument(session, stageId);
+};

@@ -129,6 +129,3 @@ export const assertClassroomBudget = (
     }
   }
 };
-
-/** 新一轮从切场景或本人作答归来开始；轮次只增不减，收据才能区分重复动作。 */
-export const nextRoundIndex = (roundIndex: number): number => roundIndex + 1;

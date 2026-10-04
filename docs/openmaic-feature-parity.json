@@ -107,7 +107,9 @@
         "lib/server/scene-generation.ts"
       ],
       "acceptance": "四类场景均通过DSL校验并有内容与资产",
-      "evidence": []
+      "evidence": [
+        "ANSWER-01 子包已从课程版本选中的冻结证据装配幻灯片及单选/多选/简答测验，真实 DSL 校验、24 场景上限及来源绑定由 tests/formal-quiz-submission.test.ts 覆盖；当前是确定性装配，完整模型生成、互动/PBL 与资产生成仍待开发，因此保留 planned。"
+      ]
     },
     {
       "id": "OMA-007",
@@ -589,7 +591,9 @@
         "lib/quiz"
       ],
       "acceptance": "各题型真实呈现与提交，题目身份可查",
-      "evidence": []
+      "evidence": [
+        "课程页可登记三题型与评分规则，冻结为课程证据包快照，每题一个正式 quiz 场景；QuizSceneView 呈现单选、多选及简答，使用服务绑定的本人身份提交。tests/formal-quiz-submission.test.ts、tests/question-authoring-page.test.ts 与 scripts/smoke-formal-quiz.cjs 覆盖；真实科目及安装态验收仍保留。"
+      ]
     },
     {
       "id": "OMA-035",
@@ -604,7 +608,9 @@
         "lib/quiz"
       ],
       "acceptance": "判分依据冻结答案，本人提交前不抢答",
-      "evidence": []
+      "evidence": [
+        "客观题按冻结答案集精确判分，多选全有全对；简答提交待判分，已提交正式本人作答可追加人工评分或审核带依据/不确定性的模型候选，课堂读取最新评分。原提交与 Runtime review 保持不变，审核历史独立保存。公开文档不含判分依据；tests/attempt-grading-{storage,model,http,page}.test.ts 与 scripts/smoke-formal-quiz.cjs 覆盖。真实科目/真实 provider 语义评分、完整答案展示规则及安装态验收仍保留，继续 partial。"
+      ]
     },
     {
       "id": "OMA-036",
@@ -619,7 +625,9 @@
         "lib/quiz"
       ],
       "acceptance": "响应丢失可去重重试，同内容重做可新提交",
-      "evidence": []
+      "evidence": [
+        "提交保存题目/答案版本、原始过程和评分依据，业务结果、RuntimeStore review、完成状态与收据在同一事务；同键不同内容或场景被拒，尾序号冲突全部回滚。新增独立人工审核版本、CAS 与持久命令收据；模型失败/未知结果相同 nonce 不再次派发，未结算请求保留共享预算预留。tests/formal-quiz-submission.test.ts、tests/question-assessment.test.ts、tests/attempt-grading-storage.test.ts 与 tests/attempt-grading-model.test.ts 覆盖；实际 Electron 通过数据库重开恢复最新评分及原始提交。整应用新安装态验收仍待执行。"
+      ]
     },
     {
       "id": "OMA-037",

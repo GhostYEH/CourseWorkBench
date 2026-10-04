@@ -125,7 +125,7 @@ describe('权威 JSON 列：knowledge_ids_json 损坏即拒绝', () => {
     corruptKnowledgeIds();
     expect(() => buildWorkbenchState({
       store, projectId: 'statistics', displayName: '测试', displayPath: root,
-      generation: 1, openedAt: new Date(0).toISOString(),
+      generation: 1, openedAt: new Date(0).toISOString(), learnerUid: 'uid_10000000-0000-4000-8000-000000000001',
     })).toThrowError(expect.objectContaining({ code: 'INTERNAL' }));
   });
 });

@@ -1,13 +1,13 @@
 import type { ReactNode } from 'react';
-import { Empty, Stat } from '../../../components/ui';
-import { bootstrapFromEnvironment, getSession } from '../../../lib/server/service';
-import { readWorkbenchMaterials, readWorkbenchProposals } from '../../../lib/server/workbench-data';
+import { Empty,Stat } from '../../../components/ui';
 import { computeBlockRate } from '../../../lib/server/eval-metrics';
+import { requireSession } from '../../../lib/server/service';
+import { readWorkbenchMaterials,readWorkbenchProposals } from '../../../lib/server/workbench-data';
 
 export const dynamic = 'force-dynamic';
 
 export default function EvalPage(): ReactNode {
-  const session = (getSession() ?? bootstrapFromEnvironment())!;
+  const session = requireSession();
   const knowledge = session.store.listKnowledge();
   const materials = readWorkbenchMaterials(session);
   const questions = session.store.listQuestions();

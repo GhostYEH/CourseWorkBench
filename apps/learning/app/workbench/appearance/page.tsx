@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react';
 import { AppearanceSettings } from '../../../components/appearance-settings';
-import { bootstrapFromEnvironment, getSession } from '../../../lib/server/service';
+import { requireSession } from '../../../lib/server/service';
 import { readPreferences } from '../../../lib/server/state';
 
 export const dynamic = 'force-dynamic';
 
 export default function AppearancePage(): ReactNode {
-  const session = (getSession() ?? bootstrapFromEnvironment())!;
+  const session = requireSession();
   const preferences = readPreferences(session);
 
   return (

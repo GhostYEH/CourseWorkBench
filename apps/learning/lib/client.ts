@@ -8,7 +8,7 @@
  */
 
 import { create } from 'zustand';
-import { apiEnvelopeSchema, runtimeApiFailureSchema, type PreferencesDto } from '@sew/study-contracts';
+import { apiEnvelopeSchema, runtimeApiFailureSchema, type PreferencesDto, type ProjectScope } from '@sew/study-contracts';
 import { z } from 'zod';
 import { getAppearanceStyle } from './preferences';
 
@@ -38,12 +38,52 @@ export const describeApiError = (error: unknown): string =>
 
 /** 会话凭据只保存在内存中：由 preload 在窗口建立后注入，不写入 URL 或持久存储。 */
 let sessionToken: string | null = null;
+const sessionTokenListeners = new Set<() => void>();
 
 export const setSessionToken = (token: string | null): void => {
+  if (sessionToken === token) return;
   sessionToken = token;
+  for (const listener of sessionTokenListeners) listener();
 };
 
 export const getSessionToken = (): string | null => sessionToken;
+
+export const subscribeSessionToken = (listener: () => void): (() => void) => {
+  sessionTokenListeners.add(listener);
+  return () => { sessionTokenListeners.delete(listener); };
+};
+
+export const projectScopeHeaders = (scope: ProjectScope): Record<string, string> => ({
+  ...(sessionToken ? { 'x-sew-session': sessionToken } : {}),
+  'x-sew-project-id': scope.projectId,
+  'x-sew-generation': String(scope.generation),
+});
+
+export const waitForSessionToken = (signal?: AbortSignal): Promise<string> => new Promise((resolve, reject) => {
+  if (signal?.aborted) { reject(signal.reason ?? new DOMException('Aborted', 'AbortError')); return; }
+  if (sessionToken) { resolve(sessionToken); return; }
+  const timeout = setTimeout(() => {
+    cleanup();
+    reject(new Error('课堂会话凭据尚未就绪，请重试。'));
+  }, 3000);
+  const changed = () => {
+    if (!sessionToken) return;
+    const token = sessionToken;
+    cleanup();
+    resolve(token);
+  };
+  const aborted = () => {
+    cleanup();
+    reject(signal?.reason ?? new DOMException('Aborted', 'AbortError'));
+  };
+  const cleanup = () => {
+    clearTimeout(timeout);
+    sessionTokenListeners.delete(changed);
+    signal?.removeEventListener('abort', aborted);
+  };
+  sessionTokenListeners.add(changed);
+  signal?.addEventListener('abort', aborted, { once: true });
+});
 
 export const apiFetch = async <S extends z.ZodTypeAny>(path: string, schema: S, init?: RequestInit): Promise<z.infer<S>> => {
   const headers = new Headers(init?.headers);
