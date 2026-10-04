@@ -677,6 +677,41 @@ CREATE UNIQUE INDEX idx_role_profiles_teacher ON role_profiles(record_scope, kin
 CREATE INDEX idx_role_profiles_scope_kind ON role_profiles(record_scope, kind, profile_id);
 `,
   },
+  {
+    version: 13,
+    name: 'evidence_bundles_and_lesson_versions',
+    sql: `
+-- 证据包（LESSON-01）：一节课允许说什么的冻结集合，按内容摘要去重。
+-- 摘要一致即同一份证据包，重复冻结不会堆出第二份；来源更新只会让新冻结得到新摘要。
+CREATE TABLE evidence_bundles (
+  bundle_id   TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL,
+  digest      TEXT NOT NULL,
+  bundle_json TEXT NOT NULL,
+  frozen_at   TEXT NOT NULL,
+  UNIQUE (project_id, digest)
+);
+CREATE INDEX idx_evidence_bundles_project ON evidence_bundles(project_id, frozen_at, bundle_id);
+
+-- 课程版本：修改课件永远新增草案版本，已发布版本只改状态不被覆写。
+CREATE TABLE lesson_versions (
+  lesson_id          TEXT NOT NULL,
+  version            INTEGER NOT NULL,
+  project_id         TEXT NOT NULL,
+  title              TEXT NOT NULL,
+  status             TEXT NOT NULL CHECK (status IN ('draft', 'published', 'superseded')),
+  bundle_id          TEXT NOT NULL,
+  bundle_digest      TEXT NOT NULL,
+  statement_ids_json TEXT NOT NULL DEFAULT '[]',
+  question_ids_json  TEXT NOT NULL DEFAULT '[]',
+  created_at         TEXT NOT NULL,
+  updated_at         TEXT NOT NULL,
+  PRIMARY KEY (lesson_id, version),
+  FOREIGN KEY (bundle_id) REFERENCES evidence_bundles(bundle_id)
+);
+CREATE INDEX idx_lesson_versions_project ON lesson_versions(project_id, status, lesson_id, version);
+`,
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

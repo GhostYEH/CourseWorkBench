@@ -21,6 +21,15 @@ export type {
   PlanTaskDto, PlanGapDto, PlanPayloadDto, FrozenVersionsDto, RunStartReceiptDto,
   RunEventPayloadDto, RunEventTypeDto, RunSnapshotDto,
 } from './plan';
+export {
+  EVIDENCE_BUNDLE_VERSION, LESSON_STATUS,
+  bundleStatementSchema, bundleQuestionSchema, evidenceBundleSchema, evidenceBundleRowSchema,
+  lessonVersionSchema, lessonDraftSchema, lessonPublishSchema, lessonBundleBuildSchema,
+} from './lesson';
+export type {
+  LessonStatus, BundleStatementDto, BundleQuestionDto, EvidenceBundleDto, EvidenceBundleViewDto,
+  LessonVersionDto, LessonDraftInput, LessonPublishInput, LessonBundleBuildInput,
+} from './lesson';
 export type {
   SourceStatus, ScopeStatus, RecordScope, ReviewProvenance, MasteryStatus, ReviewDecision, EvidenceUse, QuestionOrigin,
   ActorType, AttemptKind, RunState, RoleKind, RoleExplanation,

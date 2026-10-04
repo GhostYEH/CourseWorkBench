@@ -29,6 +29,7 @@ const NAV = [
   { key: 'knowledge', label: '知识', glyph: '◆', href: '/workbench/knowledge' },
   { key: 'review', label: '来源审核', glyph: '✓', href: '/workbench/review' },
   { key: 'plan', label: '计划', glyph: '▦', href: '/workbench/plan' },
+  { key: 'lesson', label: '课程', glyph: '▥', href: '/workbench/lessons' },
   { key: 'study', label: '学习', glyph: '✎', href: '/workbench/study' },
   { key: 'mistakes', label: '错题', glyph: '✗', href: '/workbench/mistakes' },
   { key: 'eval', label: '评测', glyph: '◎', href: '/workbench/eval' },
@@ -51,6 +52,7 @@ const SECTION_TABS: Record<string, Array<{ label: string; href: string }>> = {
     { label: '材料与来源', href: '/workbench/materials' },
   ],
   plan: [{ label: '备考计划', href: '/workbench/plan' }],
+  lesson: [{ label: '课程与证据包', href: '/workbench/lessons' }],
   study: [
     { label: '今日学习', href: '/workbench/study' },
     { label: '课堂', href: '/classroom/lesson-001' },
@@ -66,6 +68,7 @@ const sectionOf = (pathname: string): string => {
   const segment = pathname.split('/')[2] ?? '';
   if (['materials', 'settings', 'appearance'].includes(segment)) return 'project';
   if (segment === 'syllabus') return 'knowledge';
+  if (segment === 'lessons') return 'lesson';
   if (['knowledge', 'review', 'plan', 'study', 'mistakes', 'eval'].includes(segment)) return segment;
   return 'project';
 };

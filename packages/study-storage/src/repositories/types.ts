@@ -8,6 +8,7 @@
 import type {
   EvidenceUse,
   FrozenVersionsDto,
+  EvidenceBundleDto,
   MasteryStatus,
   MaterialRawArchiveDto,
   MechanicalCheckDto,
@@ -203,8 +204,46 @@ export interface AttemptRow {
   submittedAt: string;
 }
 
-/** 角色档案行：权限位是派生值，不来自任何写入请求。 */
-export interface RoleProfileRow {
+export type LessonStatus = 'draft' | 'published' | 'superseded';
+
+/** 冻结的证据包一行；bundle 按权威列校验。 */
+export interface EvidenceBundleRow {
+  bundleId: string;
+  projectId: string;
+  digest: string;
+  frozenAt: string;
+  bundle: EvidenceBundleDto;
+}
+
+export interface LessonVersionRow {
+  lessonId: string;
+  version: number;
+  projectId: string;
+  title: string;
+  status: LessonStatus;
+  bundleId: string;
+  bundleDigest: string;
+  statementIds: string[];
+  questionIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 课程 ↔ OpenMAIC stage 的当前映射（classroom_links 侧表）。 */
+export interface ClassroomLinkRow {
+  lessonId: string;
+  projectId: string;
+  lessonVersion: number;
+  stageId: string | null;
+  stageDocumentVersion: number | null;
+  documentDigest: string | null;
+  evidenceBundleId: string | null;
+  status: LessonStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 角色档案行：权限位是派生值，不来自任何写入请求。 */export interface RoleProfileRow {
   profileId: string;
   kind: RoleKind;
   name: string;

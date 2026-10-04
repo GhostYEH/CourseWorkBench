@@ -19,6 +19,12 @@ export type { ReviewDecisionInput, ReviewDecisionResult, MaterialChangeImpact } 
 export { checkAdmission } from './admission';
 export type { KnowledgeRecord, AdmissionInput } from './admission';
 export { validateSyllabusMapping, computeSyllabusCoverage } from './syllabus';
+export {
+  buildEvidenceBundle, evidenceBundleDigest, statementIdOf, nextLessonVersion, assertLessonPublishable,
+} from './lesson';
+export type {
+  BundleSegmentRecord, BundleQuestionRecord, EvidenceBundleInput, LessonPublishFacts,
+} from './lesson';
 export type {
   SyllabusRequirementRecord, SyllabusItemRecord, SyllabusMappingRecord,
   SyllabusCoveragePointRecord, SyllabusCoverageItemResult, SyllabusCoverageResult,

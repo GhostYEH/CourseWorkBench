@@ -29,6 +29,7 @@ import {
   computeInvalidation,
   computeSyllabusCoverage,
   decideAttempt,
+  buildEvidenceBundle,
   buildStepKey,
   resolveQuestionOrigin,
   type MaterialChangeImpact,
@@ -57,14 +58,22 @@ import { ProposalsRepository } from './repositories/proposals';
 import { QuestionsRepository } from './repositories/questions';
 import { RunsRepository } from './repositories/runs';
 import { RoleRepository, type RoleWriteInput } from './repositories/roles';
+import {
+  LessonRepository,
+  type CreateLessonDraftInput,
+  type PublishLessonInput,
+} from './repositories/lessons';
 import type { RunEventRow, StepReceiptRow } from './repositories/runs';
 import { SyllabusRepository } from './repositories/syllabus';
 import type { CreateSyllabusItemInput, SyllabusItemRow } from './repositories/syllabus';
 import type {
   AttemptRow,
+  ClassroomLinkRow,
   CreateProposalInput,
+  EvidenceBundleRow,
   ImportMaterialInput,
   KnowledgeRow,
+  LessonVersionRow,
   MaterialRow,
   ProjectRow,
   ProposalRow,
@@ -90,6 +99,12 @@ export type { ClassroomAssetBindingRow, ClassroomAssetInfo, ClassroomAssetRow } 
 export { ClassroomAssetReferencedError } from './repositories/classroom-assets';
 export type { CreateSyllabusItemInput, SyllabusItemRow } from './repositories/syllabus';
 export type { PlanVersionRow, RoleProfileRow } from './repositories/types';
+export type {
+  ClassroomLinkRow, EvidenceBundleRow, LessonStatus, LessonVersionRow,
+} from './repositories/types';
+export type {
+  CreateLessonDraftInput, PublishLessonInput,
+} from './repositories/lessons';
 export type { RunEventRow, StepReceiptRow } from './repositories/runs';
 export type { RoleWriteInput } from './repositories/roles';
 export type {
@@ -140,6 +155,7 @@ export class StudyStore {
   private readonly preferences: PreferencesRepository;
   private readonly plans: PlansRepository;
   private readonly roles: RoleRepository;
+  private readonly lessons: LessonRepository;
   private readonly syllabus: SyllabusRepository;
   private readonly classroom: ClassroomRepository;
   private readonly documentOrganization: DocumentOrganizationRepository;
@@ -160,6 +176,7 @@ export class StudyStore {
     this.preferences = new PreferencesRepository(db);
     this.plans = new PlansRepository(db);
     this.roles = new RoleRepository(db);
+    this.lessons = new LessonRepository(db);
     this.syllabus = new SyllabusRepository(db);
     this.classroom = new ClassroomRepository(db);
     this.documentOrganization = new DocumentOrganizationRepository(db);
@@ -769,8 +786,120 @@ export class StudyStore {
     return latest ? { version: latest.version, status: latest.status, payload: latest.payload } : null;
   }
 
-  // ————————————————————————— 角色档案 —————————————————————————
+  // ———————————————————— 证据包与课程版本 ————————————————————
 
+  /**
+   * 从已确认计划冻结一节课的证据包（LESSON-01）。
+   *
+   * 陈述的文本与条件由人工给出，来源一律取该知识点**已批准的证据**：审核人不能
+   * 凭空指定段落。准入判定与课堂、出题共用同一实现。摘要相同则复用既有证据包。
+   */
+  buildLessonBundle(
+    projectId: string,
+    statements: Array<{ knowledgeId: string; text: string; conditions: string }>,
+    questionIds: string[],
+  ): EvidenceBundleRow {
+    const confirmed = this.plans.getConfirmedPlan(projectId);
+    if (!confirmed) throw new StudyError('PLAN_NOT_CONFIRMED');
+    const project = this.projects.getProject(projectId);
+    if (!project) throw new StudyError('NOT_FOUND', { projectId });
+
+    const knowledge = this.knowledge.listKnowledge('formal');
+    const byId = new Map(knowledge.map((point) => [point.knowledgeId, point]));
+    const admission = this.checkAdmission(
+      [...new Set(statements.map((statement) => statement.knowledgeId))],
+      'formal',
+    );
+    const admitted = new Set(admission.admitted);
+    const composed = statements.map((statement) => {
+      const point = byId.get(statement.knowledgeId);
+      if (!point) throw new StudyError('NOT_FOUND', { knowledgeId: statement.knowledgeId });
+      const evidence = point.evidence.map((item) => ({
+        materialId: item.materialId,
+        revision: item.revision,
+        segmentId: item.segmentId,
+        use: item.use,
+      }));
+      return {
+        knowledgeId: statement.knowledgeId,
+        text: statement.text,
+        conditions: statement.conditions,
+        evidence,
+      };
+    });
+
+    const questions = new Map(
+      this.questions.listQuestions('formal').map((row) => [
+        row.questionId,
+        {
+          questionId: row.questionId,
+          revision: row.revision,
+          origin: row.origin,
+          knowledgeIds: row.knowledgeIds,
+        },
+      ]),
+    );
+    const teaching = this.preferences.readTeachingPreference<Record<string, unknown>>(projectId);
+    const { bundle, digest } = buildEvidenceBundle({
+      projectId,
+      subject: project.subject,
+      recordScope: 'formal',
+      planVersion: confirmed.version,
+      teachingPreferenceVersion: teaching.version,
+      roleConfigDigest: this.roles.configDigest('formal'),
+      statements: composed,
+      questionIds,
+      admittedKnowledgeIds: admitted,
+      knowledgeVersions: knowledge.map((point) => ({ knowledgeId: point.knowledgeId, revision: point.revision })),
+      materialRevisions: this.materials.currentRevisions('formal'),
+      lookupSegment: (materialId, revision, segmentId) => this.materials.lookupSegment(materialId, revision, segmentId, 'formal'),
+      questions,
+    });
+    return this.lessons.saveBundle(projectId, bundle, digest);
+  }
+
+  listEvidenceBundles(projectId: string): EvidenceBundleRow[] {
+    return this.lessons.listBundles(projectId);
+  }
+
+  createLessonDraft(input: CreateLessonDraftInput): LessonVersionRow {
+    return this.lessons.createDraft(input);
+  }
+
+  listLessons(projectId: string): LessonVersionRow[] {
+    return this.lessons.listLessons(projectId);
+  }
+
+  listLessonVersions(lessonId: string, projectId: string): LessonVersionRow[] {
+    return this.lessons.listVersions(lessonId, projectId);
+  }
+
+  getLessonClassroomLink(lessonId: string, projectId: string): ClassroomLinkRow | null {
+    return this.lessons.getLink(lessonId, projectId);
+  }
+
+  /** 发布课程：陈述与题目引用的知识点必须仍在准入范围内。 */
+  publishLesson(input: PublishLessonInput): LessonVersionRow {
+    const lesson = this.lessons.getVersion(input.lessonId, input.version, input.projectId);
+    if (!lesson) throw new StudyError('NOT_FOUND', { lessonId: input.lessonId, version: input.version });
+    const bundle = this.lessons.getBundle(lesson.bundleId, input.projectId);
+    if (!bundle) throw new StudyError('INTERNAL', { bundleId: lesson.bundleId });
+
+    const statementKnowledgeOf = (statementId: string): string | null =>
+      bundle.bundle.statements.find((statement) => statement.statementId === statementId)?.knowledgeId ?? null;
+    const questionKnowledgeOf = (questionId: string): string[] =>
+      bundle.bundle.questions.find((question) => question.questionId === questionId)?.knowledgeIds ?? [];
+    const referenced = [
+      ...new Set([
+        ...lesson.statementIds.flatMap((id) => [statementKnowledgeOf(id)]).filter((id): id is string => id !== null),
+        ...lesson.questionIds.flatMap((id) => questionKnowledgeOf(id)),
+      ]),
+    ];
+    const admitted = new Set(this.checkAdmission(referenced, 'formal').admitted);
+    return this.lessons.publish(input, { admittedKnowledgeIds: admitted, statementKnowledgeOf, questionKnowledgeOf });
+  }
+
+  // ————————————————————————— 角色档案 —————————————————————————
   listRoleProfiles(scope: RecordScope = 'formal'): RoleProfileRow[] {
     return this.roles.list(scope);
   }

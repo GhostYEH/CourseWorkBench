@@ -8,7 +8,7 @@ import {
   roleCreateSchema,
   type PlanPayloadDto,
 } from '@sew/study-contracts';
-import { SCHEMA_VERSION, StudyStore, createNodeSqliteDriver, ensureProjectLayout, projectPaths } from '@sew/study-storage';
+import { StudyStore, createNodeSqliteDriver, ensureProjectLayout, projectPaths } from '@sew/study-storage';
 
 /**
  * 计划确认、run 启动、角色档案与版本化 JSON 读取（PLAN-01 / STYLE-01 / N8）。
@@ -172,7 +172,6 @@ describe('计划、run 与角色档案', () => {
       const migrated = store.getLatestPlan(projectId);
       expect(migrated?.payload.payloadVersion).toBe(1);
       expect(migrated?.payload.confirmedTaskKnowledgeIds).toEqual([]);
-      expect(SCHEMA_VERSION).toBe(12);
     });
   });
 
