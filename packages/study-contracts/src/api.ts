@@ -516,6 +516,42 @@ export const interactionStateSchema = z.object({
 }).strict();
 export type InteractionStateDto = z.infer<typeof interactionStateSchema>;
 
+/** 资源回收报告里的一条未绑定资源：只暴露身份与占用，不含字节与元数据。 */
+export const classroomAssetInfoSchema = z.object({
+  recordScope: z.enum(RECORD_SCOPE),
+  assetId: z.string(),
+  mediaType: z.string(),
+  sha256: z.string(),
+  revision: z.number().int().positive(),
+  byteLength: z.number().int().nonnegative(),
+});
+export type ClassroomAssetInfoDto = z.infer<typeof classroomAssetInfoSchema>;
+
+export const assetReclaimReportSchema = z.object({
+  /** 当前无课件绑定的资源，可回收候选。 */
+  unbound: z.array(classroomAssetInfoSchema),
+  unboundBytes: z.number().int().nonnegative(),
+  /** 项目内全部课堂资源占用与上限，界面据此说明回收能释放多少。 */
+  usedBytes: z.number().int().nonnegative(),
+  limitBytes: z.number().int().positive(),
+});
+export type AssetReclaimReportDto = z.infer<typeof assetReclaimReportSchema>;
+
+/** 回收命令：候选必须来自同一次报告，服务端会重新确认绑定状态。 */
+export const assetReclaimSchema = z.object({
+  scope: projectScopeSchema,
+  assetIds: z.array(z.string().min(1)).min(1).max(200),
+});
+export type AssetReclaimInput = z.infer<typeof assetReclaimSchema>;
+
+export const assetReclaimResultSchema = z.object({
+  reclaimed: z.array(z.string()),
+  freedBytes: z.number().int().nonnegative(),
+  /** 本次之后剩余的候选数；重复提交同一批会显示已回收为 0 而不是报错。 */
+  remainingUnbound: z.number().int().nonnegative(),
+});
+export type AssetReclaimResultDto = z.infer<typeof assetReclaimResultSchema>;
+
 // —— 作答 ——
 
 export const attemptSubmitSchema = z.object({

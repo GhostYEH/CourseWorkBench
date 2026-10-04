@@ -774,6 +774,20 @@ export class StudyStore {
     this.classroomAssets.delete(projectId, assetId);
   }
 
+  /** 未被课件绑定的资源清单（回收候选，不含字节）。 */
+  listReclaimableAssets(projectId: string, scope: RecordScope = 'formal'): ClassroomAssetInfo[] {
+    return this.classroomAssets.listUnbound(projectId, scope);
+  }
+
+  /** 显式回收未绑定资源；被引用时整体放弃，候选不存在按幂等跳过。 */
+  reclaimAssets(
+    projectId: string,
+    assetIds: readonly string[],
+    scope: RecordScope = 'formal',
+  ): { reclaimed: string[]; freedBytes: number } {
+    return this.classroomAssets.reclaim(projectId, assetIds, scope);
+  }
+
   putClassroomAssetBinding(projectId: string, stageId: string, sceneId: string, slot: string, assetId: string, scope: RecordScope = 'formal'): ClassroomAssetBindingRow {
     return this.classroomAssets.putBinding(projectId, stageId, sceneId, slot, assetId, scope);
   }

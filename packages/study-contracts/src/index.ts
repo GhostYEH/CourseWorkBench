@@ -66,6 +66,7 @@ export {
   materialOriginalOpenSchema,
   syllabusRequirementSchema, syllabusMappingSchema, syllabusItemCreateSchema,
   syllabusItemSchema, syllabusCoverageItemSchema, syllabusCoverageSchema,
+  classroomAssetInfoSchema, assetReclaimReportSchema, assetReclaimSchema, assetReclaimResultSchema,
   recentProjectSchema, classroomSceneBindingSchema,
   interactionDirectionSchema, interactionSubmitSchema, interactionPayloadSchema,
   interactionSubmissionSchema, interactionStateSchema,
@@ -80,6 +81,7 @@ export type {
   MaterialRawArchiveDto, MaterialRawQuery, MaterialRawViewDto, MaterialOriginalOpenInput,
   SyllabusRequirementInput, SyllabusMappingInput, SyllabusItemCreateInput, SyllabusItemDto,
   SyllabusCoverageItemDto, SyllabusCoverageDto,
+  ClassroomAssetInfoDto, AssetReclaimReportDto, AssetReclaimInput, AssetReclaimResultDto,
   RecentProjectDto, ClassroomSceneBinding, ApiSuccess, ApiFailure, ApiEnvelope,
   InteractionSubmitInput, InteractionSubmissionDto, InteractionStateDto,
 } from './api';

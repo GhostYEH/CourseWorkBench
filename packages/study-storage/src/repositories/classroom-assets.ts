@@ -174,6 +174,59 @@ export class ClassroomAssetsRepository {
     });
   }
 
+  /**
+   * 未被任何课件绑定的资源：回收候选清单。
+   *
+   * 只返回身份与占用，不返回字节或元数据；分区由参数限定，正式与演示互不越界。
+   */
+  listUnbound(projectId: string, scope: RecordScope): ClassroomAssetInfo[] {
+    const rows = this.db.prepare(`
+      SELECT assets.asset_id, assets.media_type, assets.sha256, assets.revision, assets.record_scope,
+             length(assets.bytes) AS byte_length
+        FROM classroom_assets AS assets
+       WHERE assets.project_id = ? AND assets.record_scope = ?
+         AND NOT EXISTS (SELECT 1 FROM classroom_asset_bindings AS bindings
+                          WHERE bindings.project_id = assets.project_id AND bindings.asset_id = assets.asset_id)
+       ORDER BY assets.created_at, assets.asset_id`).all(projectId, scope) as Row[];
+    return rows.map((row) => ({
+      recordScope: recordScope(row['record_scope']),
+      assetId: str(row['asset_id']),
+      mediaType: str(row['media_type']),
+      sha256: str(row['sha256']),
+      revision: Number(row['revision']),
+      byteLength: Number(row['byte_length']),
+    }));
+  }
+
+  /**
+   * 显式回收未绑定资源。
+   *
+   * 在同一事务内重新确认每个候选仍无绑定：任一候选已被课件引用就整体放弃，
+   * 避免出现「一半已删除、一半被拒」的部分回收。候选不存在按幂等跳过，
+   * 因此重复执行同一批回收不会报错也不会多删。
+   */
+  reclaim(projectId: string, assetIds: readonly string[], scope: RecordScope): { reclaimed: string[]; freedBytes: number } {
+    const requested = [...new Set(assetIds)];
+    return this.db.transaction(() => {
+      const reclaimed: string[] = [];
+      let freedBytes = 0;
+      for (const assetId of requested) {
+        const info = this.getInfoInScope(projectId, assetId, scope);
+        if (!info) continue;
+        if (this.isReferenced(projectId, assetId)) throw new ClassroomAssetReferencedError();
+        this.db.prepare('DELETE FROM classroom_assets WHERE project_id = ? AND asset_id = ?').run(projectId, assetId);
+        freedBytes += info.byteLength;
+        reclaimed.push(assetId);
+      }
+      return { reclaimed, freedBytes };
+    });
+  }
+
+  private getInfoInScope(projectId: string, assetId: string, scope: RecordScope): ClassroomAssetInfo | null {
+    const info = this.getInfo(projectId, assetId);
+    return info && info.recordScope === scope ? info : null;
+  }
+
   putBinding(projectId: string, stageId: string, sceneId: string, slot: string, assetId: string, scope: RecordScope = 'formal'): ClassroomAssetBindingRow {
     const now = new Date().toISOString();
     this.db.transaction(() => {

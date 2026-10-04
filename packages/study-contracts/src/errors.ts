@@ -49,6 +49,7 @@ export const STUDY_ERROR_CODES = [
   // —— 课堂文档与审核准入 ——
   'CLASSROOM_LESSON_NOT_REVIEWED',
   'CLASSROOM_SCENE_SOURCE_MISSING',
+  'ASSET_IN_USE',
 
   // —— 通用 ——
   'INVALID_ARGUMENT',
@@ -96,6 +97,7 @@ export const STUDY_ERROR_MESSAGE: Record<StudyErrorCode, string> = {
 
   CLASSROOM_LESSON_NOT_REVIEWED: '该课堂文档不是已登记的审核课件，不能写入正式教学',
   CLASSROOM_SCENE_SOURCE_MISSING: '课堂场景缺少可定位的来源绑定，暂不能用于教学',
+  ASSET_IN_USE: '资源仍被课件引用，不能回收',
 
   INVALID_ARGUMENT: '请求参数不合法',
   NOT_FOUND: '记录不存在',
