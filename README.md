@@ -116,7 +116,7 @@ M1 已补严格 UTF-8 解码、空正文拒绝、不可变材料历史版本和�
 
 ## 当前验证
 
-2026-10-05 本轮收尾已对**同一份源码内容**（294 个构建输入，SHA-256 `702b951ac01bdceab682e2aca632a01a3d74a9083834df630d0f4600af4a4f8c`）依次完成门禁、构建与产物验证（HEAD 仍为 `6d423bb`，工作区改动与新模块另行提交）：
+2026-10-05 本轮收尾已对**同一份源码内容**（294 个构建输入，SHA-256 `702b951ac01bdceab682e2aca632a01a3d74a9083834df630d0f4600af4a4f8c`）依次完成门禁、构建与产物验证，并随提交 `7067679` 保存（此前 HEAD 为 `6d423bb`）：
 
 - 源码门禁：`pnpm check` 全部通过——`typecheck`（含 `typecheck:ipc`）、`lint`、清单内 `format:check`、`check:code`（12 项工程反例，preload 20 个白名单方法），Vitest **89 文件 / 765 项通过、0 跳过**。
 - 生产构建：`pnpm build:learning` 产出 BUILD_ID `XTlrKzxq10meglOGXaEWK`。
