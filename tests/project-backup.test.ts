@@ -251,6 +251,31 @@ describe('project directory backup and restore', () => {
     ).rejects.toMatchObject({ reason: 'path_unavailable' });
   });
 
+  it('refuses a hand built container that omits its own database or manifest', async () => {
+    await create();
+    const payload = join(backup, 'project');
+    const filler = {
+      path: 'exports/note.md',
+      byteLength: 3,
+      sha256: '0'.repeat(64),
+      kind: 'derived_export' as const,
+    };
+    rmSync(projectPaths(payload).databaseFile);
+    editManifest((manifest) => {
+      manifest.files = manifest.files.filter((file) => file.path !== '.study/study.db');
+      manifest.files.push(filler);
+    });
+    await expect(restore()).rejects.toMatchObject({ reason: 'missing_database' });
+    rmSync(backup, { recursive: true, force: true });
+    await create();
+    rmSync(join(payload, 'project.json'));
+    editManifest((manifest) => {
+      manifest.files = manifest.files.filter((file) => file.path !== 'project.json');
+      manifest.files.push(filler);
+    });
+    await expect(restore()).rejects.toMatchObject({ reason: 'invalid_project_manifest' });
+  });
+
   it('verifies BLOB digests even when the container file digest was recomputed', async () => {
     store.putClassroomAsset(PROJECT.projectId, 'asset_test', 'image/png', {}, Buffer.from('asset'));
     await create();

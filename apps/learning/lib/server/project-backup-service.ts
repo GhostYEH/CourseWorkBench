@@ -43,16 +43,17 @@ export const restoreBackupProject = (
   backupPath: string,
   targetPath: string,
 ) => {
-  const active = getSession();
   if (scope) assertScope(scope);
-  else if (active) throw new StudyError('PROJECT_GENERATION_STALE');
-  return execute(() =>
-    restoreProjectBackup({
+  else if (getSession()) throw new StudyError('PROJECT_GENERATION_STALE');
+  return execute(() => {
+    // assertScope 可能刚按环境引导出会话，保护根必须在授权之后即时读取，不能取授权前的快照。
+    const active = getSession();
+    return restoreProjectBackup({
       backupRoot: backupPath,
       destinationRoot: targetPath,
       expectedUid: getLearnerProfile().uid,
       // A restore must not publish a second project inside the one that is open right now.
       protectedRoots: active ? [active.displayPath] : [],
-    }),
-  );
+    });
+  });
 };

@@ -128,11 +128,14 @@ describe('native project backup selectors and grants', () => {
     const workspace = mkdtempSync(join(tmpdir(), 'sew-native-backup-path-'));
     try {
       const published = join(realpathSync(workspace), 'published');
-      mkdirSync(published);
       const spelled = join(workspace, '..', basename(workspace), 'published');
       const f = fixture();
       f.dialog.showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: spelled });
-      f.request.mockImplementationOnce(async () => ({ destinationRoot: published }));
+      // The directory only exists after the service publishes it, exactly as in production.
+      f.request.mockImplementationOnce(async () => {
+        mkdirSync(published);
+        return { destinationRoot: published };
+      });
       await expect(f.call('exportsBackupProject')).resolves.toBe(spelled);
 
       const g = fixture();

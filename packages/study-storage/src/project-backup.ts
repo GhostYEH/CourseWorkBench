@@ -207,7 +207,12 @@ const openReadonly = (file: string): SqlDatabase => {
   const builtin = process.getBuiltinModule('node:sqlite') as unknown as {
     DatabaseSync: new (file: string, options: { readOnly: boolean }) => SqlDatabase;
   };
-  return new builtin.DatabaseSync(file, { readOnly: true });
+  try {
+    return new builtin.DatabaseSync(file, { readOnly: true });
+  } catch {
+    // A caller supplied container may hold a non-database or absent file; refuse diagnosably, not as a fault.
+    return fail('database_unreadable');
+  }
 };
 type Row = Record<string, unknown>;
 const rows = (db: SqlDatabase, sql: string): Row[] => db.prepare(sql).all() as Row[];
@@ -422,7 +427,13 @@ const copyFiles = (source: string, target: string, files: string[]): void => {
 };
 /** Publish the fully verified stage with one rename, so a fault never leaves a half-written destination. */
 const publish = (staged: string, destination: string): void => {
-  renameSync(staged, destination);
+  try {
+    renameSync(staged, destination);
+  } catch {
+    // A destination that appeared after the reservation check stays a refusal, and so does an OS lock.
+    if (existsSync(destination)) fail('destination_exists');
+    fail('publish_failed');
+  }
 };
 const result = (manifest: ProjectBackupManifest, destinationRoot: string): ProjectBackupResult => ({
   projectId: manifest.project.projectId,
@@ -517,6 +528,9 @@ export const restoreProjectBackup = async (
     if (kindOf(file.path) !== file.kind || paths.has(normalized)) fail('invalid_file_manifest');
     paths.add(normalized);
   }
+  // Without these two entries the read path would hit raw fs/SQLite faults instead of a reason.
+  if (!paths.has('project.json')) fail('invalid_project_manifest');
+  if (!paths.has('.study/study.db')) fail('missing_database');
   const actual = inventory(payload);
   const declared = new Map(manifest.files.map((file) => [file.path, file]));
   if (
