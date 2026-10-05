@@ -200,6 +200,9 @@ productionDescribe('课程审核界面（生产构建 SSR）', () => {
     expect(html).toContain('退回');
     expect(html).toContain('需先审核通过才能发布');
     expect(html).not.toContain('发布 v1');
+    // 逐场景改写在页面上可达：它以本版本为基线派生新草案，而不是就地改写已发布内容。
+    expect(html).toContain('逐场景改写（派生新草案版本）');
+    expect(html).toContain('派生新草案');
     // 生成入口按事实提示：本环境没有配置模型连接，按钮必须说明原因而不是假装可用。
     expect(html).toContain('课程草案生成');
     expect(html).toContain('尚未配置模型连接');

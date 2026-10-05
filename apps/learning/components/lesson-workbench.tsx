@@ -23,6 +23,7 @@ import type {
 import { Empty, Notice } from './ui';
 import { apiFetch, describeApiError } from '../lib/client';
 import { FormalInteractionAuthor } from './formal-interaction-author';
+import { LessonSceneRevision } from './lesson-scene-revision';
 
 interface StatementRow {
   knowledgeId: string;
@@ -99,6 +100,10 @@ export const LessonWorkbench = ({
   const [busy, setBusy] = useState(false);
 
   const activeBundle = bundles.find((bundle) => bundle.bundleId === bundleId) ?? null;
+
+  /** 该版本冻结时使用的证据包内容；取不到就没有可逐场景勾选的陈述。 */
+  const versionBundle = (lesson: LessonVersionDto) =>
+    bundles.find((item) => item.bundleId === lesson.bundleId)?.bundle ?? null;
 
   const call = async (
     body: { action: keyof typeof LESSON_RESPONSES } & Record<string, unknown>,
@@ -411,6 +416,25 @@ export const LessonWorkbench = ({
                           </>
                         ) : null}
                       </div>
+                      {versionBundle(lesson) ? (
+                        <LessonSceneRevision
+                          key={`${lesson.lessonId}-v${lesson.version}-revise`}
+                          bundle={versionBundle(lesson)!}
+                          lesson={lesson}
+                          busy={busy}
+                          onRevise={(nextTitle, statementIds) => void call(
+                            {
+                              action: 'draft',
+                              lessonId: lesson.lessonId,
+                              bundleId: lesson.bundleId,
+                              title: nextTitle,
+                              statementIds,
+                              questionIds: lesson.questionIds,
+                            },
+                            `已从 v${lesson.version} 派生新的草案版本，需重新审核后才会生效；旧版本保持不变。`,
+                          )}
+                        />
+                      ) : null}
                     </td>
                   </tr>
                 );

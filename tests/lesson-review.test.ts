@@ -224,6 +224,56 @@ describe('课程审核、发布与撤回', () => {
     expectCode(() => store.getLessonReview(lesson.lessonId, lesson.version, projectId), 'INTERNAL');
   });
 
+  it('逐场景改写派生新草案：旧已发布版本不变，新版本要自己的审核', () => {
+    const wide = store.buildLessonBundle(
+      projectId,
+      [
+        { knowledgeId, text: '增函数的定义', conditions: '同一区间 D 内' },
+        { knowledgeId, text: '第二条范围说明', conditions: '同一区间 D 内' },
+      ],
+      [],
+    );
+    expect(wide.bundle.statements).toHaveLength(2);
+    const first = store.createLessonDraft({
+      projectId,
+      lessonId: null,
+      title: '函数单调性（两个场景）',
+      bundleId: wide.bundleId,
+      statementIds: wide.bundle.statements.map((statement) => statement.statementId),
+      questionIds: [],
+    });
+    review(first.lessonId, first.version);
+    store.publishLesson({ projectId, lessonId: first.lessonId, version: first.version });
+
+    const kept = wide.bundle.statements[1]!.statementId;
+    const revised = store.createLessonDraft({
+      projectId,
+      lessonId: first.lessonId,
+      title: '函数单调性（只讲第二条）',
+      bundleId: wide.bundleId,
+      statementIds: [kept],
+      questionIds: [],
+    });
+    expect(revised.version).toBe(first.version + 1);
+    expect(revised.status).toBe('draft');
+    expect(revised.statementIds).toEqual([kept]);
+    const rows = store.listLessonVersions(first.lessonId, projectId);
+    expect(rows.find((row) => row.version === first.version)?.status).toBe('published');
+    expectCode(
+      () => store.publishLesson({ projectId, lessonId: first.lessonId, version: revised.version }),
+      'CLASSROOM_LESSON_NOT_REVIEWED',
+      'lesson_version_not_approved',
+    );
+
+    review(revised.lessonId, revised.version);
+    store.publishLesson({ projectId, lessonId: first.lessonId, version: revised.version });
+    const after = store.listLessonVersions(first.lessonId, projectId);
+    expect(after.find((row) => row.version === first.version)?.status).toBe('superseded');
+    const ready = store.assertLessonClassroomReady(first.lessonId, projectId);
+    expect(ready.lesson.version).toBe(revised.version);
+    expect(ready.referencedKnowledgeIds).toEqual([knowledgeId]);
+  });
+
   it('来源更新后审核入口按准入阻断，批准不能放行失效来源', () => {
     const lesson = draft();
     store.importMaterial({
