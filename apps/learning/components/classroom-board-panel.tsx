@@ -130,11 +130,14 @@ const ClassroomBoardPanelContent = ({
   generation,
   session,
   playbackDisabled = false,
+  onEffectsChange = null,
 }: {
   projectId: string;
   generation: number;
   session: ClassroomSessionDto;
   playbackDisabled?: boolean;
+  /** 把已审核并播放的效果交给画布，教师聚焦才能作用在冻结场景的真实元素上。 */
+  onEffectsChange?: ((effects: ClassroomBoardStateDto['effects']) => void) | null;
 }): ReactNode => {
   const [state, setState] = useState<ClassroomBoardStateDto | null>(null);
   const [statementIds, setStatementIds] = useState<string[]>([]);
@@ -167,6 +170,7 @@ const ClassroomBoardPanelContent = ({
       );
       if (signal.aborted || turn !== epoch.current) return;
       setState(result.state);
+      onEffectsChange?.(result.state.effects);
       setStatementIds(result.statementIds);
       setStatementId((old) =>
         result.statementIds.includes(old) ? old : (result.statementIds[0] ?? ''),
@@ -176,7 +180,7 @@ const ClassroomBoardPanelContent = ({
         result.elementIds.includes(old) ? old : (result.elementIds[0] ?? ''),
       );
     },
-    [session.sessionId, projectId, generation],
+    [session.sessionId, projectId, generation, onEffectsChange],
   );
   useEffect(() => {
     const epochRef = epoch;
@@ -192,8 +196,10 @@ const ClassroomBoardPanelContent = ({
       abort.abort();
       epochRef.current += 1;
       controllers.forEach((controller) => controller.abort());
+      // 面板随会话或场景卸载时收回效果，画布不能继续高亮已经不属于这里的播放动作。
+      onEffectsChange?.([]);
     };
-  }, [refresh]);
+  }, [refresh, onEffectsChange]);
   const command = async (body: Record<string, unknown>): Promise<void> => {
     if (lock.current) return;
     lock.current = true;

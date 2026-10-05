@@ -8,15 +8,28 @@ import { InteractiveSceneView } from './InteractiveSceneView';
 
 export type ClassroomScene = Scene<Action, SlideContent | QuizContent | InteractiveContent>;
 
+/**
+ * 上游 SlideCanvas 的 effects 只认画布里真实存在的元素：线型元素没有可框住的矩形，
+ * 改用按几何定位的聚光；文档里找不到该元素时不高亮，绝不凭客户端字段凭空指对象。
+ */
+const slideEffects = (scene: ClassroomScene, elementId: string | null) => {
+  if (!elementId || scene.type !== 'slide' || scene.content.type !== 'slide') return undefined;
+  const element = scene.content.canvas.elements.find((item) => item.id === elementId);
+  if (!element) return undefined;
+  return element.type === 'line' ? { spotlight: { elementId } } : { highlights: [{ elementId }] };
+};
+
 /** Adapted from OpenMAIC's components/stage/scene-renderer.tsx discriminant dispatcher. */
 export function SceneRenderer({
   scene,
   bindings,
   scope,
+  focusElementId = null,
 }: {
   scene: ClassroomScene;
   bindings: ClassroomSceneBinding[];
   scope: { projectId: string; generation: number };
+  focusElementId?: string | null;
 }) {
   const binding = bindings.find((item) => item.sceneId === scene.id);
   switch (scene.type) {
@@ -25,7 +38,7 @@ export function SceneRenderer({
         <div className="card" data-scene="slide" data-scene-id={scene.id}>
           <h2>{scene.title}</h2>
           <div style={{ width: '100%', aspectRatio: '16 / 9', background: 'var(--sew-surface-document)' }}>
-            <SlideCanvas slide={scene.content.canvas} />
+            <SlideCanvas slide={scene.content.canvas} effects={slideEffects(scene, focusElementId)} />
           </div>
           <p className="muted">本页的来源与审核记录见右侧。</p>
         </div>

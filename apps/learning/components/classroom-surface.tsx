@@ -22,8 +22,9 @@ import Link from 'next/link';
 import { HttpAssetStore } from '@openmaic/storage/asset/http';
 import { HttpDocumentStore } from '@openmaic/storage/document/http';
 import type { Action, InteractiveContent, QuizContent, Scene, SlideContent } from '@openmaic/dsl';
-import type { ClassroomSceneBinding } from '@sew/study-contracts';
+import type { ClassroomSceneBinding, ClassroomBoardEffectDto } from '@sew/study-contracts';
 import { apiFetch, getSessionToken, waitForSessionToken } from '../lib/client';
+import { resolveActiveBoardFocus } from '../lib/classroom/board-focus';
 import { Stage } from './openmaic-adaptation/Stage';
 import { SceneRenderer } from './openmaic-adaptation/SceneRenderer';
 import { runClassroomLoad } from './openmaic-adaptation/classroom-load-lifecycle';
@@ -102,6 +103,8 @@ export const ClassroomSurface = ({
 }) => {
   const [scenes, setScenes] = useState<LessonScene[] | null>(null);
   const [sceneId, setSceneId] = useState(initialSceneId);
+  // 白板效果由教师面板的白板卡上报；画布只按当前场景挑选生效的那一条。
+  const [boardEffects, setBoardEffects] = useState<ClassroomBoardEffectDto[]>([]);
   const releaseLoadRef = useRef<(() => void) | null>(null);
   const lifecycleRef = useRef(createClassroomLifecycle());
   const activeLeaseRef = useRef<ClassroomLifecycleLease | null>(null);
@@ -296,6 +299,7 @@ export const ClassroomSurface = ({
   const loadError = host.error ?? (host.notFound ? '课堂文档不存在：课件未落到当前项目。' : null);
 
   const current = scenes?.find((scene) => scene.id === sceneId) ?? scenes?.[0] ?? null;
+  const activeFocus = current ? resolveActiveBoardFocus(boardEffects, current.id) : null;
   const currentBinding = bindings.find((binding) => binding.sceneId === current?.id) ?? null;
 
   const persistPosition = useCallback(
@@ -436,8 +440,15 @@ export const ClassroomSurface = ({
                   scene={current}
                   bindings={bindings}
                   scope={{ projectId, generation }}
+                  focusElementId={activeFocus?.elementId ?? null}
                 />
               </Stage>
+              {activeFocus ? (
+                <p className="muted" role="status" data-canvas-focus={activeFocus.elementId}>
+                  <span aria-hidden>◆</span>
+                  {`教师已聚焦本页元素（第 ${activeFocus.seq} 步）。高亮只表示注意力，不改变内容或判分。`}
+                </p>
+              ) : null}
             </>
           ) : null}
         </div>
@@ -490,6 +501,7 @@ export const ClassroomSurface = ({
                 sceneId={current?.id ?? ''}
                 compact
                 onSceneChange={(nextSceneId: string) => void selectScene(nextSceneId)}
+                onBoardEffects={setBoardEffects}
               />
             ) : (
               <p className="role-say">

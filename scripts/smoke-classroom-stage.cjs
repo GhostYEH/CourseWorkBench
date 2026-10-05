@@ -92,9 +92,19 @@ module.exports = async ({ window, origin, projectDirectory, serviceRequest, wait
     await click(`[data-board-item="${draft.itemId}"] [data-board-play]`);
     await waitFor(`document.querySelectorAll('[data-board-effect]').length === ${kind === 'formula' ? 2 : 3}`, '新白板内容没有显示到课堂');
     if (kind === 'formula') assert(await execute(`Boolean(document.querySelector('[data-board-canvas] [data-board-formula] .katex'))`), '公式没有使用数学排版');
-    else assert(current.elementIds.includes(draft.content.elementId), '聚焦内容没有绑定当前冻结场景的元素');
+    else {
+      assert(current.elementIds.includes(draft.content.elementId), '聚焦内容没有绑定当前冻结场景的元素');
+      // 聚焦必须在画布上真的生效：状态标记指向的元素由 SlideCanvas 渲染，并且出现高亮框。
+      await waitFor(`document.querySelector('[data-canvas-focus]')?.getAttribute('data-canvas-focus') === ${JSON.stringify(draft.content.elementId)}`, '教师聚焦没有在课堂视图生效');
+      const painted = await execute(`(() => ({
+        inCanvas: Boolean(document.getElementById('slide-element-' + ${JSON.stringify(draft.content.elementId)})),
+        overlay: Boolean(document.querySelector('[data-scene="slide"] .highlight-overlay')),
+      }))()`);
+      assert(painted.inCanvas, '教师聚焦指向的元素不在冻结画布里');
+      assert(painted.overlay, '教师聚焦没有在画布上画出高亮');
+    }
   }
-  cover('board formula/focus: native approved math rendering and source-scene element binding');
+  cover('board formula/focus: native approved math rendering, source-scene element binding and real canvas highlight');
   await clickText('交还本人');
   await waitForText('已恢复等待本人作答', '恢复核对没有保持等待');
   assert(await execute(`[...document.querySelectorAll('button')].find(button => button.textContent.trim()==='播放下一张讲解').disabled`), '等待本人时教师播放仍可操作');
@@ -114,6 +124,7 @@ module.exports = async ({ window, origin, projectDirectory, serviceRequest, wait
   await click(`button.tab[data-scene-id="${quizScenes[0].sceneId}"]`);
   await clickText('切换到场景（', true);
   await waitForText('已切换到场景', '切场景命令没有返回明确结果');
+  await waitFor(`!document.querySelector('[data-canvas-focus]')`, '切换场景后教师聚焦仍然高亮别的场景元素');
   const advanced = await serviceRequest('GET', roomQuery(room.roomId));
   const advancedSession = await serviceRequest('GET', classroomQuery(room.roomId));
   assert(advanced.rooms.find(item => item.roomId === room.roomId)?.currentSceneId === quizScenes[0].sceneId && advancedSession.state?.session.currentSceneId === quizScenes[0].sceneId,

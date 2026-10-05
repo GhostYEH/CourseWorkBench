@@ -14,6 +14,7 @@ import type { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import type {
   ClassroomStateDto,
+  ClassroomBoardEffectDto,
   ClassroomSessionStatus,
   ExplanationCardDto,
   RecoveryCheckpointDto,
@@ -59,6 +60,7 @@ const ClassroomPanelContent = ({
   sceneId,
   compact = false,
   onSceneChange = null,
+  onBoardEffects = null,
   roomId,
 }: {
   projectId: string;
@@ -71,6 +73,8 @@ const ClassroomPanelContent = ({
   roomId?: string;
   /** 教师切换场景时同步课堂视图；没有回调时只更新服务状态。 */
   onSceneChange?: ((sceneId: string) => void) | null;
+  /** 白板效果上报给画布，教师聚焦才能作用在冻结场景的真实元素上。 */
+  onBoardEffects?: ((effects: ClassroomBoardEffectDto[]) => void) | null;
 }): ReactNode => {
   const router = useRouter();
   const [state, setState] = useState<ClassroomStateDto | null>(null);
@@ -438,6 +442,7 @@ const ClassroomPanelContent = ({
           generation={generation}
           session={session}
           playbackDisabled={teachingDisabled}
+          onEffectsChange={onBoardEffects}
         />
       ) : null}
       {session && state ? (
