@@ -84,7 +84,7 @@
       "category": "generation",
       "name": "大纲生成、预览与人工调整",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "B",
       "upstreamPaths": [
         "app/api/generate-classroom",
@@ -92,7 +92,10 @@
         "lib/server/scene-generation.ts"
       ],
       "acceptance": "大纲可修改再生成，稳定条目标识不靠序号映射",
-      "evidence": []
+      "evidence": [
+        "人工调整已落地为「逐场景派生新草案」：apps/learning/components/lesson-scene-revision.tsx 以版本冻结的证据包陈述为候选，按稳定 statementId（不是场景序号）勾选组成，提交既有 draft 命令追加 lessonId 的新版本；旧已发布版本保持不变，新版本必须重新审核才能发布（store.publishLesson + domain.assertLessonPublishable 的 lesson_version_not_approved）。tests/lesson-review.test.ts 覆盖缩减场景的派生与重新审核，tests/lesson-review-page.test.ts 断言生产 SSR 页面出现该入口。",
+        "模型生成大纲与陈述正文级改写仍未实现，故为 partial 而不是完成。"
+      ]
     },
     {
       "id": "OMA-006",
@@ -547,7 +550,7 @@
       "category": "classroom",
       "name": "聚光灯/激光笔/聚焦与动作编排",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "C",
       "upstreamPaths": [
         "components/classroom/ClassroomSurface.tsx",
@@ -558,7 +561,10 @@
         "lib/whiteboard"
       ],
       "acceptance": "目标存在且动作可播放/撤销或恢复",
-      "evidence": []
+      "evidence": [
+        "聚焦分支已接通真实画布：白板 focus 动作经服务端核对元素必须存在于该冻结课件（store.assertClassroomBoardBinding），审核播放后由 apps/learning/lib/classroom/board-focus.ts 取「本场景 seq 最大的效果」，SceneRenderer 用上游 SlideCanvas 的 effects 画高亮框、线型元素退化为聚光，文档中不存在的 id 一律不高亮；切场景即收回。scripts/smoke-classroom-stage.cjs 断言 [data-canvas-focus]、slide-element 存在与 .highlight-overlay 出现，纯函数分支由 tests/classroom-board-focus.test.ts 覆盖。",
+        "激光笔、按动作撤销/重放的聚焦控制仍未实现，故为 partial 而不是完成。"
+      ]
     },
     {
       "id": "OMA-033",

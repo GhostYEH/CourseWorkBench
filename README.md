@@ -116,15 +116,17 @@ M1 已补严格 UTF-8 解码、空正文拒绝、不可变材料历史版本和�
 
 ## 当前验证
 
-2026-10-05 接手验收在提交 `7067679`（并行任务收尾的整合提交，此前 HEAD 为 `6d423bb`）之上继续改码，并对**当前源码内容**（295 个构建输入，SHA-256 `9ace3e7d8e00f714304188a057fbae4504923249e434bce1b84a4069f825b710`）**串行**重跑整条验证链：
+2026-10-05 接手验收分两轮串行完成，**当前有效范围是第二轮**：源码摘要 `e4c16b9afc04872cac831dc0ba55a4bc00352282ed4d10dbf64906bc5c4dc9dc`（296 个构建输入，BUILD_ID `ZKaOpeXzGh5CceqwlkybN`）。第一轮（摘要 `9ace3e7d…b710`、BUILD_ID `9s6BSq2Fe6_DyXXzB3Wyj`）在同一提交序列内被第二轮取代；更早的 `702b951a…4f8c` 与 `7pcrnRklHsFNwJgze483G`、`XTlrKzxq10meglOGXaEWK`、`0NaV76pOveX7LuPE577M_` 只作历史，不再代表当前版本。
 
-- 源码门禁：`pnpm typecheck`（含 `typecheck:ipc`）、`pnpm lint`、清单内 `pnpm format:check`、`pnpm check:code`（12 项工程反例）全部通过；`pnpm check` 的 Vitest 为 **90 文件 / 771 项通过、0 跳过**（含生产 HTTP 边界 13 项按当前产物实际执行）。
-- 生产构建：`pnpm build:learning` 产出 BUILD_ID `9s6BSq2Fe6_DyXXzB3Wyj`，构建输入摘要与源码指纹一致后才记录凭据；旧 BUILD_ID `7pcrnRklHsFNwJgze483G`、`XTlrKzxq10meglOGXaEWK`、`0NaV76pOveX7LuPE577M_` 不再代表当前版本。
-- 原生冒烟：`node scripts/run-electron-boundary-smoke.cjs` **36 组通过**，新增一组断言教师聚焦在真实画布上生效（`board formula/focus: ... and real canvas highlight`）；备份/恢复真实 native 链路与模型配置回执/密钥清空继续通过，全程不发远程调用。同一产物首次运行（10:07）以渲染脚本报错失败、随即两次重跑均通过且期间源码未变，原因未确定，按瞬时竞态登记为待观察项而不是功能结论。
-- 随包服务：`node scripts/prepare-learning-dist.mjs`（布局校验通过 BUILD_ID 同上）后 `node scripts/verify-learning-dist.mjs` **14/14 通过**。
-- 目录包与随包课堂：`pnpm package:desktop` 后复制到新的 stage 目录 `apps/desktop/release/m4-integration-2026-10-05b/win-unpacked` 再验，`verify-packaged-desktop` **30/30**、`verify-classroom-desktop` **50/50**；原 `win-unpacked` 与既有安装程序未被覆盖，也不做升级安装。
+- 源码门禁：`pnpm typecheck`（含 `typecheck:ipc`）、`pnpm lint`、清单内 `pnpm format:check`、`pnpm check:code`（12 项工程反例）全部通过；`pnpm check` 的 Vitest 为 **90 文件 / 772 项通过、0 跳过**（含按当前产物实际执行的生产 HTTP 边界 13 项与课程审核 SSR）。
+- 生产构建：`pnpm build:learning` 每轮都在输入未变化时才记录摘要，产物凭据与源码指纹一致。
+- 原生冒烟：`node scripts/run-electron-boundary-smoke.cjs` **36 组通过**，新增一组断言教师聚焦在真实画布上生效（`board formula/focus: ... and real canvas highlight`）；备份/恢复真实 native 链路与模型配置回执/密钥清空继续通过，全程不发远程调用。上一轮同一产物首次运行（10:07）以渲染脚本报错失败、随即重跑通过且期间源码未变，本轮首跑即通过；机制仍未确定，按瞬时竞态保留为待观察项而不是功能结论。
+- 随包服务：`node scripts/prepare-learning-dist.mjs`（布局校验通过 BUILD_ID `ZKaOpeXzGh5CceqwlkybN`）后 `node scripts/verify-learning-dist.mjs` **14/14 通过**。
+- 目录包与随包课堂：`pnpm package:desktop` 后复制到新的 stage 目录 `apps/desktop/release/m4-integration-2026-10-05c/win-unpacked` 再验，`verify-packaged-desktop` **30/30**、`verify-classroom-desktop` **50/50**；原 `win-unpacked` 与既有安装程序未被覆盖或安装，也不做升级安装。
 
-本轮接手所做的整合与修复：备份/恢复不再允许把副本发布进**当前打开的项目**（`destination_in_open_project`）、缺失或不可读路径给出可诊断拒绝而不是 500（`path_unavailable`）、暂存改为**单次 rename 发布**消除半发布窗口、只读打开容器数据库失败归入 `database_unreadable`、手工构造却缺少自身清单或数据库的容器在读取前被拒、容器版本改用 `PROJECT_BACKUP_VERSION` 常量；主进程确认备份/恢复回显时改用真实路径比较，消除目录联接或盘符大小写导致的「已成功却报失败」；`apps/learning/tsconfig.json` 排除 `dist` 产物树，修掉「先 build 再 check」顺序下 `pnpm typecheck` 检查产物内复制源码而误报的缺陷。独立只读复核另发现的两项（`onSuccess` 抛错会被当作操作失败、未迁移组件的手写 busy 标志）经核实当前不可达：项目切换走整文档导航且服务侧代次复验拒绝旧写入，故只登记不改动，避免无收益重构。
+本轮接手所做的整合与修复：备份/恢复不再允许把副本发布进**当前打开的项目**（`destination_in_open_project`）、缺失或不可读路径给出可诊断拒绝而不是 500（`path_unavailable`）、暂存改为**单次 rename 发布**消除半发布窗口、只读打开容器数据库失败归入 `database_unreadable`、手工构造却缺少自身清单或数据库的容器在读取前被拒、容器版本改用 `PROJECT_BACKUP_VERSION` 常量；主进程确认备份/恢复回显时改用真实路径比较，消除目录联接或盘符大小写导致的「已成功却报失败」；`apps/learning/tsconfig.json` 排除 `dist` 产物树，修掉「先 build 再 check」顺序下 `pnpm typecheck` 检查产物内复制源码而误报的缺陷。本轮接手新增两项产品能力：**教师聚焦作用到真实画布元素**（`apps/learning/lib/classroom/board-focus.ts` 解析「本场景中 seq 最大的已播放 focus 效果」，`SceneRenderer` 经上游 `SlideCanvas` 的 `effects` 画高亮框、线型元素退化为聚光，冻结文档里查不到的元素 id 一律不高亮，切场景即收回并给出文本状态）；**逐场景改写派生新草案版本**（`apps/learning/components/lesson-scene-revision.tsx` 以稳定 statementId 勾选场景，走 `draft` 命令追加版本，旧已发布版本保持不变、新版本必须重新审核才能发布）。
+
+独立只读复核另发现的两项（`onSuccess` 抛错会被当作操作失败、未迁移组件的手写 busy 标志）经核实当前不可达：项目切换走整文档导航且服务侧代次复验拒绝旧写入，故只登记不改动，避免无收益重构。
 
 历史 697/699 测试、34 组冒烟与 `stage-handoff-2026-10-04` 目录包不作为当前签核。真实材料金标准、真人双设备与独立干净 Windows 仍按既有暂缓条件保留；未调用真实付费 provider。准确状态、剩余项与下一步见[全面优化交接](docs/optimization-handoff-2026-10-05.md)与[待办事项](docs/待办事项.md)。既有审查报告保持删除。
 
@@ -132,7 +134,7 @@ M1 已补严格 UTF-8 解码、空正文拒绝、不可变材料历史版本和�
 
 - M0 剩余：无开发 Node 的独立干净 Windows 安装/错误恢复验收；正式材料语义审核与独立环境风险仍需签核。当前 M0 宿主流程不代表完整 OpenMAIC 接入
 - M1：主要工作台闭环已有实现；仍需真实考纲与科目材料走查、安装态打开原文与角色设置走查，以及大媒体存储与随包备份策略，尚未整体验收完成
-- M2：逐场景文档改写、其余互动/PBL，以及当前产物和真实整课验收。画布实际聚焦已落地（教师聚焦只在所指冻结场景的真实元素上高亮，切场景即收回，随包冒烟实际断言）
+- M2：模型完整课件草案生成与陈述正文级改写、其余互动/PBL，以及当前产物和真实整课验收。已落地：教师聚焦作用于真实画布元素（高亮随冻结场景生效、切场景收回）、以稳定条目标识逐场景勾选派生新草案版本并强制重新审核
 - M3：受控模型同学讨论、复习调度、完整冻结配置计量与费用依据、整应用故障和在线身份/邀请/同步/交流
 - M4：冻结评测与合成机械工具已有实现；仍需当前产物走查、真实金标准、完整故障矩阵、Windows 安装验收和演示录屏
 
