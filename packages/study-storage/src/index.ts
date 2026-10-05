@@ -42,3 +42,4 @@ export type { DecodeResult } from './json-codec';
 export { ClassroomBoardRepository } from './repositories/classroom-board';
 export type { CreateClassroomBoardInput, ReviewClassroomBoardInput, PlayClassroomBoardInput } from './repositories/classroom-board';
 export type { StartModelUsageCallInput, SettleModelUsageCallInput } from './repositories/model-usage';
+export type { SaveScenePlanInput, CreateCoursewareCandidateInput } from './repositories/lesson-scene-plan';

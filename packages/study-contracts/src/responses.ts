@@ -16,7 +16,7 @@ import {
   evidenceBundleRowSchema, lessonReviewRecordSchema, lessonVersionSchema, LESSON_STATUS,
   formalLessonDocumentSchema, statementRevisionCandidateSchema,
 } from './lesson';
-import {
+import { scenePlanSchema, coursewareCandidateSchema } from './scene-plan';import {
   PEER_ENGAGEMENT, classroomPeerTurnSchema, classroomSessionSchema, classroomStateSchema, explanationCardSchema,
 } from './teaching';
 import { recoveryCheckpointSchema } from './recovery';
@@ -105,6 +105,20 @@ export const apiResponses = {
     candidate: statementRevisionCandidateSchema,
     /** 通过并派生时给出新草案版本；拒绝时为 null。 */
     lesson: lessonVersionSchema.nullable(),
+    deduplicated: z.boolean(),
+  }).strict(),
+  /** 场景计划保存（OMA-021、OMA-022）：返回推进 revision 后的权威计划。 */
+  lessonScenePlan: z.object({ plan: scenePlanSchema }).strict(),
+  /** 完整课件候选生成（OMA-006）：失败时 candidate 为 null，原因在 generation.message。 */
+  lessonCoursewarePropose: z.object({
+    candidate: coursewareCandidateSchema.nullable(),
+    generation: modelGenerationResultSchema,
+    deduplicated: z.boolean(),
+  }).strict(),
+  /** 完整课件候选处置：通过时给出写入后的场景计划，拒绝时为 null。 */
+  lessonCoursewareApply: z.object({
+    candidate: coursewareCandidateSchema,
+    plan: scenePlanSchema.nullable(),
     deduplicated: z.boolean(),
   }).strict(),
   explanationWrite: z.object({ card: explanationCardSchema }).strict(),

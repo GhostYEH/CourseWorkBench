@@ -37,6 +37,8 @@ type RoleKind,
 type RunEventPayloadDto,
 type RunState,
 type StatementRevisionCandidateDto,
+type CoursewareCandidateDto,
+type ScenePlanDto,
 } from '@sew/study-contracts';
 import {
 assertCardApprovable,
@@ -87,6 +89,11 @@ import {
 LessonStatementRevisionRepository,
 type CreateStatementRevisionInput,
 } from './repositories/lesson-statement-revision';
+import {
+LessonScenePlanRepository,
+type CreateCoursewareCandidateInput,
+type SaveScenePlanInput,
+} from './repositories/lesson-scene-plan';
 import { ModelUsageRepository,type ModelUsageLimits,type SettleModelUsageCallInput,type StartModelUsageCallInput } from './repositories/model-usage';
 import { PlansRepository } from './repositories/plans';
 import { PreferencesRepository } from './repositories/preferences';
@@ -192,6 +199,7 @@ export class StudyStore {
   private readonly roles: RoleRepository;
   private readonly lessons: LessonRepository;
   private readonly lessonRevisions: LessonStatementRevisionRepository;
+  private readonly scenePlans: LessonScenePlanRepository;
   private readonly teaching: TeachingRepository;
   private readonly syllabus: SyllabusRepository;
   private readonly classroom: ClassroomRepository;
@@ -222,6 +230,7 @@ export class StudyStore {
     this.roles = new RoleRepository(db);
     this.lessons = new LessonRepository(db);
     this.lessonRevisions = new LessonStatementRevisionRepository(db);
+    this.scenePlans = new LessonScenePlanRepository(db);
     this.teaching = new TeachingRepository(db);
     this.syllabus = new SyllabusRepository(db);
     this.classroom = new ClassroomRepository(db);
@@ -1191,6 +1200,97 @@ export class StudyStore {
 
   listLessons(projectId: string): LessonVersionRow[] {
     return this.lessons.listLessons(projectId);
+  }
+
+  /**
+   * 保存场景计划（LESSON-02 / OMA-021、OMA-022）。
+   *
+   * 只允许改草案版本的场景计划：发布/撤回/被取代的版本一经发布即冻结历史，不能被原地改写。
+   * 计划与冻结证据包相容性（陈述/题目在本版本已选范围内、知识点由服务端沿用）由调用方
+   * 用领域层判定，本层只负责版本状态与乐观并发。
+   */
+  saveScenePlan(input: SaveScenePlanInput): ScenePlanDto {
+    const lesson = this.lessons.getVersion(input.lessonId, input.lessonVersion, input.projectId);
+    if (!lesson) throw new StudyError('NOT_FOUND', { lessonId: input.lessonId, version: input.lessonVersion });
+    if (lesson.status !== 'draft') {
+      throw new StudyError('STEP_ALREADY_COMMITTED', { status: lesson.status, reason: 'plan_base_not_draft' });
+    }
+    return this.scenePlans.savePlan({ ...input, bundleId: lesson.bundleId });
+  }
+
+  getScenePlan(projectId: string, lessonId: string, lessonVersion: number): ScenePlanDto | null {
+    return this.scenePlans.getPlan(projectId, lessonId, lessonVersion);
+  }
+
+  listProjectScenePlans(projectId: string): ScenePlanDto[] {
+    return this.scenePlans.listPlansForProject(projectId);
+  }
+
+  /** 生成完整课件候选：只落待核区，不写入计划、不进入教学。 */
+  createCoursewareCandidate(input: CreateCoursewareCandidateInput): CoursewareCandidateDto {
+    return this.scenePlans.createCandidate(input);
+  }
+
+  getCoursewareCandidate(projectId: string, candidateId: string): CoursewareCandidateDto | null {
+    return this.scenePlans.getCandidate(projectId, candidateId);
+  }
+
+  listProjectCoursewareCandidates(projectId: string): CoursewareCandidateDto[] {
+    return this.scenePlans.listForProject(projectId);
+  }
+
+  coursewareReceipt(projectId: string, requestId: string, action: string, intent: string) {
+    return this.scenePlans.receipt(projectId, requestId, action, intent);
+  }
+
+  saveCoursewareReceipt(
+    projectId: string,
+    requestId: string,
+    action: string,
+    intent: string,
+    result: unknown,
+  ): void {
+    this.scenePlans.saveReceipt(projectId, requestId, action, intent, result);
+  }
+
+  /**
+   * 人工处置完整课件候选（OMA-006 的「通过→写入场景计划」闭环）。
+   *
+   * 通过时在同一个事务内：把调用方已按冻结证据包规范化并复验过的场景写成该草案版本的
+   * 场景计划，并把候选标记为 applied；拒绝只留档，不产生计划。
+   * 基线版本必须是草案：已发布版本的计划不被原地改写。
+   */
+  applyCoursewareCandidate(input: {
+    projectId: string;
+    candidateId: string;
+    decision: 'approved' | 'rejected';
+    note: string;
+    reviewedBy: string;
+    /** 通过时写入计划的场景（调用方已用领域层复验来源与知识点）；拒绝时为 null。 */
+    scenes: ScenePlanDto['scenes'] | null;
+  }): { candidate: CoursewareCandidateDto; plan: ScenePlanDto | null } {
+    const candidate = this.scenePlans.getCandidate(input.projectId, input.candidateId);
+    if (!candidate) throw new StudyError('NOT_FOUND', { candidateId: input.candidateId });
+    const base = this.lessons.getVersion(candidate.lessonId, candidate.baseVersion, input.projectId);
+    if (!base) throw new StudyError('NOT_FOUND', { lessonId: candidate.lessonId, version: candidate.baseVersion });
+    if (base.status !== 'draft') {
+      throw new StudyError('STEP_ALREADY_COMMITTED', { status: base.status, reason: 'courseware_base_not_draft' });
+    }
+    return this.transaction(() => {
+      const decided = this.scenePlans.decideCandidate(input);
+      if (input.decision === 'rejected' || !input.scenes) return { candidate: decided, plan: null };
+      const current = this.scenePlans.getPlan(input.projectId, candidate.lessonId, candidate.baseVersion);
+      const plan = this.scenePlans.savePlan({
+        projectId: input.projectId,
+        lessonId: candidate.lessonId,
+        lessonVersion: candidate.baseVersion,
+        bundleId: base.bundleId,
+        scenes: input.scenes,
+        origin: 'model_generated',
+        baseRevision: current?.revision ?? 0,
+      });
+      return { candidate: decided, plan };
+    });
   }
 
   listLessonVersions(lessonId: string, projectId: string): LessonVersionRow[] {

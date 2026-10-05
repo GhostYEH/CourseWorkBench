@@ -8,6 +8,7 @@ const PURPOSE_LABEL: Record<ModelUsagePurpose, string> = {
   error_attribution: '错因归因',
   review_suggestion: '复习建议',
   statement_revision: '陈述改写',
+  courseware_generation: '完整课件生成',
 };
 
 const MEASUREMENT_LABEL = { actual: '实际', estimated: '估算', unknown: '未知' } as const;

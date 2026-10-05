@@ -959,6 +959,43 @@ CREATE TABLE lesson_draft_receipts (
   lesson_id TEXT NOT NULL, version INTEGER NOT NULL, PRIMARY KEY(project_id, request_id)
 );
 ` },
+{ version: 27, name: 'lesson_scene_plans', sql: `
+-- 场景计划（LESSON-02 / OMA-006、OMA-021、OMA-022）。计划是「这一版课件由哪些场景、
+-- 按什么顺序、每个场景里有哪些元素」的可编辑草稿层：只挂在草案版本上，发布后不再改写。
+-- 场景用稳定 sceneId（不靠序号映射），增删/排序/复制/局部重生成都不改已有场景身份。
+-- revision 做乐观并发：客户端基于读到的 revision 提交，服务端已推进即拒绝。
+CREATE TABLE lesson_scene_plans (
+  project_id     TEXT NOT NULL REFERENCES projects(project_id),
+  lesson_id      TEXT NOT NULL,
+  lesson_version INTEGER NOT NULL,
+  bundle_id      TEXT NOT NULL,
+  plan_json      TEXT NOT NULL,
+  revision       INTEGER NOT NULL,
+  origin         TEXT NOT NULL CHECK (origin IN ('deterministic','model_generated')),
+  created_at     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL,
+  PRIMARY KEY (project_id, lesson_id, lesson_version)
+);
+-- 完整课件生成候选（OMA-006）。模型产物先落待核区：不写入计划、不进入教学，
+-- 人工通过才把候选场景写成该草案版本的场景计划；拒绝只留档。
+CREATE TABLE lesson_courseware_candidates (
+  candidate_id  TEXT PRIMARY KEY,
+  project_id    TEXT NOT NULL REFERENCES projects(project_id),
+  lesson_id     TEXT NOT NULL,
+  base_version  INTEGER NOT NULL,
+  status        TEXT NOT NULL CHECK (status IN ('pending','applied','rejected')),
+  candidate_json TEXT NOT NULL,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+CREATE INDEX idx_lesson_courseware_candidates_scope
+  ON lesson_courseware_candidates(project_id, lesson_id, base_version);
+-- 生成与处置的幂等收据：同一 requestId 与意图重试返回既有结果，不重复调用或写入。
+CREATE TABLE lesson_courseware_receipts (
+  project_id TEXT NOT NULL, request_id TEXT NOT NULL, action TEXT NOT NULL,
+  intent_json TEXT NOT NULL, result_json TEXT NOT NULL, PRIMARY KEY(project_id, request_id)
+);
+` },
 ];
 
 

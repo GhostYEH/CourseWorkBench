@@ -14,16 +14,20 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type {
+  CoursewareCandidateDto,
   EvidenceBundleViewDto,
   KnowledgePointDto,
   LessonReviewRecordDto,
   LessonVersionDto,
   QuestionListItemDto,
+  ScenePlanDto,
   StatementRevisionCandidateDto,
 } from '@sew/study-contracts';
 import { Empty, Notice } from './ui';
 import { apiFetch, describeApiError } from '../lib/client';
 import { FormalInteractionAuthor } from './formal-interaction-author';
+import { LessonCoursewareGeneration } from './lesson-courseware-generation';
+import { LessonScenePlanEditor } from './lesson-scene-plan-editor';
 import { LessonSceneRevision } from './lesson-scene-revision';
 import { LessonStatementRevision } from './lesson-statement-revision';
 
@@ -69,6 +73,8 @@ export const LessonWorkbench = ({
   questions,
   documents = [],
   statementRevisions = [],
+  scenePlans = [],
+  coursewareCandidates = [],
   modelConfigured = false,
 }: {
   projectId: string;
@@ -83,6 +89,10 @@ export const LessonWorkbench = ({
   documents?: Array<{ lessonId: string; lessonVersion: number; stageId: string; documentDigest: string; sceneIds: string[] }>;
   /** 陈述正文改写候选：按课程 + 版本分组展示，待核的才可处置。 */
   statementRevisions?: StatementRevisionCandidateDto[];
+  /** 场景计划：按课程 + 版本取用，草案版本可编辑。 */
+  scenePlans?: ScenePlanDto[];
+  /** 完整课件生成候选（OMA-006）：待核的才可处置。 */
+  coursewareCandidates?: CoursewareCandidateDto[];
   /** 是否已配置模型连接；未配置时改写生成按钮不可用。 */
   modelConfigured?: boolean;
 }): ReactNode => {
@@ -451,6 +461,31 @@ export const LessonWorkbench = ({
                           lesson={lesson}
                           bundle={versionBundle(lesson)!}
                           candidates={statementRevisions}
+                          configured={modelConfigured}
+                        />
+                      ) : null}
+                      {versionBundle(lesson) ? (
+                        <LessonScenePlanEditor
+                          key={`${lesson.lessonId}-v${lesson.version}-scene-plan`}
+                          projectId={projectId}
+                          generation={generation}
+                          lesson={lesson}
+                          bundle={versionBundle(lesson)!}
+                          plan={scenePlans.find(
+                            (item) => item.lessonId === lesson.lessonId && item.lessonVersion === lesson.version,
+                          ) ?? null}
+                          busy={busy}
+                          onSaved={setNote}
+                        />
+                      ) : null}
+                      {versionBundle(lesson) && lesson.status === 'draft' ? (
+                        <LessonCoursewareGeneration
+                          key={`${lesson.lessonId}-v${lesson.version}-courseware`}
+                          projectId={projectId}
+                          generation={generation}
+                          lesson={lesson}
+                          bundle={versionBundle(lesson)!}
+                          candidates={coursewareCandidates}
                           configured={modelConfigured}
                         />
                       ) : null}

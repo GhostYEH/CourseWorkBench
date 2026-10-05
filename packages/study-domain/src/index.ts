@@ -31,6 +31,11 @@ export {
   findBundleStatement, revisedStatements, assertStatementRevisionDecidable, statementRevisionPrompt,
 } from './statement-revision';
 export type { RevisedStatementInput } from './statement-revision';
+export {
+  SCENE_PLAN_LIMIT, assertRichTextSafe, assertElementSafe, assertPlanGrounded,
+  normalizeSceneOrder, planSceneId, planElementId, replaceSceneElements, duplicateScene,
+  removeScene, reorderScenes, assertPlanEditable, assertCoursewareDecidable, coursewarePrompt,
+} from './scene-plan';
 export { assertModelCallAdmitted, modelCallQuotaRemaining } from './guard';
 export type { ModelCallGuardFacts } from './guard';
 export {

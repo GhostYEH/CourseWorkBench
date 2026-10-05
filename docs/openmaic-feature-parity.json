@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedOn": "2026-10-04",
+  "recordedOn": "2026-10-05",
   "baseline": {
     "root": "F:/file/OpenMAIC-main",
     "version": "1.1.1",
@@ -95,7 +95,8 @@
       "evidence": [
         "人工调整已落地为「逐场景派生新草案」：apps/learning/components/lesson-scene-revision.tsx 以版本冻结的证据包陈述为候选，按稳定 statementId（不是场景序号）勾选组成，提交既有 draft 命令追加 lessonId 的新版本；旧已发布版本保持不变，新版本必须重新审核才能发布（store.publishLesson + domain.assertLessonPublishable 的 lesson_version_not_approved）。tests/lesson-review.test.ts 覆盖缩减场景的派生与重新审核，tests/lesson-review-page.test.ts 断言生产 SSR 页面出现该入口。",
         "陈述正文级改写闭环已落地（LESSON-02）：模型候选经 apps/learning/lib/server/lesson-revision-model.ts 复用来源/run/预算/取消守卫生成，只落待核区（lesson_statement_revisions）；人工通过后 store.applyStatementRevision 在事务内按知识点已批准证据重新冻结证据包并追加新草案版本，来源与知识点沿用原陈述、正文变化得到新 statementId，且只替换目标场景、不回加基线已排除的场景；旧版本与旧证据包保持不变（tests/lesson-statement-revision.test.ts、tests/lesson-revision-http.test.ts、tests/lesson-review-page.test.ts）。候选生成与课程派生都按 requestId 幂等。",
-        "模型完整课件大纲/多场景生成与更完整的编辑（OMA-006/021/022）仍未实现，故为 partial 而不是完成。"
+        "模型完整课件计划生成已落地（LESSON-02 / OMA-006）：apps/learning/lib/server/lesson-courseware-model.ts 复用来源/run/预算/取消守卫生成整份场景计划，只落待核区（lesson_courseware_candidates）；人工通过才写成该草案版本的场景计划（lesson_scene_plans），场景编号、知识点与来源由服务端从冻结证据包沿用并复验（tests/lesson-courseware-model.test.ts、tests/lesson-scene-plan-http.test.ts）。",
+        "仍待做的是更完整的课件编辑（元素属性/样式/富文本的完整可视化编辑器与局部模型重生成）与资产生成，故为 partial 而不是完成（OMA-021/022）。"
       ]
     },
     {
@@ -103,7 +104,7 @@
       "category": "generation",
       "name": "幻灯片/测验/互动/PBL场景生成",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "B",
       "upstreamPaths": [
         "app/api/generate-classroom",
@@ -112,7 +113,9 @@
       ],
       "acceptance": "四类场景均通过DSL校验并有内容与资产",
       "evidence": [
-        "ANSWER-01 子包已从课程版本选中的冻结证据装配幻灯片及单选/多选/简答测验，真实 DSL 校验、24 场景上限及来源绑定由 tests/formal-quiz-submission.test.ts 覆盖；当前是确定性装配，完整模型生成、互动/PBL 与资产生成仍待开发，因此保留 planned。"
+        "ANSWER-01 子包已从课程版本选中的冻结证据装配幻灯片及单选/多选/简答测验，真实 DSL 校验、24 场景上限及来源绑定由 tests/formal-quiz-submission.test.ts 覆盖。",
+        "模型完整课件计划生成已落地（LESSON-02 / OMA-006）：apps/learning/lib/server/lesson-courseware-model.ts 复用来源/run/预算/取消守卫，模型只决定讲哪些已选陈述/题目、按什么顺序、每个场景怎么写；场景编号、知识点与来源由服务端从冻结证据包沿用并在落库前用 assertPlanGrounded 复验，产物只落待核区（lesson_courseware_candidates），人工通过才写成场景计划（lesson_scene_plans）。apps/learning/lib/classroom/planned-lesson-document.ts 按计划装配幻灯片/测验/互动/PBL 四类场景并通过真实 DSL 校验，同一份（证据包+计划）得到同一指纹（tests/lesson-courseware-model.test.ts、tests/lesson-scene-plan.test.ts、tests/lesson-scene-plan-http.test.ts）。",
+        "仍缺资产生成（图片/媒体由模型产出并落库）与互动/PBL 的完整内容生成，故为 partial 而不是完成。"
       ]
     },
     {
@@ -350,7 +353,7 @@
       "category": "slides_editing",
       "name": "元素属性、样式和富文本编辑",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "B",
       "upstreamPaths": [
         "packages/@openmaic/dsl",
@@ -360,14 +363,17 @@
         "lib/edit"
       ],
       "acceptance": "编辑模型合法且有撤销恢复语义",
-      "evidence": []
+      "evidence": [
+        "元素属性、样式与富文本编辑已落地（LESSON-02 / OMA-021）：packages/study-contracts/src/scene-plan.ts 定义可编辑元素（文本/图片 + 字号/颜色/加粗/斜体/对齐 + 位置尺寸），packages/study-domain/src/scene-plan.ts 的 assertElementSafe 强制富文本白名单（b/i/u/sub/sup/br/span，拒绝脚本标签、事件属性与脚本协议）与图片元素符号引用；apps/learning/components/lesson-scene-plan-editor.tsx 提供正文与样式编辑，撤销/恢复由 lesson-scene-plan-state.ts 的整份快照历史承担（commit/undo/redo），服务端在装配时把计划元素转成 DSL 元素（apps/learning/lib/classroom/planned-lesson-document.ts）。tests/lesson-scene-plan.test.ts 覆盖白名单拒绝与同一（证据包+计划）同一指纹。",
+        "仍缺完整可视化画布编辑（拖拽/多选/图层面板）与局部模型重生成正文，故为 partial。"
+      ]
     },
     {
       "id": "OMA-022",
       "category": "slides_editing",
       "name": "场景增删、排序、复制与局部重生成",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "B",
       "upstreamPaths": [
         "packages/@openmaic/dsl",
@@ -377,7 +383,10 @@
         "lib/edit"
       ],
       "acceptance": "场景稳定ID，发布历史不被原地改写",
-      "evidence": []
+      "evidence": [
+        "场景增删、排序、复制与局部重生成已落地（LESSON-02 / OMA-022）：场景用稳定 sceneId（不靠序号映射），增删/排序/复制/局部重生成都不改已有场景身份；计划只挂在草案版本上，发布后不再改写（store.saveScenePlan 的 plan_base_not_draft），乐观并发按 revision 拒绝旧提交。apps/learning/components/lesson-scene-plan-state.ts 提供 move/duplicate/remove/replace 与撤销恢复；apps/learning/lib/classroom/planned-lesson-document.ts 按计划装配文档。tests/lesson-scene-plan.test.ts（含「场景编号稳定」「局部重生成只替换目标场景」「已发布版本计划不可改写」）与 tests/lesson-scene-plan-http.test.ts 覆盖。",
+        "仍缺「按整课大纲批量重生成」与跨版本计划的差异合并，故为 partial。"
+      ]
     },
     {
       "id": "OMA-023",
@@ -976,7 +985,7 @@
       ],
       "acceptance": "固定基线各provider可配置/检测，不假称所有联网测试通过",
       "evidence": [
-        "用户指定 HTTPS OpenAI-compatible 接口已配置/实际调用：muse-spark-1.3 请求收到有效文本，网关返回 muse-spark-1.3-contributor。Electron 加密凭据重启恢复、无 renderer 密钥回显、主进程控制接口、固定诊断的 deadline/限次/token 上限/取消有回归；报告 apps/desktop/release/model-connection-live-2026-10-04.json 9 项通过。只覆盖该兼容接口连接诊断，完整 provider 注册表、教学/生成调用与其他联网后端未完成。"
+        "用户指定 HTTPS OpenAI-compatible 接口已配置/实际调用：muse-spark-1.3 请求收到有效文本，网关返回 muse-spark-1.3-contributor。Electron 加密凭据重启恢复、无 renderer 密钥回显、主进程控制接口、固定诊断的 deadline/限次/token 上限/取消有回归；报告 apps/desktop/release/model-connection-live-2026-10-05.json 9 项通过。只覆盖该兼容接口连接诊断，完整 provider 注册表、教学/生成调用与其他联网后端未完成。"
       ]
     },
     {

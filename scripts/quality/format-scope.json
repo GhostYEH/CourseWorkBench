@@ -104,5 +104,17 @@
   "apps/learning/components/lesson-statement-revision.tsx",
   "apps/learning/app/api/study/lessons/revision/route.ts",
   "tests/lesson-statement-revision.test.ts",
-  "tests/lesson-revision-http.test.ts"
+  "tests/lesson-revision-http.test.ts",
+  "packages/study-contracts/src/scene-plan.ts",
+  "packages/study-domain/src/scene-plan.ts",
+  "packages/study-storage/src/repositories/lesson-scene-plan.ts",
+  "apps/learning/lib/classroom/planned-lesson-document.ts",
+  "apps/learning/lib/server/lesson-courseware-model.ts",
+  "apps/learning/components/lesson-scene-plan-state.ts",
+  "apps/learning/components/lesson-scene-plan-editor.tsx",
+  "apps/learning/components/lesson-courseware-generation.tsx",
+  "apps/learning/app/api/study/lessons/courseware/route.ts",
+  "tests/lesson-scene-plan.test.ts",
+  "tests/lesson-scene-plan-http.test.ts",
+  "tests/lesson-courseware-model.test.ts"
 ]

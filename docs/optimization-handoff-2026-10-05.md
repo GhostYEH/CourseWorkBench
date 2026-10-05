@@ -31,22 +31,32 @@
 
 本轮两项修复经独立只读复核，未发现剩余确认缺陷；公共命令与同学面板生命周期复查也无确认缺陷，未修改其行为。既有备份容器、冻结评测、真实画布聚焦及审核/发布链保留。
 
+本轮续作（LESSON-02 模型完整课件生成与多场景编辑，OMA-006/021/022）：
+
+14. 新增场景计划与完整课件候选合同（`packages/study-contracts/src/scene-plan.ts`）：`scenePlanSchema`（场景用稳定 `sceneId`、元素带字号/颜色/加粗/斜体/对齐与位置尺寸、`revision` 乐观并发、`origin` 区分确定性/模型）、`scenePlanSaveSchema`、`coursewareProposeSchema`/`coursewareOutputSchema`/`coursewareApplySchema`；`MODEL_CALL_PURPOSE` 增 `courseware_generation`。
+15. 领域层 `packages/study-domain/src/scene-plan.ts`：`assertPlanGrounded` 复验计划与冻结证据包相容（绑定在本版本已选范围内、知识点由服务端沿用一致）、`assertRichTextSafe` 富文本白名单（拒绝脚本标签、事件属性与脚本协议）、`duplicateScene`/`removeScene`/`reorderScenes`/`replaceSceneElements`（稳定编号）与 `coursewarePrompt`。
+16. 存储层迁移 27：`lesson_scene_plans`（计划只挂草案版本、发布即冻结历史、`revision` 乐观并发）、`lesson_courseware_candidates` + `lesson_courseware_receipts`（候选只落待核区、按 requestId 幂等）；`store.saveScenePlan`/`applyCoursewareCandidate` 与 repository 落库。
+17. 装配 `apps/learning/lib/classroom/planned-lesson-document.ts`：按计划装配幻灯片/测验/互动/PBL 四类场景，同一（证据包 + 计划）得到同一文档与同一指纹；`classroom-service` 的 `planFormalLessonDocument` 在有计划时走计划装配、无计划时回退确定性装配，两条路径共用同一份「这节课长什么样」的判定。
+18. 服务/模型：`lesson-service` 增 `save-scene-plan` 与 `apply-courseware`（均按 requestId 幂等、来源与知识点由服务端沿用复验）；`apps/learning/lib/server/lesson-courseware-model.ts` 复用与其他模型入口同一套 guard，未配置或判定不通过时不发请求，产物只落待核区。
+19. 界面：`lesson-scene-plan-editor.tsx`（增删/排序/复制/局部重生成、元素富文本与样式编辑、撤销/恢复）与 `lesson-courseware-generation.tsx`（生成/停止/通过/拒绝），状态机在 `lesson-scene-plan-state.ts`（整份快照历史，撤销/恢复语义确定）。
+20. 新增回归 `tests/lesson-scene-plan.test.ts`（16）、`tests/lesson-scene-plan-http.test.ts`（5）、`tests/lesson-courseware-model.test.ts`（7），并扩展生产 SSR 断言；迁移 27 与历史迁移测试同步；格式清单覆盖新增文件。
+
 ## 当前验证
 
-- 源码摘要随 LESSON-02 新代码变化：304 个构建输入（`pnpm build:learning` 记录）；旧摘要 6f9bc7d7…b4d7 不再代表当前源码。
-- pnpm check：95 文件 / 838 项，0 跳过；类型（含真实 IPC）、lint、限定格式和 12 项工程门禁通过。
-- 真实 Electron 原生冒烟：36 组通过，含真实 OS 剪贴板复制，不发远程 provider 调用。
-- 当前随包服务组装与启动：14/14；清单 12364 文件，最长相对路径 132/140，摘要和 BUILD_ID 与当前输入一致。
-- 新目录包：`apps/desktop/release/review-2026-10-05-lesson-revision/win-unpacked`；包启动 30/30（报告同目录 `pack01-verification.json`）、随包课堂 50/50（`apps/desktop/release/m0-classroom-ui-*.json`）。本机此前两次运行曾在演示课恢复检查处超时（`quiz recovery after service crash` / CDP `Runtime.evaluate`），本次通过，偶发超时按 EVAL-03/UX-01 继续观察。
-- 新目录由 electron-builder 输出，既有 win-unpacked/NSIS/安装态未覆盖，未运行安装升级卸载或干净 Windows 验收。
+- 源码摘要随 LESSON-02 新代码变化：313 个构建输入（`pnpm build:learning` 记录，BUILD_ID `srGhRAARMkylaCTK6qqpn`）；旧摘要 6f9bc7d7…b4d7 与 304 输入不再代表当前源码。
+- pnpm check：98 文件 / 866 项，0 跳过；类型（含真实 IPC）、lint、限定格式和 12 项工程门禁通过。
+- 真实 Electron 原生冒烟：36 组通过，含真实 OS 剪贴板复制，不发远程 provider 调用。本轮三次运行中两次在个人档案剪贴板处失败（`clipboardDiagnostics` 显示复制内容与身份不匹配），重跑通过；偶发异常根因未确认，按 EVAL-03/UX-01 继续观察。
+- 随包服务：组装清单 12373 文件，最长相对路径 132/140，源码摘要与 BUILD_ID 与当前输入一致；启动验证 14/14。
+- 桌面目录包：`apps/desktop/release/win-unpacked`（当前源码重建）；包启动 30/30（`pack01-verification-2026-10-05T12-01-16.192Z.json`）、随包课堂 50/50（`m0-classroom-ui-2026-10-05T12-03-20.698Z.json`）。
+- 目录由 electron-builder 输出，既有 `review-*`/NSIS/安装态未覆盖，未运行安装升级卸载或干净 Windows 验收。
 
-源码摘要随本轮 LESSON-02 新代码变化（304 个构建输入），旧摘要与旧报告不再代表当前源码。旧 `review-2026-10-05-luna`、`luna-final` 目录保留作历史，最新目录包 `review-2026-10-05-lesson-revision` 按当前源码组装并核验。不把随包课堂 50 项误记为备份恢复或失效 Notice 的完整交互验收；Notice 的已有回归覆盖 gate/helper/SSR 与接线，真实失效后的 DOM 生命周期仍由 EVAL-03/UX-01 跟踪。
+源码摘要随本轮 LESSON-02 新代码变化（313 个构建输入），旧摘要与旧报告不再代表当前源码。旧 `review-2026-10-05-luna`、`luna-final`、`review-2026-10-05-lesson-revision` 目录保留作历史，最新目录包 `apps/desktop/release/win-unpacked` 按当前源码重建并核验。不把随包课堂 50 项误记为备份恢复或失效 Notice 的完整交互验收；Notice 的已有回归覆盖 gate/helper/SSR 与接线，真实失效后的 DOM 生命周期仍由 EVAL-03/UX-01 跟踪。
 
-原生冒烟历史六跑结果依次为 generic renderer error、个人档案 OS 剪贴板 UID 未匹配、36 组通过、在 `classroom-widget-isolated` 阶段 generic renderer error、第五、六跑各 36 组通过（含真实剪贴板）。异常根因未确认，继续作为 EVAL-03/UX-01 待观察项；不声称根因或剪贴板缺陷已修复，不记录剪贴板内容、UID 或凭据。启动器仍在终态失败、超时和早退时保留最新阶段；每个 started 阶段保留自有服务 PID，异常早退后可清理。
+原生冒烟历史结果依次为 generic renderer error、个人档案 OS 剪贴板 UID 未匹配、36 组通过、在 `classroom-widget-isolated` 阶段 generic renderer error、36 组通过（含真实剪贴板）；本轮三次运行中两次在个人档案剪贴板处失败、重跑通过。异常根因未确认，继续作为 EVAL-03/UX-01 待观察项；不声称根因或剪贴板缺陷已修复，不记录剪贴板内容、UID 或凭据。启动器仍在终态失败、超时和早退时保留最新阶段；每个 started 阶段保留自有服务 PID，异常早退后可清理。
 
 ## 剩余范围与续作
 
-- LESSON-02：陈述正文改写闭环与课程派生 requestId 幂等已落地；仍待做的是模型完整课件草案生成与多场景编辑（OMA-006/021/022）、其余互动/PBL。
+- LESSON-02：陈述正文改写闭环、课程派生 requestId 幂等、模型完整课件生成与场景计划编辑（OMA-006/021/022）已落地；仍待做的是其余互动/PBL 的完整内容生成、资产生成（图片/媒体由模型产出并落库）与跨版本计划差异合并。
 - M3：受控模型同学、复习调度、完整费用/租约与整应用故障恢复；在线 UID/邀请/同步/交流仍待推进。
 - M4：当前产物评测/异常与 UI 走查、正式安装升级卸载、文档和演示；详细剩余工作只维护 `待办事项.md` 与 85 项能力清单，不新增审查报告。
 - 真实材料与独立人工金标准、两位真人两台设备、独立干净 Windows、真实付费 provider 已按用户要求暂缓，保持未签核，不反复索要或用合成/单机双窗口代替。

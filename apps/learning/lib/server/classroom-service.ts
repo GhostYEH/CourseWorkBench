@@ -9,7 +9,7 @@
  */
 
 import { DSL_VERSION, validateScene, validateStage } from '@openmaic/dsl';
-import { StudyError, type ClassroomSceneBinding } from '@sew/study-contracts';
+import { StudyError, type ClassroomSceneBinding, type EvidenceBundleDto, type FormalInteractionDefinitionDto } from '@sew/study-contracts';
 import { assertSceneSourceBindings, classroomDocumentDigest, dslVersionState, normalizeMaterial, stripQuizAnswers, type SceneSourceBinding } from '@sew/study-domain';
 import type { ClassroomDocumentRow, LessonVersionRow, QuestionRow } from '@sew/study-storage';
 import type { Session } from './service';
@@ -19,6 +19,8 @@ import {
   buildFormalLessonDocument,
   formalStageId,
 } from '../classroom/formal-lesson-document';
+import { buildPlannedLessonDocument } from '../classroom/planned-lesson-document';
+import type { ClassroomDocument } from '../classroom/reviewed-lesson';
 import {
   FIXED_KNOWLEDGE,
   FIXED_LESSON_ID,
@@ -425,7 +427,8 @@ export interface FormalLessonDocumentInfo {
 
 export interface FormalLessonDocumentSummary extends FormalLessonDocumentInfo {
   sceneCount: number;
-  skipped: Array<{ kind: 'statement' | 'question'; id: string; reason: string }>;
+  /** 未进入课件的场景/陈述/题目与原因；计划装配与确定性装配共用这一形状。 */
+  skipped: Array<{ kind: string; id: string; reason: string }>;
   reused: boolean;
   attached: boolean;
 }
@@ -477,10 +480,15 @@ const verifyFormalLessonDocument = (
 
   const bundle = session.store.getEvidenceBundle(session.projectId, lesson.bundleId);
   if (!bundle) throw new StudyError('INTERNAL', { bundleId: lesson.bundleId });
-  const expected = buildFormalLessonDocument({ bundle: bundle.bundle, bundleDigest: bundle.digest,
-    lessonId: lesson.lessonId, lessonVersion: lesson.version, title: lesson.title, frozenAt: bundle.frozenAt,
-    statementIds: lesson.statementIds, questionIds: lesson.questionIds,
-    interactions: readFormalInteractionDefinitions(session, lesson.lessonId, lesson.version)?.frozen.definitions });
+  const interactions = readFormalInteractionDefinitions(session, lesson.lessonId, lesson.version)?.frozen.definitions;
+  const expected = planFormalLessonDocument({
+    session,
+    lesson,
+    bundle: bundle.bundle,
+    bundleDigest: bundle.digest,
+    frozenAt: bundle.frozenAt,
+    interactions,
+  });
   if (digest !== classroomDocumentDigest(expected.document) || stored.dslVersion !== expected.dslVersion ||
       stored.sceneCount !== expected.scenes.length) {
     throw new StudyError('VERSION_CONFLICT', { stageId, reason: 'formal_document_not_frozen_version' });
@@ -546,6 +554,52 @@ const verifyFormalLessonDocument = (
 };
 
 /**
+ * 装配期望文档：有场景计划时按计划装配，否则回退到确定性装配。
+ *
+ * 两条路径都在服务端读取证据包与计划，返回统一的 `{ stageId, dslVersion, document, scenes, skipped }`，
+ * 因此课堂读取、指纹复验与挂接共用同一份「这节课长什么样」的判定，不会出现两条口径。
+ */
+const planFormalLessonDocument = (input: {
+  session: Session;
+  lesson: LessonVersionRow;
+  bundle: EvidenceBundleDto;
+  bundleDigest: string;
+  frozenAt: string;
+  interactions?: FormalInteractionDefinitionDto[];
+}): {
+  stageId: string;
+  dslVersion: string;
+  document: ClassroomDocument;
+  scenes: Array<{ sceneId: string; sceneType: string; questionId: string | null; knowledgeIds: string[]; statementId?: string | null }>;
+  skipped: Array<{ kind: string; id: string; reason: string }>;
+} => {
+  const plan = input.session.store.getScenePlan(input.lesson.projectId, input.lesson.lessonId, input.lesson.version);
+  if (plan) {
+    return buildPlannedLessonDocument({
+      bundle: input.bundle,
+      bundleDigest: input.bundleDigest,
+      plan,
+      lessonId: input.lesson.lessonId,
+      lessonVersion: input.lesson.version,
+      title: input.lesson.title,
+      frozenAt: input.frozenAt,
+      interactions: input.interactions,
+    });
+  }
+  return buildFormalLessonDocument({
+    bundle: input.bundle,
+    bundleDigest: input.bundleDigest,
+    lessonId: input.lesson.lessonId,
+    lessonVersion: input.lesson.version,
+    title: input.lesson.title,
+    frozenAt: input.frozenAt,
+    statementIds: input.lesson.statementIds,
+    questionIds: input.lesson.questionIds,
+    interactions: input.interactions,
+  });
+};
+
+/**
  * 为「当前已发布的这个课程版本」装配正式课件文档并挂到课堂映射上。
  *
  * 两道前提都在服务端判：本版本已有人工审核通过记录（「这节课讲这些」属于版本审核，
@@ -575,15 +629,12 @@ export const attachFormalLessonDocument = (
   const bundle = session.store.getEvidenceBundle(projectId, lesson.bundleId);
   if (!bundle) throw new StudyError('INTERNAL', { bundleId: lesson.bundleId });
 
-  const plan = buildFormalLessonDocument({
+  const plan = planFormalLessonDocument({
+    session,
+    lesson,
     bundle: bundle.bundle,
     bundleDigest: bundle.digest,
-    lessonId,
-    lessonVersion: version,
-    title: lesson.title,
     frozenAt: bundle.frozenAt,
-    statementIds: lesson.statementIds,
-    questionIds: lesson.questionIds,
     interactions: readFormalInteractionDefinitions(session, lessonId, version)?.frozen.definitions,
   });
   assertValidDocument(plan.document);

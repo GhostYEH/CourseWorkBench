@@ -102,6 +102,7 @@ export const MODEL_CALL_PURPOSE = [
   'error_attribution',
   'review_suggestion',
   'statement_revision',
+  'courseware_generation',
 ] as const;
 export type ModelCallPurpose = (typeof MODEL_CALL_PURPOSE)[number];
 

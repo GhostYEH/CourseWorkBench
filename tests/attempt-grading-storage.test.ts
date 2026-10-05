@@ -335,6 +335,8 @@ describe('production shared grading budget regressions', () => {
     if (version === 22) db.exec('DROP TABLE model_usage_calls; DROP TABLE classroom_peer_turns; DROP TABLE classroom_session_peer_settings;');
     // 该版本早于陈述改写表（v26）：重建历史库时一并移除，避免重复建表。
     db.exec('DROP TABLE IF EXISTS lesson_statement_revisions; DROP TABLE IF EXISTS lesson_statement_revision_receipts; DROP TABLE IF EXISTS lesson_draft_receipts;');
+    // 同理移除场景计划与完整课件候选表（v27）：历史库重放迁移时不能撞上已存在的表。
+    db.exec('DROP TABLE IF EXISTS lesson_scene_plans; DROP TABLE IF EXISTS lesson_courseware_candidates; DROP TABLE IF EXISTS lesson_courseware_receipts;');
     db.prepare('DELETE FROM schema_migrations WHERE version>?').run(version); db.close();
     const reopened = StudyStore.open({ file: f.file }); stores.push(reopened);
     const report = reopened.modelUsageReport('r', limits);

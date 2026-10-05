@@ -175,8 +175,8 @@ export const formalLessonDocumentSchema = z
     dslVersion: z.string().min(1),
     sceneCount: z.number().int().nonnegative(),
     scenes: z.array(formalLessonSceneSchema),
-    /** 未进入课件的陈述/题目与原因：缺口必须显示，不能静默省略。 */
-    skipped: z.array(z.object({ kind: z.enum(['statement', 'question']), id: z.string(), reason: z.string() }).strict()),
+    /** 未进入课件的陈述/题目/场景与原因：缺口必须显示，不能静默省略。 */
+    skipped: z.array(z.object({ kind: z.enum(['statement', 'question', 'scene']), id: z.string(), reason: z.string() }).strict()),
     reused: z.boolean(),
     /** 课件是否已挂到该版本的课堂映射上；未挂接时课堂会给出明确指引而不是空白页。 */
     attached: z.boolean(),

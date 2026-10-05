@@ -206,6 +206,13 @@ productionDescribe('课程审核界面（生产构建 SSR）', () => {
     // 陈述正文改写入口可达：候选先落待核区，人工通过后才派生新版本；未配置模型时说明原因。
     expect(html).toContain('陈述正文改写');
     expect(html).toContain('生成改写候选');
+    // 场景计划编辑器与完整课件生成入口可达：计划可编辑（增删/排序/复制/撤销恢复），
+    // 完整课件候选先落待核区、人工通过才写入计划。
+    expect(html).toContain('场景计划编辑器');
+    expect(html).toContain('完整课件生成');
+    expect(html).toContain('生成完整课件候选');
+    expect(html).toContain('撤销');
+    expect(html).toContain('新增幻灯片');
     // 生成入口按事实提示：本环境没有配置模型连接，按钮必须说明原因而不是假装可用。
     expect(html).toContain('课程草案生成');
     expect(html).toContain('尚未配置模型连接');

@@ -63,6 +63,8 @@ const JSON_PARSE_ALLOWLIST = new Set([
   'apps/learning/lib/server/feedback-model.ts',
   // 同一模式：陈述改写候选的模型正文只在这里解码，随后立刻用严格 schema 校验。
   'apps/learning/lib/server/lesson-revision-model.ts',
+  // 同一模式：完整课件候选的模型正文只在这里解码，随后立刻用严格 schema 校验。
+  'apps/learning/lib/server/lesson-courseware-model.ts',
   'apps/learning/lib/server/global-preferences.ts',
   // User identity files are decoded only here, then validated by the strict shared schema.
   'apps/learning/lib/server/learner-profile.ts',

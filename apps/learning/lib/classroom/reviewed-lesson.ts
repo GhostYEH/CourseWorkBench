@@ -14,6 +14,7 @@
 import type {
   Action,
   InteractiveContent,
+  PBLContent,
   QuizContent,
   Scene,
   SlideContent,
@@ -22,7 +23,7 @@ import type {
 import { DEMO_FORMULA_FONT_FAMILY, DEMO_IMAGE_REF } from './demo-asset-refs';
 
 /** 本项目课堂文档形状：与 `@openmaic/storage` 的 MaicDocument 结构一致。 */
-export type LessonScene = Scene<Action, SlideContent | QuizContent | InteractiveContent>;
+export type LessonScene = Scene<Action, SlideContent | QuizContent | InteractiveContent | PBLContent>;
 export interface ClassroomDocument {
   stage: Stage;
   scenes: LessonScene[];

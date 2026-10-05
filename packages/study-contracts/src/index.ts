@@ -42,6 +42,17 @@ export type {
   StatementRevisionOutput, StatementRevisionCandidateDto,
 } from './lesson';
 export {
+  SCENE_PLAN_VERSION, PLAN_SCENE_KINDS, PLAN_ELEMENT_KINDS, RICH_TEXT_TAGS,
+  planElementStyleSchema, planElementSchema, planSceneSchema, scenePlanSchema,
+  scenePlanSaveSchema, coursewareProposeSchema, coursewareSceneOutputSchema, coursewareOutputSchema,
+  COURSEWARE_CANDIDATE_STATUS, coursewareCandidateSchema, coursewareApplySchema,
+} from './scene-plan';
+export type {
+  PlanSceneKind, PlanElementKind, PlanElementStyleDto, PlanElementDto, PlanSceneDto,
+  ScenePlanDto, ScenePlanSaveInput, CoursewareProposeInput, CoursewareSceneOutput,
+  CoursewareOutput, CoursewareCandidateStatus, CoursewareCandidateDto, CoursewareApplyInput,
+} from './scene-plan';
+export {
   EXPLANATION_KIND, EXPLANATION_ORIGIN, EXPLANATION_STATUS, EXPLANATION_TEXT_MAX_LENGTH,
   CLASSROOM_SESSION_STATUS, CLASSROOM_ACTION_KINDS,
   CLASSROOM_ROUND_LIMITS, CLASSROOM_LESSON_MAX_CALLS,
