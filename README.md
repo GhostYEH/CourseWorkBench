@@ -116,23 +116,23 @@ M1 已补严格 UTF-8 解码、空正文拒绝、不可变材料历史版本和�
 
 ## 当前验证
 
-2026-10-05 本轮收尾已对**同一份源码内容**（294 个构建输入，SHA-256 `702b951ac01bdceab682e2aca632a01a3d74a9083834df630d0f4600af4a4f8c`）依次完成门禁、构建与产物验证，并随提交 `7067679` 保存（此前 HEAD 为 `6d423bb`）：
+2026-10-05 接手验收在提交 `7067679`（并行任务收尾的整合提交，此前 HEAD 为 `6d423bb`）之上继续改码，并对**当前源码内容**（295 个构建输入，SHA-256 `9ace3e7d8e00f714304188a057fbae4504923249e434bce1b84a4069f825b710`）**串行**重跑整条验证链：
 
-- 源码门禁：`pnpm check` 全部通过——`typecheck`（含 `typecheck:ipc`）、`lint`、清单内 `format:check`、`check:code`（12 项工程反例，preload 20 个白名单方法），Vitest **89 文件 / 765 项通过、0 跳过**。
-- 生产构建：`pnpm build:learning` 本轮产出 BUILD_ID `XTlrKzxq10meglOGXaEWK`；并行任务 09:27 对**同一源码摘要**重建得到 `0NaV76pOveX7LuPE577M_`，服务与目录包随后按后者重新组装并复验，源码内容没有再变化。
-- 原生冒烟：`node scripts/run-electron-boundary-smoke.cjs` **36 组通过**，含新接入的项目备份真实 native 链路（备份/恢复按钮、暂存恢复、容器摘要）与模型配置回执/密钥清空，全程不发远程调用。
-- 随包服务：`node scripts/prepare-learning-dist.mjs` 组装后 `node scripts/verify-learning-dist.mjs` **14/14 通过**（ready 握手、匿名与带会话 SSR/API、控制凭据边界、随包资产摘要一致、受控 shutdown 与端口关闭）。
-- 目录包：`pnpm package:desktop` 组装 `apps/desktop/release/win-unpacked` 后 `node scripts/verify-packaged-desktop.mjs` **30/30 通过**（实际目录包 exe、隔离 profile 与 PATH、sandbox preload 注入、页面无 Node 全局、退出完成服务清理）。
+- 源码门禁：`pnpm typecheck`（含 `typecheck:ipc`）、`pnpm lint`、清单内 `pnpm format:check`、`pnpm check:code`（12 项工程反例）全部通过；`pnpm check` 的 Vitest 为 **90 文件 / 771 项通过、0 跳过**（含生产 HTTP 边界 13 项按当前产物实际执行）。
+- 生产构建：`pnpm build:learning` 产出 BUILD_ID `9s6BSq2Fe6_DyXXzB3Wyj`，构建输入摘要与源码指纹一致后才记录凭据；旧 BUILD_ID `7pcrnRklHsFNwJgze483G`、`XTlrKzxq10meglOGXaEWK`、`0NaV76pOveX7LuPE577M_` 不再代表当前版本。
+- 原生冒烟：`node scripts/run-electron-boundary-smoke.cjs` **36 组通过**，新增一组断言教师聚焦在真实画布上生效（`board formula/focus: ... and real canvas highlight`）；备份/恢复真实 native 链路与模型配置回执/密钥清空继续通过，全程不发远程调用。同一产物首次运行（10:07）以渲染脚本报错失败、随即两次重跑均通过且期间源码未变，原因未确定，按瞬时竞态登记为待观察项而不是功能结论。
+- 随包服务：`node scripts/prepare-learning-dist.mjs`（布局校验通过 BUILD_ID 同上）后 `node scripts/verify-learning-dist.mjs` **14/14 通过**。
+- 目录包与随包课堂：`pnpm package:desktop` 后复制到新的 stage 目录 `apps/desktop/release/m4-integration-2026-10-05b/win-unpacked` 再验，`verify-packaged-desktop` **30/30**、`verify-classroom-desktop` **50/50**；原 `win-unpacked` 与既有安装程序未被覆盖，也不做升级安装。
 
-本轮整合与修复：冻结评测导入接口改用集中入口 `apps/learning/lib/server/bounded-json.ts`（实际流式字节上限 → 严格 UTF-8 → json-codec），删除路由内重复的限额读取与直接 `JSON.parse`，允许入口相应收窄，并补非法 UTF-8、缺正文与解码诊断回归；`tests/attempt-grading-page.test.ts` 的服务 mock 缺 `requireSession`（自 `68e05ca` 起全量必失败）已补；`tests/domain-contracts.test.ts` 中与「绑定改写出处只保留材料改写身份」冲突的旧断言按现行规则更正，并为两条此前无覆盖的身份分支补测试。独立只读复核（评测解码、同学与个人档案命令迁移）未发现确认缺陷。
+本轮接手所做的整合与修复：备份/恢复不再允许把副本发布进**当前打开的项目**（`destination_in_open_project`）、缺失或不可读路径给出可诊断拒绝而不是 500（`path_unavailable`）、暂存改为**单次 rename 发布**消除半发布窗口、只读打开容器数据库失败归入 `database_unreadable`、手工构造却缺少自身清单或数据库的容器在读取前被拒、容器版本改用 `PROJECT_BACKUP_VERSION` 常量；主进程确认备份/恢复回显时改用真实路径比较，消除目录联接或盘符大小写导致的「已成功却报失败」；`apps/learning/tsconfig.json` 排除 `dist` 产物树，修掉「先 build 再 check」顺序下 `pnpm typecheck` 检查产物内复制源码而误报的缺陷。独立只读复核另发现的两项（`onSuccess` 抛错会被当作操作失败、未迁移组件的手写 busy 标志）经核实当前不可达：项目切换走整文档导航且服务侧代次复验拒绝旧写入，故只登记不改动，避免无收益重构。
 
-**随包课堂实际走查已通过**：重新组装后 `verify-learning-dist` 再次 **14/14**、`verify-packaged-desktop` 再次 **30/30**，`node scripts/verify-classroom-desktop.mjs` **50/50 通过**——真实目录包 exe、原生中文带空格路径选择器、导入建立材料新版本、固定版本来源定位、切换到另一项目后旧项目写入不进入新项目、关闭应用后服务端口释放。首次尝试（09:37）报 `resources/learning/node_modules/next/.../app-page-turbo.runtime.dev.js.map` 的 ENOENT；该文件事后实测存在且可读，同一产物重试即通过，原因未确定（疑为刚写入产物上的瞬时竞态），列为待观察而不是产品缺陷。历史 697/699 测试与 34 组冒烟不作为当前签核。真实材料金标准、真人双设备与独立干净 Windows 仍按既有暂缓条件保留；未调用真实付费 provider。准确状态、剩余项与下一步见[全面优化交接](docs/optimization-handoff-2026-10-05.md)与[待办事项](docs/待办事项.md)。既有审查报告保持删除。
+历史 697/699 测试、34 组冒烟与 `stage-handoff-2026-10-04` 目录包不作为当前签核。真实材料金标准、真人双设备与独立干净 Windows 仍按既有暂缓条件保留；未调用真实付费 provider。准确状态、剩余项与下一步见[全面优化交接](docs/optimization-handoff-2026-10-05.md)与[待办事项](docs/待办事项.md)。既有审查报告保持删除。
 
 ## 剩余范围（按里程碑）
 
 - M0 剩余：无开发 Node 的独立干净 Windows 安装/错误恢复验收；正式材料语义审核与独立环境风险仍需签核。当前 M0 宿主流程不代表完整 OpenMAIC 接入
 - M1：主要工作台闭环已有实现；仍需真实考纲与科目材料走查、安装态打开原文与角色设置走查，以及大媒体存储与随包备份策略，尚未整体验收完成
-- M2：逐场景文档改写、画布实际聚焦、其余互动/PBL，以及当前产物和真实整课验收
+- M2：逐场景文档改写、其余互动/PBL，以及当前产物和真实整课验收。画布实际聚焦已落地（教师聚焦只在所指冻结场景的真实元素上高亮，切场景即收回，随包冒烟实际断言）
 - M3：受控模型同学讨论、复习调度、完整冻结配置计量与费用依据、整应用故障和在线身份/邀请/同步/交流
 - M4：冻结评测与合成机械工具已有实现；仍需当前产物走查、真实金标准、完整故障矩阵、Windows 安装验收和演示录屏
 
