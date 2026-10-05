@@ -111,7 +111,7 @@ M0 的 SET-01 采用固定已发布包及锁文件完整性路线，不依赖 ex
 
 | 本项目文件 | 承担的上游语义 | 与上游的差异及原因 |
 | --- | --- | --- |
-| `apps/learning/app/api/maic/documents/[[...segments]]/route.ts` | `HttpDocumentStore` 的 REST 形状与错误码 | 返回合同原始载荷而非 `{ok,data}` 信封；新增 `CLASSROOM_LESSON_NOT_REVIEWED`：写入必须与仓库内登记的审核课件同指纹，上游没有「未审核内容」这一约束 |
+| `apps/learning/app/api/maic/documents/[[...segments]]/route.ts` | `HttpDocumentStore` 的 REST 形状与错误码 | 返回合同原始载荷而非 `{ok,data}` 信封；新增 `CLASSROOM_LESSON_NOT_REVIEWED`：写入必须与仓库内登记的审核课件同指纹，上游没有「未审核内容」这一约束。2026-10-05 改用集中正文入口：保留 32 MiB 实际字节限额、204 和错误体，非法 UTF-8 在 DSL/审核前按 400 `VALIDATION_FAILED`、`details.reason=invalid_utf8` 拒绝，不再替换成 U+FFFD；真实客户端的损坏正文反例与中文逐字节分片正向回归覆盖该差异 |
 | `packages/study-storage/src/repositories/classroom.ts` + schema v4 | 文档持久化 | 按 `(project_id, stage_id)` 分区；来源绑定放侧表，因为生成的 DSL JSON Schema 对定义关闭了 `additionalProperties` |
 | `packages/study-domain/src/classroom.ts` | 文档稳定序列化/指纹、版本位置判定、去答案 | 上游 `stripQuizAnswers` 不存在：上游测验视图在前端用 `content.answer` 自行判分，与本项目「判分权威在服务」冲突，因此服务端下发前剥掉答案与解析 |
 | `apps/learning/lib/classroom/reviewed-lesson.ts`、`app/api/maic/demo/route.ts` | 固定课件与明确导入命令 | 明确导入登记 `recordScope=demo` 与 `demo_author` 审核来源；正式默认查询排除演示，正式审核入口为 `/workbench/review`。演示真人作答保持 human/real，通过内容范围排除正式统计；确认导入不等于用户逐项语义审核 |

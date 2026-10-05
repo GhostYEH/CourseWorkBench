@@ -25,3 +25,7 @@ tmp/
 resources/node/runtime/
 resources/node/node-v*.zip
 resources/node/node-v*.tar.gz
+
+# 评测 CLI 的生成结果（freeze/recompute/synthetic 的 OUTPUT 约定目录）。
+# 里面是某一次运行的报告与预测，可能含真实材料统计，只在本机留档，不入库也不删除。
+scripts/evaluation/artifacts/

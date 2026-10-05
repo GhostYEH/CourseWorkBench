@@ -116,19 +116,16 @@ M1 已补严格 UTF-8 解码、空正文拒绝、不可变材料历史版本和�
 
 ## 当前验证
 
-2026-10-05 接手验收分两轮串行完成，**当前有效范围是第二轮**：源码摘要 `e4c16b9afc04872cac831dc0ba55a4bc00352282ed4d10dbf64906bc5c4dc9dc`（296 个构建输入，BUILD_ID `ZKaOpeXzGh5CceqwlkybN`）。第一轮（摘要 `9ace3e7d…b710`、BUILD_ID `9s6BSq2Fe6_DyXXzB3Wyj`）在同一提交序列内被第二轮取代；更早的 `702b951a…4f8c` 与 `7pcrnRklHsFNwJgze483G`、`XTlrKzxq10meglOGXaEWK`、`0NaV76pOveX7LuPE577M_` 只作历史，不再代表当前版本。
+2026-10-05 本阶段收尾以最终源码摘要 `a98d2a00d94c6caf0baa2ff3d340481a1c7b2c6f440f5f1e70ed0917ac2b74de`（298 个构建输入，BUILD_ID `6TMHM397RKm_ghlp424pO`）为准。源码、Next、随包服务与新目录包相互匹配；之前的构建编号及测试数量仅作历史记录。
 
-- 源码门禁：`pnpm typecheck`（含 `typecheck:ipc`）、`pnpm lint`、清单内 `pnpm format:check`、`pnpm check:code`（12 项工程反例）全部通过；`pnpm check` 的 Vitest 为 **90 文件 / 772 项通过、0 跳过**（含按当前产物实际执行的生产 HTTP 边界 13 项与课程审核 SSR）。
-- 生产构建：`pnpm build:learning` 每轮都在输入未变化时才记录摘要，产物凭据与源码指纹一致。
-- 原生冒烟：`node scripts/run-electron-boundary-smoke.cjs` **36 组通过**，新增一组断言教师聚焦在真实画布上生效（`board formula/focus: ... and real canvas highlight`）；备份/恢复真实 native 链路与模型配置回执/密钥清空继续通过，全程不发远程调用。上一轮同一产物首次运行（10:07）以渲染脚本报错失败、随即重跑通过且期间源码未变，本轮首跑即通过；机制仍未确定，按瞬时竞态保留为待观察项而不是功能结论。
-- 随包服务：`node scripts/prepare-learning-dist.mjs`（布局校验通过 BUILD_ID `ZKaOpeXzGh5CceqwlkybN`）后 `node scripts/verify-learning-dist.mjs` **14/14 通过**。
-- 目录包与随包课堂：`pnpm package:desktop` 后复制到新的 stage 目录 `apps/desktop/release/m4-integration-2026-10-05c/win-unpacked` 再验，`verify-packaged-desktop` **30/30**、`verify-classroom-desktop` **50/50**；原 `win-unpacked` 与既有安装程序未被覆盖或安装，也不做升级安装。
+- `pnpm check`：**92 文件 / 793 项通过、0 跳过**；类型（含真实 IPC）、lint、清单内格式与 12 项工程门禁通过。
+- 真实 Electron 原生冒烟：**36 组通过**，覆盖实际画布聚焦、备份/恢复按钮与 IPC、模型配置回执/密钥清空等，不发远程 provider 调用。
+- 随包服务：组装清单 **12370 文件**，源码摘要、BUILD_ID 与 SHA-256 一致；启动验证 **14/14**。
+- 新桌面目录包：`apps/desktop/release/m4-closeout-2026-10-05/win-unpacked`，实际启动 **30/30**、随包课堂 **50/50**。机器报告为同目录的 `pack01-verification.json` 与 `classroom-verification.json`；既有 `win-unpacked`、NSIS 与安装态未覆盖。
 
-本轮接手所做的整合与修复：备份/恢复不再允许把副本发布进**当前打开的项目**（`destination_in_open_project`）、缺失或不可读路径给出可诊断拒绝而不是 500（`path_unavailable`）、暂存改为**单次 rename 发布**消除半发布窗口、只读打开容器数据库失败归入 `database_unreadable`、手工构造却缺少自身清单或数据库的容器在读取前被拒、容器版本改用 `PROJECT_BACKUP_VERSION` 常量；主进程确认备份/恢复回显时改用真实路径比较，消除目录联接或盘符大小写导致的「已成功却报失败」；`apps/learning/tsconfig.json` 排除 `dist` 产物树，修掉「先 build 再 check」顺序下 `pnpm typecheck` 检查产物内复制源码而误报的缺陷。本轮接手新增两项产品能力：**教师聚焦作用到真实画布元素**（`apps/learning/lib/classroom/board-focus.ts` 解析「本场景中 seq 最大的已播放 focus 效果」，`SceneRenderer` 经上游 `SlideCanvas` 的 `effects` 画高亮框、线型元素退化为聚光，冻结文档里查不到的元素 id 一律不高亮，切场景即收回并给出文本状态）；**逐场景改写派生新草案版本**（`apps/learning/components/lesson-scene-revision.tsx` 以稳定 statementId 勾选场景，走 `draft` 命令追加版本，旧已发布版本保持不变、新版本必须重新审核才能发布）。
+本阶段集成命令 scope 写保护、同学失效结果提示与权威重读、课堂文档严格 UTF-8/32 MiB 边界及真实上游客户端回归，并忽略保留评测生成结果。补漏修复：课程派生按实际所选 ID 集合判断变化，默认标题后缀不算用户改动；已知 SQLite 损坏错误在完整性读取阶段也返回明确诊断，原项目、备份与清理规则保持。全部实质改动经独立只读复核。
 
-独立只读复核另发现的两项（`onSuccess` 抛错会被当作操作失败、未迁移组件的手写 busy 标志）经核实当前不可达：项目切换走整文档导航且服务侧代次复验拒绝旧写入，故只登记不改动，避免无收益重构。
-
-历史 697/699 测试、34 组冒烟与 `stage-handoff-2026-10-04` 目录包不作为当前签核。真实材料金标准、真人双设备与独立干净 Windows 仍按既有暂缓条件保留；未调用真实付费 provider。准确状态、剩余项与下一步见[全面优化交接](docs/optimization-handoff-2026-10-05.md)与[待办事项](docs/待办事项.md)。既有审查报告保持删除。
+随包课堂 50 项不包含备份恢复，也不代替失效提示的完整 DOM 生命周期验收。真实材料金标准、真人双设备、独立干净 Windows、真实付费 provider 继续按用户要求暂缓；正式安装升级卸载本轮未执行。M1—M4 的未完成范围见[待办事项](docs/待办事项.md)，当前交接见[阶段交接](docs/optimization-handoff-2026-10-05.md)。既有审查报告保持删除。
 
 ## 剩余范围（按里程碑）
 

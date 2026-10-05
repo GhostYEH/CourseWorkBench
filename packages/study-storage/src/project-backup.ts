@@ -401,6 +401,19 @@ const inspectDatabase = (
       if (roomDigests.size) fail('room_asset_manifest_mismatch');
     }
     return { schemaVersion: migrations.length, externalReferences };
+  } catch (error) {
+    // SQLite can defer corruption detection until prepare/read, after opening succeeds.
+    // Keep unrelated SQL/programming errors visible rather than treating every fault as bad input.
+    if (
+      error instanceof Error &&
+      'code' in error &&
+      error.code === 'ERR_SQLITE_ERROR' &&
+      'errcode' in error &&
+      typeof error.errcode === 'number' &&
+      [11, 26].includes(error.errcode & 0xff) // SQLITE_CORRUPT / SQLITE_NOTADB, including extended codes.
+    )
+      fail('database_unreadable');
+    throw error;
   } finally {
     db.close();
   }

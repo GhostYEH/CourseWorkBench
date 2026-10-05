@@ -8,7 +8,7 @@
  * 或已结束时把按钮点亮——那样只会让人以为同学还能说话。
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   apiResponses,
@@ -19,6 +19,10 @@ import {
 } from '@sew/study-contracts';
 import { Empty, Notice } from './ui';
 import { apiFetch } from '../lib/client';
+import {
+  createPeerStaleCommandHandler,
+  peerCommandScope,
+} from '../lib/classroom/peer-command-lifecycle';
 import { useCommand } from '../lib/use-command';
 
 const PEER_KIND_LABEL: Record<'question' | 'discussion' | 'example', string> = {
@@ -34,6 +38,7 @@ export const ClassroomPeersPanel = ({
   peers,
   peerTurns,
   onChange,
+  onStateRefresh = null,
   disabled = false,
 }: {
   projectId: string;
@@ -42,15 +47,28 @@ export const ClassroomPeersPanel = ({
   peers: Array<{ profileId: string; name: string; engagement: PeerEngagement }>;
   peerTurns: ClassroomPeerTurnDto[];
   onChange: (session: ClassroomSessionDto, turn: ClassroomPeerTurnDto | null) => void;
+  /** 服务端权威状态的重读入口；中断后以它为准，而不是沿用面板里已隔离的结果。 */
+  onStateRefresh?: (() => void | Promise<void>) | null;
   disabled?: boolean;
 }): ReactNode => {
   const [engagement, setEngagement] = useState<PeerEngagement>(session.peersEngagement);
   // 有两位同学时要能选谁发言，不能写死第一位。
   const [speakerId, setSpeakerId] = useState(peers[0]?.profileId ?? '');
   const [message, setMessage] = useState<string | null>(null);
+  const [staleNotice, setStaleNotice] = useState<string | null>(null);
   const pendingTurns = useRef(new Map<string, string>());
+  const mounted = useRef(true);
+  // 面板在课堂状态变化时不重挂载（key 不含 status），因此中断提示要能留在新作用域上显示。
+  // 卸载标记与 useCommand 的 gate 失效同在 layout 相位收尾，迟到的中断回调才不会对着已卸载的面板写入。
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const scope = `${projectId}:${generation}:${session.sessionId}`;
-  const context = `${scope}:${session.roundIndex}:${session.currentSceneId}:${session.status}`;
+  // 轮次、场景与状态都进入作用域键：别处推进课堂时，这里的在途结果必须被隔离。
+  const context = peerCommandScope(session, projectId, generation);
   const { busy, error, run } = useCommand(context);
   useEffect(() => {
     setEngagement(session.peersEngagement);
@@ -79,7 +97,17 @@ export const ClassroomPeersPanel = ({
         onChange(result.session, result.turn);
         setMessage(success);
       },
-      { onStart: () => setMessage(null) },
+      {
+        onStart: () => {
+          setMessage(null);
+          setStaleNotice(null);
+        },
+        onStale: createPeerStaleCommandHandler({
+          mounted,
+          showNotice: setStaleNotice,
+          refreshAuthoritativeState: () => void onStateRefresh?.(),
+        }),
+      },
     );
   };
 
@@ -231,6 +259,11 @@ export const ClassroomPeersPanel = ({
       {message ? (
         <Notice tone="info" style={{ marginTop: 'var(--sew-space-2)' }}>
           {message}
+        </Notice>
+      ) : null}
+      {staleNotice ? (
+        <Notice tone="pending" role="alert" style={{ marginTop: 'var(--sew-space-2)' }}>
+          {staleNotice}
         </Notice>
       ) : null}
       {error ? (

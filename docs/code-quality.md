@@ -8,6 +8,7 @@
 - `any` 会关闭类型检查。除无法表达的第三方边界外禁止使用；边界处优先使用 `unknown`，通过校验或类型守卫缩窄。若确需 `any`，应把范围压到单个表达式并说明原因。
 - JSON、IPC、HTTP、磁盘文件以及模型响应都是不可信输入。解析后先校验，再传入领域逻辑；不要把类型断言当作运行时校验。
 - 界面调用使用 `apiFetch(path, responseSchema, init)`，响应类型从共享 schema 推导；必须同时校验信封、HTTP 状态和实际 DTO。RuntimeStore 独立错误格式仅在失败的运行接口适配；异常响应不得更新成功提示或作答收据状态。
+- 命令视图状态只允许当前有效 scope 写入；旧回调不能清除新请求的 busy 或替换 error。scope 失效与主动取消分别处理；同学发言结果失效时显示中断提示并重读权威状态，不能把客户端停止等待写成服务端已撤销。
 - 返回给调用方的错误应可判断且不泄露凭据、绝对路径或内部堆栈。保留原始错误用于本地诊断，并在 UI 边界转换成可理解的提示。
 
 ## 权限与 IPC
@@ -25,7 +26,7 @@
   1. preload 生成物与 IPC 合同同步、沙箱可加载性；
   2. 全部 Electron CJS 与 `server.mjs` 的 Node 语法；
   3. **分层依赖方向**（可执行）：`study-contracts` 不得反向依赖领域/存储或框架；`study-domain` 不得依赖框架、存储或文件系统 IO；`study-storage` 不得依赖 Electron/React/Next 或应用层；Electron 主进程不得依赖领域/存储包；
-  4. **JSON 解析集中化**：`JSON.parse` 只允许出现在经校验或受控的少数文件（json-codec、项目 manifest、桌面状态/握手、全局偏好），其它位置必须改用 `json-codec` 或先经 schema 校验；多选提交的领域入口 `study-domain/src/assessment.ts` 与客户端恢复入口 `learning/lib/quiz-answer.ts` 分别在解析后校验数组、重复值和允许选项，损坏内容拒绝进入判分/恢复路径；HTTP 正文的带限额解码集中在 `apps/learning/lib/server/bounded-json.ts`（实际流式字节 → 严格 UTF-8 → json-codec，形状仍由调用方 schema 裁定），冻结评测导入接口已改用该入口，不再自带流式计数或直接解析；浏览器侧用户选中的本地报告文件仍需在允许入口单独登记；
+  4. **JSON 解析集中化**：`JSON.parse` 只允许出现在经校验或受控的少数文件（json-codec、项目 manifest、桌面状态/握手、全局偏好），其它位置必须改用 `json-codec` 或先经 schema 校验；多选提交的领域入口 `study-domain/src/assessment.ts` 与客户端恢复入口 `learning/lib/quiz-answer.ts` 分别在解析后校验数组、重复值和允许选项，损坏内容拒绝进入判分/恢复路径；HTTP 正文的带限额解码集中在 `apps/learning/lib/server/bounded-json.ts`（实际流式字节 → 严格 UTF-8 → json-codec，形状仍由调用方 schema 裁定），冻结评测导入和上游课堂文档接口均使用该入口，不再自带流式计数或直接解析；课堂文档仍保留 32 MiB、原始响应与审核顺序，非法 UTF-8 拒绝为 `VALIDATION_FAILED`，有效中文跨字节分片仍接受；浏览器侧用户选中的本地报告文件仍需在允许入口单独登记；
   5. **IPC 通道声明同步**：合同里声明的通道必须都被 preload 白名单使用。
   6. 客户端只消费 DTO 合同，不导入存储/领域包或服务端模块；包根导出显式维护。
   7. 构建输入摘要与 BUILD_ID 绑定；服务清单与 Electron asar 源码按内容校验，拒绝陈旧或不一致产物。
@@ -33,7 +34,7 @@
 - 新增或修复业务行为时，为关键分支、错误路径和权限边界补充测试；避免只断言实现细节的测试。
 - 测验重试以提交内容摘要和单次提交 nonce 标识，不以字符串长度标识。持久收据复验题目、角色、内容、**请求声明的 kind 与实际提交类型**；新提交复验当前来源。前端浏览器存储不可用时退回页内去重，不能声称跨页面恢复仍可用。
 - 运行 `pnpm typecheck` 检查包与应用的类型配置，`pnpm check:code` 检查上述分层与合同回归，`pnpm test` 运行 Vitest。
-- Electron CJS 当前采用语法、生成合同与行为测试检查；其 tsconfig 的 `checkJs` 关闭，不能把根类型检查通过描述为全部 CJS 具有 TypeScript 语义校验。HTTP 生产集成用例依赖先完成 `pnpm build:learning`，缺少生产产物时该组跳过，须同时报告跳过数量。
+- Electron CJS 采用语法、生成合同与行为测试检查；普通桌面 tsconfig 的 `checkJs` 关闭，独立 `tsconfig.ipc.json` 对真实 native handler 实施 `@ts-check`、参数/返回约束与漂移反例，范围不等于全部 CJS。HTTP 生产集成用例依赖先完成 `pnpm build:learning`，缺少生产产物时该组跳过，须同时报告跳过数量。
 - `pnpm build:desktop` 是桌面源码构建检查，会生成 preload 并检查 Electron CJS 语法。`pnpm package:desktop` 才会调用 electron-builder 打包。
 - 领域核心不依赖 React / Electron / Next；`packages/study-domain` 只做判断，不做 IO。课堂文档使用上游 `@openmaic/dsl` 的形状，但该包只出现在 `apps/learning`：领域与存储层用 `unknown` + 自有 schema 处理文档，避免把上游契约变成领域权威。
 - `apps/learning/app/api/maic/**` 是**合同例外**：`documents` 路由必须返回上游 `HttpDocumentStore` 能解析的原始载荷（文档对象、摘要数组、204）与 `{ error: { code, message, details } }` 错误体，不套本项目的 `{ ok, data }` 信封；`state` 等自有接口仍用信封。新增此类接口时同步更新 `docs/upstream-adaptation.md` 的采用登记。
@@ -44,4 +45,4 @@
 - 上游课堂代码以固定版本的已发布包引入（见 `docs/upstream-adaptation.md` 第 7 节的版本与许可登记）。新增传递依赖时同时登记用途与许可，并确认 `pnpm prepare:learning-dist` 与 `pnpm verify:desktop` 的依赖解析检查覆盖它。
 - 不要为整仓运行格式化工具来掩盖局部改动；沿用相邻代码的格式，提交时只包含任务相关文件。
 - `pnpm build:learning` 通过受控脚本在成功构建且输入未变时记录摘要。组装与分发验证要求该记录匹配当前输入；直接 `next build` 不产生此凭据。生产 HTTP 测试前须用当前源码重建，不能仅检查 BUILD_ID 文件存在。
-- 剩余缺口（N9）：格式清单仍按显式文件维护，`apps/learning/server.mjs` 与其余历史脚本尚未纳入语义 lint；`apps/learning/app/api/maic/documents/**` 的正文解码仍使用非致命 UTF-8（无效字节先被替换为 U+FFFD 才进 json-codec），与 `bounded-json.ts` 的严格入口不一致；统一它会改变上游 `HttpDocumentStore` 写入路径的拒绝行为，须单独带回归处理；CJS 的 `checkJs` 仍未开启。上面的可执行检查是过渡措施。
+- 剩余缺口（N9）：格式清单仍按显式文件维护，`apps/learning/server.mjs` 与其余历史脚本尚未纳入语义 lint；桌面依赖图的完整 `checkJs` 尚未覆盖。上面的可执行检查是过渡措施。

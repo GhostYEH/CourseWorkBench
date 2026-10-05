@@ -90,5 +90,8 @@
   "apps/learning/app/workbench/eval/page.tsx",
   "apps/learning/app/workbench/eval/eval-report-import-panel.tsx",
   "tests/evaluation.test.ts",
-  "tests/evaluation-api.test.ts"
+  "tests/evaluation-api.test.ts",
+  "apps/learning/components/classroom-peers.tsx",
+  "apps/learning/lib/classroom/peer-command-lifecycle.ts",
+  "tests/classroom-peers-panel.test.ts"
 ]

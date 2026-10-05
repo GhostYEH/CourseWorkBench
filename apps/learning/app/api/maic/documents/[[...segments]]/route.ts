@@ -14,18 +14,18 @@
  * 权威边界：
  * - SQLite 按当前打开项目分区，请求不能在路径里指定项目；
  * - 写入只接受与仓库内登记课件完全一致（同指纹）的文档或场景；
- * - 读取时再复验一次指纹，并去掉测验判分答案。
+ * - 读取时再复验一次指纹，并去掉测验判分答案；
+ * - 正文按实际字节计数，并以严格 UTF-8 解码：非法字节序列一律拒绝，不会先替换成
+ *   `U+FFFD` 再落库，因为那会把损坏的字节伪装成一份「可读但不同」的课件。
  */
 
 import { NextResponse } from 'next/server';
-import { z } from 'zod';
 import { DSL_VERSION, validateScene, validateStage } from '@openmaic/dsl';
 import { StudyError } from '@sew/study-contracts';
 import { classroomDocumentDigest, dslVersionState } from '@sew/study-domain';
-import { decodeJson } from '@sew/study-storage';
 import { mapHttpError, sanitizePublicValue } from '../../../../../lib/server/http';
 import { scopedRequest } from '../../../../../lib/server/scoped-request';
-import { readBoundedBody } from '../../../../../lib/server/bounded-body';
+import { readBoundedJson } from '../../../../../lib/server/bounded-json';
 import { assertScope, type Session } from '../../../../../lib/server/service';
 import {
   REVIEWED_DOCUMENT_DIGEST,
@@ -37,7 +37,7 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-/** 与上游参考服务同量级的请求体上限（32 MiB），先按 Content-Length 拦截。 */
+/** 与上游参考服务同量级的请求体上限（32 MiB）；实际流式字节计数，Content-Length 只是早退提示。 */
 const MAX_DOCUMENT_BODY_BYTES = 32 * 1024 * 1024;
 interface Context {
   params: Promise<{ segments?: string[] }>;
@@ -81,19 +81,21 @@ const refuseFutureVersion = (document: unknown): NextResponse | null => {
   });
 };
 
-const parseJsonBody = async (request: Request): Promise<unknown> => {
-  const bytes = await readBoundedBody(request, MAX_DOCUMENT_BODY_BYTES, reason =>
-    new StudyError('INVALID_ARGUMENT', reason === 'too_large'
-      ? { reason: 'payload_too_large', limit: MAX_DOCUMENT_BODY_BYTES }
-      : { reason: reason === 'missing' ? 'empty_body' : 'unreadable_body' }));
-  const text = new TextDecoder().decode(bytes);
-  // JSON 解析集中在 json-codec：这里只接受任意合法 JSON，形状稍后由 DSL 校验器裁定。
-  const decoded = decodeJson<unknown>(text, z.unknown(), null, 'maic-document-body');
-  if (!decoded.ok) {
-    throw new StudyError('INVALID_ARGUMENT', { reason: 'invalid_json', error: decoded.error });
-  }
-  return decoded.value;
-};
+const parseJsonBody = async (request: Request): Promise<unknown> =>
+  readBoundedJson(request, MAX_DOCUMENT_BODY_BYTES, (reason, detail) =>
+    new StudyError(
+      'INVALID_ARGUMENT',
+      reason === 'too_large'
+        ? { reason: 'payload_too_large', limit: MAX_DOCUMENT_BODY_BYTES }
+        : reason === 'missing'
+          ? { reason: 'empty_body' }
+          : reason === 'unreadable'
+            ? { reason: 'unreadable_body' }
+            : reason === 'invalid_utf8'
+              ? { reason: 'invalid_utf8' }
+              : { reason: 'invalid_json', ...(detail ? { error: detail } : {}) },
+    ),
+  );
 
 const noContent = (): NextResponse => new NextResponse(null, { status: 204 });
 

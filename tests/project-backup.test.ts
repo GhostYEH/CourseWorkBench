@@ -442,17 +442,37 @@ describe('project directory backup and restore', () => {
     expect(readdirSync(temp).some((name) => name.startsWith('.sew-restore-'))).toBe(false);
   });
 
-  it('rejects corrupt SQLite and future StudyStore schema without migrating it', async () => {
-    await create();
-    const file = projectPaths(join(backup, 'project')).databaseFile;
-    writeFileSync(file, Buffer.alloc(100, 0x41));
-    editManifest((manifest) => {
-      const entry = manifest.files.find((item) => item.path === '.study/study.db')!;
-      entry.byteLength = 100;
-      entry.sha256 = createHash('sha256').update(readFileSync(file)).digest('hex');
-    });
-    await expect(restore()).rejects.toThrow();
-    expect(existsSync(destination)).toBe(false);
+  it.each(['non_database', 'corrupt_page'])(
+    'rejects %s SQLite diagnosably without changing the backup or current project',
+    async (mode) => {
+      await create();
+      const file = projectPaths(join(backup, 'project')).databaseFile;
+      const currentBefore = readFileSync(projectPaths(source).databaseFile);
+      const damaged = mode === 'non_database' ? Buffer.alloc(100, 0x41) : readFileSync(file);
+      // First-page b-tree type: preserve the SQLite header but make the schema page unreadable.
+      if (mode === 'corrupt_page') damaged[100] = 0xff;
+      writeFileSync(file, damaged);
+      editManifest((manifest) => {
+        const entry = manifest.files.find((item) => item.path === '.study/study.db')!;
+        entry.byteLength = damaged.length;
+        entry.sha256 = createHash('sha256').update(damaged).digest('hex');
+      });
+      const manifestBefore = readFileSync(join(backup, 'backup.json'));
+      await expect(restore()).rejects.toMatchObject({
+        name: 'ProjectBackupError',
+        reason: 'database_unreadable',
+      });
+      expect(existsSync(destination)).toBe(false);
+      expect(readFileSync(file)).toEqual(damaged);
+      expect(readFileSync(join(backup, 'backup.json'))).toEqual(manifestBefore);
+      expect(readFileSync(projectPaths(source).databaseFile)).toEqual(currentBefore);
+      expect(existsSync(`${file}-wal`)).toBe(false);
+      expect(existsSync(`${file}-shm`)).toBe(false);
+      expect(readdirSync(temp).some((name) => name.startsWith('.sew-restore-'))).toBe(false);
+    },
+  );
+
+  it('rejects future StudyStore schema without migrating it', () => {
     const db = createNodeSqliteDriver().open(projectPaths(source).databaseFile);
     db.prepare('INSERT INTO schema_migrations VALUES (?,?,?)').run(
       SCHEMA_VERSION + 1,

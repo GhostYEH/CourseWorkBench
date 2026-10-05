@@ -58,6 +58,15 @@ const withActiveScope = (init?: RequestInit): RequestInit => {
 const dispatchScoped = (input: string, init?: RequestInit): Promise<Response> =>
   dispatch(input, withActiveScope(init));
 
+/** Single-chunk stream body, so a Request carries exactly the given bytes. */
+const streamBody = (bytes: Uint8Array): ReadableStream<Uint8Array> =>
+  new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(bytes);
+      controller.close();
+    },
+  });
+
 const openStore = () =>
   new HttpDocumentStore({
     baseUrl: BASE,
@@ -351,6 +360,112 @@ describe('真实课堂文档链', () => {
       expect(((await response.json()) as { error: { code: string } }).error.code).toBe('VALIDATION_FAILED');
     }
     expect(session.store.listClassroomDocuments(session.projectId)).toEqual([]);
+  });
+
+  it('非法 UTF-8 字节在解码阶段就按 VALIDATION_FAILED 拒绝，不改动已登记课件', async () => {
+    const session = openProjectFromDisk(rootA);
+    ensureFixedLesson(session);
+    const headers = {
+      'content-type': 'application/json',
+      'x-sew-project-id': session.projectId,
+      'x-sew-generation': String(session.generation),
+    };
+    const prefix = new TextEncoder().encode('{"note":"课件');
+    const damaged: Array<[string, Uint8Array]> = [
+      ['非法起始字节', new Uint8Array([...prefix, 0xff])],
+      ['被截断的多字节序列', new TextEncoder().encode('{"note":"中').slice(0, -1)],
+      ['用三字节形式编码的代理项', new Uint8Array([0xed, 0xa0, 0x80])],
+    ];
+    for (const [label, bytes] of damaged) {
+      const response = await dispatch(`${BASE}/documents/${reviewedLesson.stageId}`, {
+        method: 'PUT', headers, body: streamBody(bytes), duplex: 'half',
+      } as RequestInit & { duplex: 'half' });
+      const payload = (await response.json()) as {
+        error: { code: string; message: string; details?: Record<string, unknown> };
+      };
+      expect(response.status, label).toBe(400);
+      expect(payload.error.code, label).toBe('VALIDATION_FAILED');
+      expect(payload.error.details?.reason, label).toBe('invalid_utf8');
+      // 损坏字节不能被替换成 U+FFFD 后继续处理，正文也不允许回显给客户端。
+      expect(JSON.stringify(payload), label).not.toContain('\ufffd');
+      expect(JSON.stringify(payload), label).not.toContain('note');
+    }
+    const stored = session.store.getClassroomDocument(session.projectId, reviewedLesson.stageId);
+    expect(stored?.digest).toBe(classroomDocumentDigest(reviewedLesson.document));
+  });
+
+  it('真实 HttpDocumentStore 送出损坏字节时按合同报错且服务端没有写入', async () => {
+    const session = openProjectFromDisk(rootA);
+    ensureFixedLesson(session);
+    const store = new HttpDocumentStore({
+      baseUrl: BASE,
+      headers: (): HeadersInit => ({
+        'x-sew-project-id': session.projectId,
+        'x-sew-generation': String(session.generation),
+      }),
+      fetch: ((input: string | URL, init?: RequestInit) => {
+        const bytes = new TextEncoder().encode(String(init?.body ?? '{}'));
+        // 破坏正文内部某个多字节字符的后续字节：非致命解码只会把它换成 U+FFFD，
+        // 旧实现仍能 parse 出「合法 JSON」并一路走到审核守卫（403）；严格解码必须先拒绝。
+        const wide = bytes.findIndex((byte, index) => byte > 0x7f && index + 2 < bytes.length);
+        expect(wide).toBeGreaterThan(-1);
+        const damaged = Uint8Array.from(bytes);
+        damaged[wide + 1] = 0xff;
+        return dispatch(
+          typeof input === 'string' ? input : input.toString(),
+          { ...init, body: streamBody(damaged), duplex: 'half' } as RequestInit & {
+            duplex: 'half';
+          },
+        );
+      }) as typeof globalThis.fetch,
+    });
+
+    const failure = (await store
+      .saveDocument(reviewedLesson.document as never)
+      .catch((error: unknown) => error)) as HttpDocumentStoreError;
+    expect(failure).toBeInstanceOf(HttpDocumentStoreError);
+    expect(failure.code).toBe('VALIDATION_FAILED');
+    expect(failure.status).toBe(400);
+    expect(session.store.getClassroomDocument(session.projectId, reviewedLesson.stageId)?.digest).toBe(
+      classroomDocumentDigest(reviewedLesson.document),
+    );
+  });
+
+  it('有效正文按 1 字节分片送达仍被接受，严格解码只看整份字节流', async () => {
+    const session = openProjectFromDisk(rootA);
+    ensureFixedLesson(session);
+    const bytes = new TextEncoder().encode(JSON.stringify(reviewedLesson.document));
+    // 正向控制：严格解码看的是重新拼好的整份字节流，不能逐片解码。多字节字符被切在
+    // 片界上时仍必须接受，否则这条链上的每个中文课件正文都会被误拒。
+    expect([...bytes].some((byte) => byte > 0x7f)).toBe(true);
+    let offset = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (offset >= bytes.byteLength) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(bytes.subarray(offset, offset + 1));
+        offset += 1;
+      },
+    }, { highWaterMark: 0 });
+    const response = await PUT(
+      new Request(`${BASE}/documents/${reviewedLesson.stageId}`, {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          'x-sew-project-id': session.projectId,
+          'x-sew-generation': String(session.generation),
+        },
+        body: stream,
+        duplex: 'half',
+      } as RequestInit & { duplex: 'half' }),
+      { params: Promise.resolve({ segments: [reviewedLesson.stageId] }) },
+    );
+    expect(response.status).toBe(204);
+    expect(session.store.getClassroomDocument(session.projectId, reviewedLesson.stageId)?.digest).toBe(
+      classroomDocumentDigest(reviewedLesson.document),
+    );
   });
 
   it('无 Content-Length 且声明偏小的超限流会立即取消，不再读取后续分块', async () => {

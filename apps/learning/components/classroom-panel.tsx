@@ -454,6 +454,7 @@ const ClassroomPanelContent = ({
           peers={state.peers}
           peerTurns={state.peerTurns}
           disabled={teachingDisabled}
+          onStateRefresh={refresh}
           onChange={(updated, turn) =>
             setState((current) => {
               if (!current || current.session?.sessionId !== updated.sessionId) return current;

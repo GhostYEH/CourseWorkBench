@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { EvidenceBundleDto, LessonVersionDto } from '@sew/study-contracts';
+import { defaultRevisionTitle, hasLessonRevisionChanges } from './lesson-scene-revision-state';
 
 /**
  * 逐场景改写：以某个已冻结版本为基线派生**新的草案版本**。
@@ -20,7 +21,7 @@ export const LessonSceneRevision = ({
   busy: boolean;
   onRevise: (title: string, statementIds: string[]) => void;
 }) => {
-  const [title, setTitle] = useState(`${lesson.title}（改写）`.slice(0, 120));
+  const [title, setTitle] = useState(defaultRevisionTitle(lesson.title));
   const [selected, setSelected] = useState<string[]>(lesson.statementIds);
   const scenes = bundle.statements;
   const toggle = (statementId: string): void =>
@@ -29,10 +30,7 @@ export const LessonSceneRevision = ({
         ? current.filter((item) => item !== statementId)
         : [...current, statementId],
     );
-  const changed =
-    scenes.length !== lesson.statementIds.length ||
-    scenes.some((statement) => !lesson.statementIds.includes(statement.statementId)) ||
-    lesson.statementIds.some((id) => !selected.includes(id));
+  const changed = hasLessonRevisionChanges(lesson.title, lesson.statementIds, title, selected);
 
   return (
     <details className="card">
@@ -51,6 +49,7 @@ export const LessonSceneRevision = ({
           data-revise-title
           onChange={(event) => setTitle(event.target.value)}
         />
+        <span className="muted">修改标题或场景选择后可派生；默认「（改写）」后缀不算改动。</span>
       </label>
       {scenes.length === 0 ? (
         <p className="muted">该证据包没有可归入本课程的场景，请先在「证据包」里选入已审核陈述。</p>

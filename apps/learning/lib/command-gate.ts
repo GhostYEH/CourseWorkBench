@@ -11,6 +11,8 @@ export const createCommandGate = () => {
   let active = true;
   let pending: AbortController | null = null;
   return {
+    /** Whether this gate still owns the view; a revoked scope may not write view state. */
+    isLive: () => active,
     activate() {
       active = true;
     },
@@ -50,6 +52,8 @@ export interface CommandHandlers<T> {
   onSuccess?: (result: T, context: CommandContext) => void | Promise<void>;
   onError?: (error: unknown, context: CommandContext) => void;
   onCancel?: () => void;
+  /** The scope was revoked while this command was in flight, so its result was isolated. */
+  onStale?: () => void;
   onFinish?: () => void;
 }
 
@@ -61,14 +65,25 @@ export const executeCommand = async <T>(
 ): Promise<T | undefined> => {
   const command = gate.begin();
   if (!command) return undefined;
+  let revoked = false;
   try {
     handlers.onStart?.();
     const result = await operation(command);
-    if (!command.isCurrent()) return undefined;
+    if (!command.isCurrent()) {
+      revoked = !command.isActive();
+      return undefined;
+    }
     await handlers.onSuccess?.(result, command);
-    return command.isCurrent() ? result : undefined;
+    if (!command.isCurrent()) {
+      revoked = !command.isActive();
+      return undefined;
+    }
+    return result;
   } catch (error) {
-    if (!command.isActive()) return undefined;
+    if (!command.isActive()) {
+      revoked = true;
+      return undefined;
+    }
     if (command.signal.aborted) handlers.onCancel?.();
     else if (handlers.onError) handlers.onError(error, command);
     else throw error;
@@ -81,5 +96,6 @@ export const executeCommand = async <T>(
         command.finish();
       }
     }
+    if (revoked) handlers.onStale?.();
   }
 };
