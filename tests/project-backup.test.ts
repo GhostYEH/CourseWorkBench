@@ -489,7 +489,8 @@ describe('project directory backup and restore', () => {
     });
     const packageBefore = readFileSync(projectPaths(join(backup, 'project')).databaseFile);
     const currentBefore = readFileSync(projectPaths(source).databaseFile);
-    await expect(restore()).rejects.toThrow('duplicate column');
+    // 最新一条迁移是建表（v26）：中断/不一致的迁移会留下同名表，重放时报「已存在」。
+    await expect(restore()).rejects.toThrow(/already exists|duplicate column/);
     expect(existsSync(destination)).toBe(false);
     expect(readFileSync(projectPaths(join(backup, 'project')).databaseFile)).toEqual(packageBefore);
     expect(readFileSync(projectPaths(source).databaseFile)).toEqual(currentBefore);

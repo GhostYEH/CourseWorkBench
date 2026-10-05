@@ -36,6 +36,7 @@ type ReviewDecision,
 type RoleKind,
 type RunEventPayloadDto,
 type RunState,
+type StatementRevisionCandidateDto,
 } from '@sew/study-contracts';
 import {
 assertCardApprovable,
@@ -51,6 +52,7 @@ decideAttempt,
 gradeQuestionAssessment,judgeAnswer,
 lessonReferencedKnowledgeIds,
 resolveQuestionOrigin,
+revisedStatements,
 type MaterialChangeImpact,
 type OriginRecord,
 type SyllabusCoverageResult,
@@ -81,6 +83,10 @@ type CreateLessonDraftInput,
 type PublishLessonInput,
 } from './repositories/lessons';
 import { MaterialsRepository } from './repositories/materials';
+import {
+LessonStatementRevisionRepository,
+type CreateStatementRevisionInput,
+} from './repositories/lesson-statement-revision';
 import { ModelUsageRepository,type ModelUsageLimits,type SettleModelUsageCallInput,type StartModelUsageCallInput } from './repositories/model-usage';
 import { PlansRepository } from './repositories/plans';
 import { PreferencesRepository } from './repositories/preferences';
@@ -185,6 +191,7 @@ export class StudyStore {
   private readonly plans: PlansRepository;
   private readonly roles: RoleRepository;
   private readonly lessons: LessonRepository;
+  private readonly lessonRevisions: LessonStatementRevisionRepository;
   private readonly teaching: TeachingRepository;
   private readonly syllabus: SyllabusRepository;
   private readonly classroom: ClassroomRepository;
@@ -214,6 +221,7 @@ export class StudyStore {
     this.plans = new PlansRepository(db);
     this.roles = new RoleRepository(db);
     this.lessons = new LessonRepository(db);
+    this.lessonRevisions = new LessonStatementRevisionRepository(db);
     this.teaching = new TeachingRepository(db);
     this.syllabus = new SyllabusRepository(db);
     this.classroom = new ClassroomRepository(db);
@@ -1054,6 +1062,131 @@ export class StudyStore {
 
   createLessonDraft(input: CreateLessonDraftInput): LessonVersionRow {
     return this.lessons.createDraft(input);
+  }
+
+  // ——————————————————— 陈述正文改写候选（LESSON-02） ———————————————————
+
+  /** 写入一条模型改写候选；正文只是待核草案，不进入任何课程版本。 */
+  createStatementRevision(input: CreateStatementRevisionInput) {
+    return this.lessonRevisions.create(input);
+  }
+
+  getStatementRevision(projectId: string, candidateId: string) {
+    return this.lessonRevisions.get(projectId, candidateId);
+  }
+
+  listStatementRevisions(projectId: string, lessonId: string, baseVersion: number) {
+    return this.lessonRevisions.list(projectId, lessonId, baseVersion);
+  }
+
+  /** 项目内全部陈述改写候选：页面一次读全，按课程版本分组展示。 */
+  listProjectStatementRevisions(projectId: string) {
+    return this.lessonRevisions.listForProject(projectId);
+  }
+
+  /** 人工处置候选：pending → applied/rejected，并写入审核人身份。 */
+  decideStatementRevision(input: {
+    projectId: string;
+    candidateId: string;
+    decision: 'approved' | 'rejected';
+    note: string;
+    reviewedBy: string;
+  }) {
+    return this.lessonRevisions.decide(input);
+  }
+
+  statementRevisionReceipt(projectId: string, requestId: string, action: string, intent: string) {
+    return this.lessonRevisions.receipt(projectId, requestId, action, intent);
+  }
+
+  saveStatementRevisionReceipt(
+    projectId: string,
+    requestId: string,
+    action: string,
+    intent: string,
+    result: unknown,
+  ): void {
+    this.lessonRevisions.saveReceipt(projectId, requestId, action, intent, result);
+  }
+
+  /** 课程草案派生的幂等收据：命中时返回既有版本，不追加第二个草案。 */
+  lessonDraftReceipt(projectId: string, requestId: string, intent: string) {
+    return this.lessonRevisions.draftReceipt(projectId, requestId, intent);
+  }
+
+  saveLessonDraftReceipt(
+    projectId: string,
+    requestId: string,
+    intent: string,
+    lessonId: string,
+    version: number,
+  ): void {
+    this.lessonRevisions.saveDraftReceipt(projectId, requestId, intent, lessonId, version);
+  }
+
+  /**
+   * 人工处置一条陈述改写候选（LESSON-02 的「通过→派生新版本」闭环）。
+   *
+   * 通过时在同一个事务内：用候选正文替换基线陈述、按知识点当前已批准证据**重新冻结证据包**
+   * （来源、准入在这一步重新复验），再追加一个新的草案版本；原版本、原证据包与旧陈述保持原样。
+   * 拒绝只留档，不产生新版本。整个动作要求基线版本仍是草案。
+   */
+  applyStatementRevision(input: {
+    projectId: string;
+    candidateId: string;
+    decision: 'approved' | 'rejected';
+    note: string;
+    reviewedBy: string;
+  }): { candidate: StatementRevisionCandidateDto; lesson: LessonVersionRow | null } {
+    const candidate = this.lessonRevisions.get(input.projectId, input.candidateId);
+    if (!candidate) throw new StudyError('NOT_FOUND', { candidateId: input.candidateId });
+    const base = this.lessons.getVersion(candidate.lessonId, candidate.baseVersion, input.projectId);
+    if (!base) throw new StudyError('NOT_FOUND', { lessonId: candidate.lessonId, version: candidate.baseVersion });
+    if (base.status !== 'draft') {
+      throw new StudyError('STEP_ALREADY_COMMITTED', { status: base.status, reason: 'revision_base_not_draft' });
+    }
+    return this.transaction(() => {
+      const decided = this.lessonRevisions.decide(input);
+      if (input.decision === 'rejected') return { candidate: decided, lesson: null };
+      const bundle = this.lessons.getBundle(base.bundleId, input.projectId);
+      if (!bundle) throw new StudyError('INTERNAL', { bundleId: base.bundleId });
+      // 只允许改写本版本实际选中的陈述：候选若指向本版本之外的包内陈述，
+      // 派生时会被静默加入，等于绕过「逐场景勾选」把被排除的场景加回来。
+      if (!base.statementIds.includes(candidate.statementId)) {
+        throw new StudyError('INVALID_ARGUMENT', {
+          reason: 'revision_statement_not_in_version',
+          statementId: candidate.statementId,
+        });
+      }
+      const revised = revisedStatements(bundle.bundle, {
+        statementId: candidate.statementId,
+        text: candidate.proposedText,
+        conditions: candidate.proposedConditions,
+      });
+      const reFrozen = this.buildLessonBundle(input.projectId, revised, base.questionIds);
+      // 新版本沿用基线的场景集合：只把目标陈述替换为改写后的新 statementId，
+      // 其余场景（含基线已排除的）保持基线的取舍，不因改写而回加。
+      // 新 statementId 从重冻结包里按正文取，保证与 buildEvidenceBundle 的编号一致（含来源）。
+      const replacement = reFrozen.bundle.statements.find(
+        (statement) =>
+          statement.knowledgeId === candidate.knowledgeId &&
+          statement.text === candidate.proposedText &&
+          statement.conditions === candidate.proposedConditions,
+      );
+      if (!replacement) throw new StudyError('INTERNAL', { reason: 'revision_statement_missing' });
+      const statementIds = base.statementIds.map((statementId) =>
+        statementId === candidate.statementId ? replacement.statementId : statementId,
+      );
+      const draft = this.lessons.createDraft({
+        projectId: input.projectId,
+        lessonId: candidate.lessonId,
+        title: base.title,
+        bundleId: reFrozen.bundleId,
+        statementIds,
+        questionIds: base.questionIds,
+      });
+      return { candidate: decided, lesson: draft };
+    });
   }
 
   listLessons(projectId: string): LessonVersionRow[] {

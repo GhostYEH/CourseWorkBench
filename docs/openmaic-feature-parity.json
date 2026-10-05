@@ -94,7 +94,8 @@
       "acceptance": "大纲可修改再生成，稳定条目标识不靠序号映射",
       "evidence": [
         "人工调整已落地为「逐场景派生新草案」：apps/learning/components/lesson-scene-revision.tsx 以版本冻结的证据包陈述为候选，按稳定 statementId（不是场景序号）勾选组成，提交既有 draft 命令追加 lessonId 的新版本；旧已发布版本保持不变，新版本必须重新审核才能发布（store.publishLesson + domain.assertLessonPublishable 的 lesson_version_not_approved）。tests/lesson-review.test.ts 覆盖缩减场景的派生与重新审核，tests/lesson-review-page.test.ts 断言生产 SSR 页面出现该入口。",
-        "模型生成大纲与陈述正文级改写仍未实现，故为 partial 而不是完成。"
+        "陈述正文级改写闭环已落地（LESSON-02）：模型候选经 apps/learning/lib/server/lesson-revision-model.ts 复用来源/run/预算/取消守卫生成，只落待核区（lesson_statement_revisions）；人工通过后 store.applyStatementRevision 在事务内按知识点已批准证据重新冻结证据包并追加新草案版本，来源与知识点沿用原陈述、正文变化得到新 statementId，且只替换目标场景、不回加基线已排除的场景；旧版本与旧证据包保持不变（tests/lesson-statement-revision.test.ts、tests/lesson-revision-http.test.ts、tests/lesson-review-page.test.ts）。候选生成与课程派生都按 requestId 幂等。",
+        "模型完整课件大纲/多场景生成与更完整的编辑（OMA-006/021/022）仍未实现，故为 partial 而不是完成。"
       ]
     },
     {
@@ -430,7 +431,7 @@
       "acceptance": "ClassroomSurface实际运行，slide/quiz/interactive/pbl可进入",
       "evidence": [
         "apps/learning/components/classroom-surface.tsx 以 @openmaic/storage 的 HttpDocumentStore 读文档并按 order 导航 slide/quiz/interactive",
-      "固定课堂采用上游 PlaybackEngine/游标/导航/时序代码、SlideCanvas 和 HttpRuntimeStore；原 ClassroomSurface 的页面加载、重试、effect/退出取消及 progressive 显示策略实际复制到 useOpenMaicClassroomLoad/classroom-host-load，服务准入与资产释放端口实际接线。tests/classroom-upstream-adaptation.test.ts 17 项通过；Stage 视图仍是窄适配，教师/白板/Director/PBL未接入，不证明全部四类场景。",
+        "固定课堂采用上游 PlaybackEngine/游标/导航/时序代码、SlideCanvas 和 HttpRuntimeStore；原 ClassroomSurface 的页面加载、重试、effect/退出取消及 progressive 显示策略实际复制到 useOpenMaicClassroomLoad/classroom-host-load，服务准入与资产释放端口实际接线。tests/classroom-upstream-adaptation.test.ts 17 项通过；Stage 视图仍是窄适配，教师/白板/Director/PBL未接入，不证明全部四类场景。",
         "实际目录包 UI 验收已覆盖原生选择器、鼠标作答、离线失败/手动重试、答案与过程整应用重启读回、iframe 无 Node/preload、服务崩溃恢复和凭据轮换；独立干净 Windows 验收仍待完成。",
         "tests/classroom-read-guards.test.ts：页面读取无权威写入；演示导入需明确确认；下发前重算内容摘要、复验来源；来源失效保留历史并拒绝下发。"
       ]
@@ -666,8 +667,8 @@
       "acceptance": "脚本可运行且无法访问preload/项目文件/主凭据",
       "evidence": [
         "互动内容为 DSL InteractiveContent.html，经 srcDoc 注入 sandbox=\"allow-scripts\" 的 iframe",
-      "scripts/smoke-electron-boundary.cjs：父框架读不到该 frame 的 DOM，帧内 typeof sewNative 与 typeof require 均为 undefined；上游 InteractiveIframeHost 消息协议与保活尚未接入",
-      "InteractiveSceneView 在首段 widget 脚本前装入错误诊断；观察消息不隐式提交。父页明确提交参数/预测/解释，服务绑定本人/demo 身份、核验参数并以不可变 SQLite 收据去重，重启可读；tests/classroom-interaction.test.ts 7 项通过。生成式互动及通用组件恢复仍未完成。"
+        "scripts/smoke-electron-boundary.cjs：父框架读不到该 frame 的 DOM，帧内 typeof sewNative 与 typeof require 均为 undefined；上游 InteractiveIframeHost 消息协议与保活尚未接入",
+        "InteractiveSceneView 在首段 widget 脚本前装入错误诊断；观察消息不隐式提交。父页明确提交参数/预测/解释，服务绑定本人/demo 身份、核验参数并以不可变 SQLite 收据去重，重启可读；tests/classroom-interaction.test.ts 7 项通过。生成式互动及通用组件恢复仍未完成。"
       ]
     },
     {

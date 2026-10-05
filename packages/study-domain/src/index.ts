@@ -27,6 +27,10 @@ export {
 export type {
   BundleSegmentRecord, BundleQuestionRecord, EvidenceBundleInput, LessonPublishFacts,
 } from './lesson';
+export {
+  findBundleStatement, revisedStatements, assertStatementRevisionDecidable, statementRevisionPrompt,
+} from './statement-revision';
+export type { RevisedStatementInput } from './statement-revision';
 export { assertModelCallAdmitted, modelCallQuotaRemaining } from './guard';
 export type { ModelCallGuardFacts } from './guard';
 export {

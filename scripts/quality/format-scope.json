@@ -97,5 +97,12 @@
   "apps/learning/lib/classroom/peer-command-lifecycle.ts",
   "tests/classroom-peers-panel.test.ts",
   "apps/learning/lib/model-connection-command.ts",
-  "tests/model-connection-command.test.ts"
+  "tests/model-connection-command.test.ts",
+  "packages/study-domain/src/statement-revision.ts",
+  "packages/study-storage/src/repositories/lesson-statement-revision.ts",
+  "apps/learning/lib/server/lesson-revision-model.ts",
+  "apps/learning/components/lesson-statement-revision.tsx",
+  "apps/learning/app/api/study/lessons/revision/route.ts",
+  "tests/lesson-statement-revision.test.ts",
+  "tests/lesson-revision-http.test.ts"
 ]

@@ -41,6 +41,7 @@ export default function LessonsPage(): ReactNode {
     .map(toLessonReviewDto);
   const confirmedPlan = session.store.getConfirmedPlan(projectId);
   const activeSession = session.store.getOpenClassroomSession(projectId);
+  const statementRevisions = session.store.listProjectStatementRevisions(projectId);
 
   /** 已发布版本 → 已挂接的课件文档（场景编号取自文档本身，不从讲解卡反推）。 */
   const classroomDocuments = versions
@@ -121,6 +122,8 @@ export default function LessonsPage(): ReactNode {
         knowledge={knowledge}
         questions={questions}
         documents={classroomDocuments}
+        statementRevisions={statementRevisions}
+        modelConfigured={modelConnection.status().configured}
       />
 
       <LessonDraftGeneration

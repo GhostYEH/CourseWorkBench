@@ -15,6 +15,10 @@ const buildDir = resolve(learningDir, distName);
 const before = learningSourceFingerprint(root);
 // An interrupted/failed rebuild must not leave the previous successful provenance usable.
 rmSync(join(buildDir, BUILD_INPUTS_MANIFEST), { force: true });
+// standalone 会追踪应用目录下的文件；残留的 dist/service（上一次组装产物）会被整棵追踪进
+// standalone，形成 dist/service/dist/service/… 的自引用嵌套并突破 Windows 路径上限。
+// 该产物由 prepare:learning-dist 重新生成，构建前清掉即可。
+rmSync(join(learningDir, 'dist'), { recursive: true, force: true });
 const result = spawnSync(process.execPath, [nextCli, 'build'], {
   cwd: learningDir,
   env: process.env,

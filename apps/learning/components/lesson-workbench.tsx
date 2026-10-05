@@ -19,11 +19,13 @@ import type {
   LessonReviewRecordDto,
   LessonVersionDto,
   QuestionListItemDto,
+  StatementRevisionCandidateDto,
 } from '@sew/study-contracts';
 import { Empty, Notice } from './ui';
 import { apiFetch, describeApiError } from '../lib/client';
 import { FormalInteractionAuthor } from './formal-interaction-author';
 import { LessonSceneRevision } from './lesson-scene-revision';
+import { LessonStatementRevision } from './lesson-statement-revision';
 
 interface StatementRow {
   knowledgeId: string;
@@ -66,6 +68,8 @@ export const LessonWorkbench = ({
   knowledge,
   questions,
   documents = [],
+  statementRevisions = [],
+  modelConfigured = false,
 }: {
   projectId: string;
   generation: number;
@@ -77,6 +81,10 @@ export const LessonWorkbench = ({
   questions: QuestionListItemDto[];
   /** 已挂接课件文档的课堂映射：按「课程 + 版本」匹配，新版本必须重新挂接。 */
   documents?: Array<{ lessonId: string; lessonVersion: number; stageId: string; documentDigest: string; sceneIds: string[] }>;
+  /** 陈述正文改写候选：按课程 + 版本分组展示，待核的才可处置。 */
+  statementRevisions?: StatementRevisionCandidateDto[];
+  /** 是否已配置模型连接；未配置时改写生成按钮不可用。 */
+  modelConfigured?: boolean;
 }): ReactNode => {
   const router = useRouter();
   const [rows, setRows] = useState<StatementRow[]>(() =>
@@ -433,6 +441,17 @@ export const LessonWorkbench = ({
                             },
                             `已从 v${lesson.version} 派生新的草案版本，需重新审核后才会生效；旧版本保持不变。`,
                           )}
+                        />
+                      ) : null}
+                      {versionBundle(lesson) && lesson.status === 'draft' ? (
+                        <LessonStatementRevision
+                          key={`${lesson.lessonId}-v${lesson.version}-statement-revision`}
+                          projectId={projectId}
+                          generation={generation}
+                          lesson={lesson}
+                          bundle={versionBundle(lesson)!}
+                          candidates={statementRevisions}
+                          configured={modelConfigured}
                         />
                       ) : null}
                     </td>

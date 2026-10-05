@@ -932,6 +932,33 @@ ALTER TABLE attempt_grade_generation_calls ADD COLUMN accounted_tokens INTEGER;
 ALTER TABLE attempt_grade_generation_calls ADD COLUMN token_measurement TEXT;
 ALTER TABLE attempt_grade_generation_calls ADD COLUMN elapsed_ms INTEGER;
 ` },
+{ version: 26, name: 'lesson_statement_revisions', sql: `
+-- 陈述正文改写候选（LESSON-02）。模型改写只落待核区：既不写入课程版本，也不改写原陈述，
+-- 人工通过后才派生新的草案版本；拒绝只留档。正文、知识点与来源的沿用由服务端复验。
+CREATE TABLE lesson_statement_revisions (
+  candidate_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(project_id),
+  lesson_id TEXT NOT NULL,
+  base_version INTEGER NOT NULL,
+  statement_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending','applied','rejected')),
+  candidate_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_lesson_statement_revisions_scope
+  ON lesson_statement_revisions(project_id, lesson_id, base_version, statement_id);
+-- 候选生成与人工处置的幂等收据：同一 requestId 与意图重试返回既有结果，不重复调用或派生。
+CREATE TABLE lesson_statement_revision_receipts (
+  project_id TEXT NOT NULL, request_id TEXT NOT NULL, action TEXT NOT NULL,
+  intent_json TEXT NOT NULL, result_json TEXT NOT NULL, PRIMARY KEY(project_id, request_id)
+);
+-- 课程草案派生的幂等收据：带 requestId 的 draft 重试返回既有版本，不追加第二个草案版本。
+CREATE TABLE lesson_draft_receipts (
+  project_id TEXT NOT NULL, request_id TEXT NOT NULL, intent_json TEXT NOT NULL,
+  lesson_id TEXT NOT NULL, version INTEGER NOT NULL, PRIMARY KEY(project_id, request_id)
+);
+` },
 ];
 
 

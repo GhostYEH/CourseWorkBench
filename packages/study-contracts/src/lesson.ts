@@ -122,6 +122,11 @@ export const lessonDraftSchema = z
     bundleId: z.string().min(1),
     title: z.string().min(2).max(120),
     ...statementIdsField,
+    /**
+     * 可选幂等号：给出时，同一次派生（相同 requestId 与相同意图）重试返回既有版本，
+     * 不因网络重发而追加第二个草案版本。省略时保持「每次调用都新建版本」的旧行为。
+     */
+    requestId: z.string().trim().min(1).max(200).optional(),
   })
   .strict();
 export type LessonDraftInput = z.infer<typeof lessonDraftSchema>;
@@ -244,3 +249,86 @@ export const lessonBundleBuildSchema = z
   })
   .strict();
 export type LessonBundleBuildInput = z.infer<typeof lessonBundleBuildSchema>;
+
+/**
+ * 陈述正文改写候选的状态（LESSON-02）。
+ *
+ * 候选是模型产生的待核正文，先落在 `pending`：既不写入任何课程版本，也不改写原陈述。
+ * 只有人工 `applied`（通过）才会派生新的草案版本；`rejected` 只留档，不产生新版本。
+ */
+export const STATEMENT_REVISION_STATUS = ['pending', 'applied', 'rejected'] as const;
+export type StatementRevisionStatus = (typeof STATEMENT_REVISION_STATUS)[number];
+
+/**
+ * 一次陈述正文改写请求。
+ *
+ * `requestId` 是客户端持有的幂等号：同一次改写（相同 requestId 与相同意图）重试时
+ * 返回既有候选，不会因为重发而堆出第二条候选或第二次 provider 调用。
+ */
+export const statementRevisionProposeSchema = z
+  .object({
+    scope: projectScopeSchema,
+    action: z.literal('propose-statement-revision'),
+    requestId: z.string().trim().min(1).max(200),
+    lessonId: z.string().min(1),
+    /** 改写的基线版本；只允许对草案版本发起，避免改写已发布内容。 */
+    version: z.number().int().positive(),
+    statementId: z.string().min(1),
+    instruction: z.string().trim().min(2).max(600),
+  })
+  .strict();
+export type StatementRevisionProposeInput = z.infer<typeof statementRevisionProposeSchema>;
+
+/** 人工对候选的处置：通过则派生新草案版本，拒绝只留档。 */
+export const statementRevisionApplySchema = z
+  .object({
+    scope: projectScopeSchema,
+    action: z.literal('apply-statement-revision'),
+    requestId: z.string().trim().min(1).max(200),
+    candidateId: z.string().min(1),
+    decision: z.enum(['approved', 'rejected']),
+    note: z.string().max(500),
+  })
+  .strict();
+export type StatementRevisionApplyInput = z.infer<typeof statementRevisionApplySchema>;
+
+/**
+ * 模型改写输出：只允许给出正文与可选适用条件，来源、知识点与编号都由服务端沿用原陈述。
+ * 模型不能借改写引入新知识点或新来源。
+ */
+export const statementRevisionOutputSchema = z
+  .object({
+    text: z.string().trim().min(2).max(2000),
+    conditions: z.string().max(2000).optional(),
+  })
+  .strict();
+export type StatementRevisionOutput = z.infer<typeof statementRevisionOutputSchema>;
+
+/**
+ * 一条陈述正文改写候选。
+ *
+ * `knowledgeId` 与 `evidence` 必须与原陈述一致：改写只改表述，不改来源绑定与知识点归属。
+ * `status` 为 `pending` 时正文是模型草案，未进入任何课程版本。
+ */
+export const statementRevisionCandidateSchema = z
+  .object({
+    candidateId: z.string().min(1),
+    projectId: z.string().min(1),
+    lessonId: z.string().min(1),
+    baseVersion: z.number().int().positive(),
+    statementId: z.string().min(1),
+    knowledgeId: z.string().min(1),
+    origin: z.literal('model_generated'),
+    status: z.enum(STATEMENT_REVISION_STATUS),
+    proposedText: z.string().min(2).max(2000),
+    proposedConditions: z.string().max(2000),
+    evidence: z.array(evidenceRefSchema).min(1),
+    instruction: z.string(),
+    note: z.string(),
+    /** 审核人身份由服务端写入；请求体没有该字段，客户端不能自报。 */
+    reviewedBy: z.string().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .strict();
+export type StatementRevisionCandidateDto = z.infer<typeof statementRevisionCandidateSchema>;

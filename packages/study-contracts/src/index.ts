@@ -30,12 +30,16 @@ export {
   lessonVersionSchema, lessonDraftSchema, lessonPublishSchema, lessonReviewSchema,
   lessonWithdrawSchema, lessonReviewRecordSchema, lessonBundleBuildSchema,
   lessonDocumentAssembleSchema, formalLessonSceneSchema, formalLessonDocumentSchema,
+  STATEMENT_REVISION_STATUS, statementRevisionProposeSchema, statementRevisionApplySchema,
+  statementRevisionOutputSchema, statementRevisionCandidateSchema,
 } from './lesson';
 export type {
   LessonStatus, LessonReviewDecision, BundleStatementDto, BundleQuestionDto, EvidenceBundleDto, EvidenceBundleViewDto,
   LessonVersionDto, LessonDraftInput, LessonPublishInput, LessonReviewInput, LessonWithdrawInput,
   LessonReviewRecordDto, LessonBundleBuildInput,
   LessonDocumentAssembleInput, FormalLessonSceneDto, FormalLessonDocumentDto,
+  StatementRevisionStatus, StatementRevisionProposeInput, StatementRevisionApplyInput,
+  StatementRevisionOutput, StatementRevisionCandidateDto,
 } from './lesson';
 export {
   EXPLANATION_KIND, EXPLANATION_ORIGIN, EXPLANATION_STATUS, EXPLANATION_TEXT_MAX_LENGTH,

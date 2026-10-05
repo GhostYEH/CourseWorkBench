@@ -14,7 +14,7 @@ import { planPayloadSchema, runSnapshotSchema } from './plan';
 import { modelGenerationResultSchema } from './model-connection';
 import {
   evidenceBundleRowSchema, lessonReviewRecordSchema, lessonVersionSchema, LESSON_STATUS,
-  formalLessonDocumentSchema,
+  formalLessonDocumentSchema, statementRevisionCandidateSchema,
 } from './lesson';
 import {
   PEER_ENGAGEMENT, classroomPeerTurnSchema, classroomSessionSchema, classroomStateSchema, explanationCardSchema,
@@ -94,6 +94,19 @@ export const apiResponses = {
   lessonReview: z.object({ review: lessonReviewRecordSchema }).strict(),
   lessonWithdraw: z.object({ lesson: lessonVersionSchema, link: classroomLinkSchema }).strict(),
   lessonDocument: z.object({ document: formalLessonDocumentSchema }).strict(),
+  /** 陈述正文改写候选（LESSON-02）：候选只落待核区，通过后才派生新草案版本。 */
+  lessonRevisionPropose: z.object({
+    /** 生成失败时为 null，失败原因在 generation.message 里；成功时给出待核候选。 */
+    candidate: statementRevisionCandidateSchema.nullable(),
+    generation: modelGenerationResultSchema,
+    deduplicated: z.boolean(),
+  }).strict(),
+  lessonRevisionApply: z.object({
+    candidate: statementRevisionCandidateSchema,
+    /** 通过并派生时给出新草案版本；拒绝时为 null。 */
+    lesson: lessonVersionSchema.nullable(),
+    deduplicated: z.boolean(),
+  }).strict(),
   explanationWrite: z.object({ card: explanationCardSchema }).strict(),
   classroomSession: z.object({
     session: classroomSessionSchema,

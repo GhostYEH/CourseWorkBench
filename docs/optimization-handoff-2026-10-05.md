@@ -4,7 +4,7 @@
 
 ## 工作区与边界
 
-- 项目：`D:\File\Ai与辅助教学\subject-exam-workbench`，PowerShell，分支 `main`；本轮核心提交为 `a039835`，输入摘要维持 299 项不变。
+- 项目：`D:\File\Ai与辅助教学\subject-exam-workbench`，PowerShell，分支 `main`；上一核心提交为 `a039835`，本轮在其上推进 LESSON-02 陈述正文改写闭环，输入摘要随新代码变化（304 项）。
 - 另一智能体的未提交实现已保留并整合；只提交相关源码、测试与文档。评测生成目录已忽略，数据保留；构建、release 和缓存不入库。
 - 不读取、执行、删除或提交 `.task-cache/`；不修改真实用户项目/profile，不发未授权付费 provider 请求。
 - 本轮及续作按用户指定使用 GPT-6 Luna / xhigh 子智能体，明确文件所有权，不回退他人改动；主智能体集成，实质改动完成后交 `code_reviewer` 独立只读复核。
@@ -21,35 +21,43 @@
 7. 模型原生配置/诊断成功后，状态读取失败不再改写为操作失败；有效配置回执清空密钥，未确认保存方式时明确提示重读，保留真实诊断且不自动重发。10 项回归覆盖真实 desktop 校验入口的地址规范化、server 原字符读回、无效/旧状态、native/schema 失败和 scope 失效；复核发现的 URL 比较漏判已修正。
 8. 备份路径提前拒绝 Windows 非法字符及 COM/LPT 上标数字设备名，仍接受合法 COM10；38 项备份回归覆盖恶意路径声明、源/备份不变、目标不存在及暂存清理，不实际创建危险文件名。README 同步移除过期的默认 provider 示例，说明加密不可用时只保留会话凭据。
 
+本轮续作（LESSON-02 陈述正文改写闭环）：
+
+9. 新增陈述正文改写候选：`lesson_statement_revisions` 表与 repository，候选只落待核区（`pending`），不写入课程版本、不改写原陈述；`origin` 固定为 `model_generated`，`reviewedBy` 由服务端写入，请求体不能自报。
+10. 候选生成 `apps/learning/lib/server/lesson-revision-model.ts` 复用与课程草案/课堂讲解/错因归因同一套守卫（来源/run/预算/deadline/取消/项目代次），未配置模型或 guard 判定不通过时不发出任何 provider 请求；输出只解码一次并严格校验（新增允许入口），失败只记失败不落候选。
+11. 人工处置 `store.applyStatementRevision`：通过时在同一事务内按知识点当前已批准证据重新冻结证据包（来源与准入重新复验）并追加新草案版本，来源与知识点沿用原陈述、正文变化得到新 statementId，且只替换目标场景、不回加基线已排除的场景；旧版本与旧证据包保持原样。拒绝只留档。
+12. 课程派生命令补 `requestId` 幂等：`lesson_draft_receipts` 收据按意图返回既有版本，重复请求不追加；候选生成与处置也按 requestId 幂等（`lesson_statement_revision_receipts`）。
+13. 独立只读复核发现并修复一处阻塞缺陷：`applyStatementRevision` 曾用重冻结证据包的全部陈述作为新版本场景集合，会把基线版本（如逐场景勾选派生得到的子集）已排除的场景静默加回。现改为沿用基线的 `statementIds`、只把目标场景替换为改写后的新 statementId，并拒绝候选指向本版本未选中的陈述（生成与处置两条路径都拦）。新增回归 `tests/lesson-statement-revision.test.ts`（18）、`tests/lesson-revision-http.test.ts`（3）覆盖上述行为，并扩展生产 SSR 断言；迁移 26 与两处历史迁移测试同步。
+
 本轮两项修复经独立只读复核，未发现剩余确认缺陷；公共命令与同学面板生命周期复查也无确认缺陷，未修改其行为。既有备份容器、冻结评测、真实画布聚焦及审核/发布链保留。
 
 ## 当前验证
 
-- 源码摘要：6f9bc7d7a99855164e756461e21f41981b69c4920861f66f2a4baa1e2f77b4d7；299 个输入，当前 BUILD_ID `3EXxKtlNjqFaWCVH8X4Bn`。
-- pnpm check：93 文件 / 817 项，0 跳过；类型（含真实 IPC）、lint、限定格式和 12 项工程门禁通过。
-- 真实 Electron 原生冒烟第五、六跑：36 组通过，含真实 OS 剪贴板复制，不发远程 provider 调用。production HTTP 冒烟：3 个文件 / 21 项通过。
-- 当前随包服务组装与启动：14/14；清单 12376 文件，摘要和 BUILD_ID 与当前输入一致。
-- 新目录包：`apps/desktop/release/review-2026-10-05-luna-final/win-unpacked`；包启动 30/30、随包课堂 50/50，机器报告分别为同目录的 `pack01-verification.json` 与 `classroom-verification.json`。
+- 源码摘要随 LESSON-02 新代码变化：304 个构建输入（`pnpm build:learning` 记录）；旧摘要 6f9bc7d7…b4d7 不再代表当前源码。
+- pnpm check：95 文件 / 838 项，0 跳过；类型（含真实 IPC）、lint、限定格式和 12 项工程门禁通过。
+- 真实 Electron 原生冒烟：36 组通过，含真实 OS 剪贴板复制，不发远程 provider 调用。
+- 当前随包服务组装与启动：14/14；清单 12364 文件，最长相对路径 132/140，摘要和 BUILD_ID 与当前输入一致。
+- 新目录包：`apps/desktop/release/review-2026-10-05-lesson-revision/win-unpacked`；包启动 30/30（报告同目录 `pack01-verification.json`）、随包课堂 50/50（`apps/desktop/release/m0-classroom-ui-*.json`）。本机此前两次运行曾在演示课恢复检查处超时（`quiz recovery after service crash` / CDP `Runtime.evaluate`），本次通过，偶发超时按 EVAL-03/UX-01 继续观察。
 - 新目录由 electron-builder 输出，既有 win-unpacked/NSIS/安装态未覆盖，未运行安装升级卸载或干净 Windows 验收。
 
-源码摘要保持不变；同源码于 13:50 和 13:54 再次构建，BUILD_ID 更新为当前值。旧 `review-2026-10-05-luna` 目录保留作历史，最新目录包按当前编号组装并核验。不把随包课堂 50 项误记为备份恢复或失效 Notice 的完整交互验收；Notice 的已有回归覆盖 gate/helper/SSR 与接线，真实失效后的 DOM 生命周期仍由 EVAL-03/UX-01 跟踪。
+源码摘要随本轮 LESSON-02 新代码变化（304 个构建输入），旧摘要与旧报告不再代表当前源码。旧 `review-2026-10-05-luna`、`luna-final` 目录保留作历史，最新目录包 `review-2026-10-05-lesson-revision` 按当前源码组装并核验。不把随包课堂 50 项误记为备份恢复或失效 Notice 的完整交互验收；Notice 的已有回归覆盖 gate/helper/SSR 与接线，真实失效后的 DOM 生命周期仍由 EVAL-03/UX-01 跟踪。
 
-原生冒烟六次结果依次为 generic renderer error、个人档案 OS 剪贴板 UID 未匹配、36 组通过、在 `classroom-widget-isolated` 阶段 generic renderer error、第五、六跑各 36 组通过（含真实剪贴板）。新增诊断记录 workbench/formal quiz 阶段、静态异常类型、受控 `hitTag` 枚举和 `associatedLabel` 布尔值；剪贴板诊断仅六个布尔值，原有断言保留。异常根因未确认，继续作为 EVAL-03/UX-01 待观察项；不声称根因或剪贴板缺陷已修复，不记录剪贴板内容、UID 或凭据。启动器仍在终态失败、超时和早退时保留最新阶段；每个 started 阶段保留自有服务 PID，异常早退后可清理。
+原生冒烟历史六跑结果依次为 generic renderer error、个人档案 OS 剪贴板 UID 未匹配、36 组通过、在 `classroom-widget-isolated` 阶段 generic renderer error、第五、六跑各 36 组通过（含真实剪贴板）。异常根因未确认，继续作为 EVAL-03/UX-01 待观察项；不声称根因或剪贴板缺陷已修复，不记录剪贴板内容、UID 或凭据。启动器仍在终态失败、超时和早退时保留最新阶段；每个 started 阶段保留自有服务 PID，异常早退后可清理。
 
 ## 剩余范围与续作
 
-- LESSON-02：draft 合同尚无 requestId，重复请求会追加版本，派生重试幂等仍待做；当前派生只改陈述组成/标题，陈述正文、完整课件生成和其余互动/PBL 尚未完成。
+- LESSON-02：陈述正文改写闭环与课程派生 requestId 幂等已落地；仍待做的是模型完整课件草案生成与多场景编辑（OMA-006/021/022）、其余互动/PBL。
 - M3：受控模型同学、复习调度、完整费用/租约与整应用故障恢复；在线 UID/邀请/同步/交流仍待推进。
 - M4：当前产物评测/异常与 UI 走查、正式安装升级卸载、文档和演示；详细剩余工作只维护 `待办事项.md` 与 85 项能力清单，不新增审查报告。
 - 真实材料与独立人工金标准、两位真人两台设备、独立干净 Windows、真实付费 provider 已按用户要求暂缓，保持未签核，不反复索要或用合成/单机双窗口代替。
-- 下阶段先完成正文改写候选→来源绑定→人工审核→新版本发布→课堂消费闭环。旧冻结版本与历史答案保持不变，新学科内容待审，生成/审核/发布/授课均复验来源；模型入口复用凭据/来源/预算/deadline/取消/项目代次守卫，测试使用假 provider。
+- 正文改写闭环已落地（旧冻结版本与历史答案保持不变，新学科内容待审，生成/审核/发布/授课均复验来源；模型入口复用凭据/来源/预算/deadline/取消/项目代次守卫，测试使用假 provider）。下阶段扩展模型完整课件生成与多场景编辑，并补齐随包课堂在开发机偶发的恢复检查超时取证。
 
 ## 下一轮可复制的提示词
 
 ```text
 请接手 D:\File\Ai与辅助教学\subject-exam-workbench。先读适用 AGENTS.md、docs/optimization-handoff-2026-10-05.md、docs/规划书.md、docs/开工任务清单.md、docs/待办事项.md 与 docs/openmaic-feature-parity.json，核对 git status/log 和当前输入。此前四项质量补丁、课程派生/SQLite 补漏及本轮模型回执/备份路径修复已收尾，不重复实现已完成的画布聚焦与场景勾选派生。
 
-优先推进 M2/LESSON-02 和 B 批次：明确派生重试语义，完成正文改写候选、来源绑定、独立审核、追加新版本和课堂消费闭环，再扩展完整课件生成与其余互动/PBL。按规划保留 M3/M4 和在线协作的剩余范围，持续实现、验证与复盘，不只给计划。
+LESSON-02 的陈述正文改写闭环（候选→来源沿用→人工审核→追加新版本）与课程派生 requestId 幂等已收尾，不重复实现。继续推进 M2/LESSON-02 与 B 批次：模型完整课件草案生成、多场景编辑（OMA-006/021/022）与其余互动/PBL。按规划保留 M3/M4 和在线协作的剩余范围，持续实现、验证与复盘，不只给计划。
 
 子智能体按用户要求用 GPT-6 Luna / xhigh（极高），认领不重叠文件，主智能体指挥、集成、核验并交 code_reviewer 独立只读复核。保留未知模型结果预占且不自动重发、scope 隔离、测验 nonce/持久收据、本人优先与 simulation 分区，以及严格 schema/摘要和审核守卫。不得读取/执行/删除/提交 .task-cache/、覆盖他人改动、修改真实 profile/项目或发未授权 provider 请求。
 
