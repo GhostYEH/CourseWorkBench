@@ -39,6 +39,7 @@ let finishing = false;
 let cleanupPromise = null;
 let nativeProjects;
 let backupWorkspace;
+let clipboardDiagnostics = null;
 const rendererRequests = [];
 /** 已覆盖的边界断言，写进结果文件便于外部复核（stdio 被隐藏窗口丢弃）。 */
 const coveredChecks = [];
@@ -52,11 +53,14 @@ const writeResult = (result) => {
 };
 const markStep = (step, extra = {}) => {
   lastStep = step;
+  if (extra.clipboardDiagnostics) clipboardDiagnostics = extra.clipboardDiagnostics;
   writeResult({
     state: 'started',
     step,
     electronVersion: process.versions.electron || null,
     appApiAvailable: Boolean(app && typeof app.whenReady === 'function'),
+    servicePid: serviceChild?.pid ?? null,
+    ...(clipboardDiagnostics ? { clipboardDiagnostics } : {}),
     ...extra,
   });
 };
@@ -68,6 +72,7 @@ process.on('exit', (code) => {
       code,
       step: lastStep,
       servicePid: serviceChild?.pid ?? null,
+      ...(clipboardDiagnostics ? { clipboardDiagnostics } : {}),
     });
 });
 
@@ -708,6 +713,7 @@ const run = async () => {
     cover,
   });
   nativeProjects.adopt(await serviceRequest('GET', '/internal/project'));
+  markStep('project-backup-smoke-started', { servicePid: serviceChild.pid ?? null });
   await require('./smoke-project-backup.cjs')({
     window,
     origin: ready.origin,
@@ -716,12 +722,14 @@ const run = async () => {
     waitForText,
     cover,
   });
+  markStep('learner-profile-smoke-started', { servicePid: serviceChild.pid ?? null });
   await require('./smoke-learner-profile.cjs')({
     window,
     origin: ready.origin,
     projectDirectory: tempRoot,
     serviceRequest,
     cover,
+    markStep,
   });
 
   const closeButton = await window.webContents.executeJavaScript(`(() => {
@@ -793,6 +801,7 @@ const finish = async (error = null) => {
   writeResult({
     state: failure ? 'failed' : 'passed',
     step: lastStep,
+    ...(clipboardDiagnostics ? { clipboardDiagnostics } : {}),
     message: failure
       ? failure instanceof Error
         ? failure.message

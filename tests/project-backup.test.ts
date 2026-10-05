@@ -196,6 +196,60 @@ describe('project directory backup and restore', () => {
     expect(readdirSync(temp).some((name) => name.startsWith('.sew-restore-'))).toBe(false);
   });
 
+  it.each([
+    'COM¹.txt',
+    'COM².txt',
+    'COM³.txt',
+    'LPT¹.txt',
+    'LPT².txt',
+    'LPT³.txt',
+    'LPT²/note.txt',
+    'name<.txt',
+    'name>.txt',
+    'name".txt',
+    'name|.txt',
+    'name?.txt',
+    'name*.txt',
+  ])('rejects non-portable manifest path %s before inspecting its payload path', async (name) => {
+    await create();
+    const payload = join(backup, 'project');
+    const payloadEntriesBefore = readdirSync(payload).sort();
+    const payloadDatabaseBefore = readFileSync(projectPaths(payload).databaseFile);
+    const payloadProjectBefore = readFileSync(join(payload, 'project.json'));
+    const sourceDatabaseBefore = readFileSync(projectPaths(source).databaseFile);
+    const sourceProjectBefore = readFileSync(join(source, 'project.json'));
+    editManifest((manifest) => {
+      manifest.files[0]!.path = `exports/${name}`;
+      manifest.files[0]!.kind = 'derived_export';
+    });
+    const manifestBefore = readFileSync(join(backup, 'backup.json'));
+
+    await expect(restore()).rejects.toMatchObject({ reason: 'invalid_file_manifest' });
+
+    expect(existsSync(destination)).toBe(false);
+    expect(readdirSync(payload).sort()).toEqual(payloadEntriesBefore);
+    expect(readFileSync(join(backup, 'backup.json'))).toEqual(manifestBefore);
+    expect(readFileSync(projectPaths(payload).databaseFile)).toEqual(payloadDatabaseBefore);
+    expect(readFileSync(join(payload, 'project.json'))).toEqual(payloadProjectBefore);
+    expect(readFileSync(projectPaths(source).databaseFile)).toEqual(sourceDatabaseBefore);
+    expect(readFileSync(join(source, 'project.json'))).toEqual(sourceProjectBefore);
+    expect(readdirSync(temp).some((entry) => entry.startsWith('.sew-restore-'))).toBe(false);
+  });
+
+  it('allows a regular COM10 filename', async () => {
+    const regularName = join(source, 'exports', 'COM10.txt');
+    writeFileSync(regularName, 'ordinary file');
+
+    await create();
+    const manifest = JSON.parse(
+      readFileSync(join(backup, 'backup.json'), 'utf8'),
+    ) as ProjectBackupManifest;
+    expect(manifest.files.some((file) => file.path === 'exports/COM10.txt')).toBe(true);
+
+    await restore();
+    expect(readFileSync(join(destination, 'exports', 'COM10.txt'), 'utf8')).toBe('ordinary file');
+  });
+
   it('refuses other profile UIDs and never overwrites a destination', async () => {
     await create();
     await expect(create()).rejects.toMatchObject({ reason: 'destination_exists' });

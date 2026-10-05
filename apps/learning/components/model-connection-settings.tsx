@@ -1,12 +1,9 @@
 'use client';
-import {
-  modelConnectionInputSchema,
-  modelTestResultSchema,
-  type ModelConnectionStatus,
-} from '@sew/study-contracts';
+import { modelConnectionInputSchema, type ModelConnectionStatus } from '@sew/study-contracts';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { getSessionToken, subscribeSessionToken } from '../lib/client';
 import { MODEL_CONNECTION_CHANGED, useModelStatus } from '../lib/model-connection-status';
+import { runModelConnectionCommand } from '../lib/model-connection-command';
 import { useCommand } from '../lib/use-command';
 import { Notice } from './ui';
 
@@ -54,7 +51,9 @@ const ModelConnectionForm = ({
   const token = useSyncExternalStore(subscribeSessionToken, getSessionToken, () => null);
   const command = useCommand(`model-connection:${token ?? ''}`);
   const { busy, error, setError } = command;
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; tone: 'pending' | 'verified' } | null>(
+    null,
+  );
   useEffect(() => {
     setBaseUrl(status.baseUrl ?? '');
     setModel(status.model ?? '');
@@ -73,32 +72,52 @@ const ModelConnectionForm = ({
             apiKey,
           });
           if (!parsed.success) throw new Error('请填写有效的 HTTPS API 地址、模型名称和密钥。');
-          await bridge.configureModel(parsed.data);
-          if (!isCurrent()) return undefined;
-          const current = await refresh();
-          if (!current) throw new Error('配置已提交，但状态尚未确认，请刷新连接状态。');
-          return {
-            configured: true,
-            ok: true,
-            message: current.persisted
-              ? '模型配置已加密保存；点击测试连接发起真实请求。'
-              : '当前系统加密不可用，密钥仅在本次应用会话内保存。',
-          };
+          return runModelConnectionCommand(
+            { action: 'configure', bridge, input: parsed.data },
+            { refresh, isCurrent },
+          );
         }
-        const result = modelTestResultSchema.parse(await bridge.testModel());
-        if (!isCurrent()) return undefined;
-        await refresh();
-        return { configured: false, ...result };
+        return runModelConnectionCommand({ action: 'test', bridge }, { refresh, isCurrent });
       },
       {
         onStart: () => setMessage(null),
         onError: () => setError('模型配置或测试失败，请检查填写内容、本地服务和连接状态后重试。'),
-        onSuccess: (result) => {
-          if (!result) return;
-          if (result.configured) setApiKey('');
-          if (result.ok) setMessage(result.message);
-          else setError(result.message);
-          window.dispatchEvent(new Event(MODEL_CONNECTION_CHANGED));
+        onSuccess: (receipt) => {
+          if (!receipt) return;
+          const statusRefreshed =
+            receipt.action === 'configure' ? receipt.status !== null : receipt.statusRefreshed;
+          if (receipt.action === 'configure') {
+            setApiKey('');
+            if (!receipt.status) {
+              setMessage({
+                text: '配置已提交，但状态读取失败，暂时无法确认是否已加密保存。密钥输入已清空；请重新读取模型连接状态确认结果。',
+                tone: 'pending',
+              });
+            } else if (receipt.status.persisted) {
+              setMessage({
+                text: '模型配置已加密保存；点击测试连接发起真实请求。',
+                tone: 'verified',
+              });
+            } else {
+              setMessage({
+                text: '当前系统加密不可用，密钥仅在本次应用会话内保存。',
+                tone: 'verified',
+              });
+            }
+          } else {
+            const readFailure = statusRefreshed
+              ? ''
+              : ' 状态读取失败；请仅重新读取模型连接状态，无需重复连接测试。';
+            if (receipt.diagnostic.ok) {
+              setMessage({
+                text: `${receipt.diagnostic.message}${readFailure}`,
+                tone: statusRefreshed ? 'verified' : 'pending',
+              });
+            } else {
+              setError(`${receipt.diagnostic.message}${readFailure}`);
+            }
+          }
+          if (statusRefreshed) window.dispatchEvent(new Event(MODEL_CONNECTION_CHANGED));
         },
       },
     );
@@ -168,8 +187,8 @@ const ModelConnectionForm = ({
         </button>
       </div>
       {message ? (
-        <Notice tone="verified" role="status">
-          {message}
+        <Notice tone={message.tone} role="status">
+          {message.text}
         </Notice>
       ) : null}
       {error ? (

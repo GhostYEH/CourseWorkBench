@@ -103,13 +103,13 @@ const portablePath = (path: string): boolean =>
         part.length > 0 &&
         part !== '.' &&
         part !== '..' &&
-        !/[\\:\x00-\x1f]/.test(part) &&
+        !/[<>:"|?*\\\x00-\x1f]/.test(part) &&
         !/[. ]$/.test(part) &&
         !/^(?:\.task-cache|\.env(?:\..*)?|profile(?:\.json)?|learner-profile\.json|credentials(?:\.json)?|secrets?(?:\.json)?|id_rsa|id_ed25519)$/i.test(
           part,
         ) &&
         !/\.(?:pem|key|pfx|p12)$/i.test(part) &&
-        !/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part),
+        !/^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(part),
     );
 const kindOf = (path: string): ProjectBackupFile['kind'] | null => {
   if (!portablePath(path)) return null;

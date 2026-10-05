@@ -12,11 +12,38 @@ let tempDir;
 let child;
 let succeeded = false;
 
+const formatResultDetails = (result) => {
+  if (!result || typeof result !== 'object') return '';
+  const details = [];
+  if (typeof result.step === 'string') details.push(`step=${result.step}`);
+  const diagnostics =
+    result.clipboardDiagnostics && typeof result.clipboardDiagnostics === 'object'
+      ? result.clipboardDiagnostics
+      : null;
+  if (diagnostics) {
+    details.push(
+      `clipboardDiagnostics=${JSON.stringify({
+        immediateReadable: diagnostics.immediateReadable === true,
+        immediateMatches: diagnostics.immediateMatches === true,
+        shortReadbackReadable: diagnostics.shortReadbackReadable === true,
+        shortReadbackMatches: diagnostics.shortReadbackMatches === true,
+        rendererReadable: diagnostics.rendererReadable === true,
+        rendererMatches: diagnostics.rendererMatches === true,
+      })}`,
+    );
+  }
+  return details.length ? `; ${details.join('; ')}` : '';
+};
+
 const cleanup = async () => {
   let latestResult = null;
   const resultFile = tempDir && join(tempDir, 'result.json');
   if (resultFile && existsSync(resultFile)) {
-    try { latestResult = JSON.parse(readFileSync(resultFile, 'utf8')); } catch { /* partial breadcrumb */ }
+    try {
+      latestResult = JSON.parse(readFileSync(resultFile, 'utf8'));
+    } catch {
+      /* partial breadcrumb */
+    }
   }
   const killTree = async (pid) => {
     if (!pid) return;
@@ -27,7 +54,11 @@ const cleanup = async () => {
       });
       await new Promise((resolveKill) => killer.once('exit', resolveKill));
     } else {
-      try { process.kill(pid, 'SIGTERM'); } catch { /* already exited */ }
+      try {
+        process.kill(pid, 'SIGTERM');
+      } catch {
+        /* already exited */
+      }
     }
   };
 
@@ -70,7 +101,10 @@ const run = async () => {
   let launchError = null;
   let childExitCode = null;
   let childExitAt = null;
-  child.once('error', (error) => { launchError = error; });
+  let latestResult = null;
+  child.once('error', (error) => {
+    launchError = error;
+  });
   child.once('exit', (code) => {
     childExitCode = code;
     childExitAt = Date.now();
@@ -81,34 +115,58 @@ const run = async () => {
     if (existsSync(resultFile)) {
       try {
         const parsed = JSON.parse(readFileSync(resultFile, 'utf8'));
+        latestResult = parsed;
         if (parsed.state === 'passed' || parsed.state === 'failed') result = parsed;
-      } catch { /* A partial status write is retried. */ }
+      } catch {
+        /* A partial status write is retried. */
+      }
     }
     if (launchError) throw new Error('Electron process could not be launched');
     if (result && child.exitCode !== null) break;
     if (childExitAt && !result && Date.now() - childExitAt > 5000) {
-      let breadcrumb = 'missing';
+      let breadcrumbState = 'missing';
       if (existsSync(resultFile)) {
         try {
-          const parsed = JSON.parse(readFileSync(resultFile, 'utf8'));
-          breadcrumb = `${parsed.state}; step=${parsed.step || 'unknown'}; electron=${parsed.electronVersion || 'none'}; appApi=${Boolean(parsed.appApiAvailable)}; servicePid=${parsed.servicePid || 'none'}`;
-        } catch { breadcrumb = 'unreadable'; }
+          latestResult = JSON.parse(readFileSync(resultFile, 'utf8'));
+          breadcrumbState = latestResult.state || 'unknown';
+        } catch {
+          breadcrumbState = 'unreadable';
+        }
       }
-      throw new Error(`Electron exited before smoke completion (code ${childExitCode}; breadcrumb ${breadcrumb})`);
+      const breadcrumb = `${breadcrumbState}; electron=${latestResult?.electronVersion || 'none'}; appApi=${Boolean(latestResult?.appApiAvailable)}; servicePid=${latestResult?.servicePid || 'none'}${formatResultDetails(latestResult)}`;
+      throw new Error(
+        `Electron exited before smoke completion (code ${childExitCode}; breadcrumb ${breadcrumb})`,
+      );
     }
     await new Promise((resolveWait) => setTimeout(resolveWait, 100));
   }
 
-  if (!result) throw new Error('Electron smoke did not write a completion status before timeout');
-  if (result.state !== 'passed') throw new Error(`Electron smoke failed: ${result.message || 'unspecified failure'}`);
-  if (child.exitCode !== 0) throw new Error(`Electron smoke did not exit successfully (code ${child.exitCode})`);
+  if (!result) {
+    throw new Error(
+      `Electron smoke did not write a completion status before timeout${formatResultDetails(latestResult)}`,
+    );
+  }
+  if (result.state !== 'passed') {
+    throw new Error(
+      `Electron smoke failed: ${result.message || 'unspecified failure'}${formatResultDetails(latestResult || result)}`,
+    );
+  }
+  if (child.exitCode !== 0)
+    throw new Error(`Electron smoke did not exit successfully (code ${child.exitCode})`);
   return result.message;
 };
 
 run()
-  .then((message) => { succeeded = true; console.log(`PASS ${message}`); })
+  .then((message) => {
+    succeeded = true;
+    console.log(`PASS ${message}`);
+  })
   .catch((error) => {
     console.error(`FAIL ${error instanceof Error ? error.message : 'Electron smoke failed'}`);
     process.exitCode = 1;
   })
-  .finally(() => cleanup().catch(() => { process.exitCode = 1; }));
+  .finally(() =>
+    cleanup().catch(() => {
+      process.exitCode = 1;
+    }),
+  );

@@ -81,6 +81,8 @@
   "tests/storage-authoritative-json.test.ts",
   "tests/project-backup.test.ts",
   "scripts/smoke-electron-boundary.cjs",
+  "scripts/run-electron-boundary-smoke.cjs",
+  "scripts/smoke-learner-profile.cjs",
   "scripts/smoke-project-backup.cjs",
   "packages/study-contracts/src/evaluation.ts",
   "packages/study-domain/src/evaluation.ts",
@@ -93,5 +95,7 @@
   "tests/evaluation-api.test.ts",
   "apps/learning/components/classroom-peers.tsx",
   "apps/learning/lib/classroom/peer-command-lifecycle.ts",
-  "tests/classroom-peers-panel.test.ts"
+  "tests/classroom-peers-panel.test.ts",
+  "apps/learning/lib/model-connection-command.ts",
+  "tests/model-connection-command.test.ts"
 ]

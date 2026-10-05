@@ -1,13 +1,13 @@
 # 阶段交接 · 2026-10-05
 
-本阶段集成另一智能体的四项补丁，并完成复核、补漏和产物验证。M1—M4 仍按《待办事项》推进，阶段收尾不代表成品验收。
+本轮按用户要求重新检查既有优化，保留前阶段四项补丁和两项补漏，另修复模型操作回执及备份路径校验。执行与独立复核使用 GPT-6 Luna / xhigh，主智能体指挥、集成并核验。M1—M4 仍按《待办事项》推进，阶段收尾不代表成品验收。
 
 ## 工作区与边界
 
 - 项目：`D:\File\Ai与辅助教学\subject-exam-workbench`，PowerShell，分支 `main`；本阶段提交以 `git log -1` 为准。
 - 另一智能体的未提交实现已保留并整合；只提交相关源码、测试与文档。评测生成目录已忽略，数据保留；构建、release 和缓存不入库。
 - 不读取、执行、删除或提交 `.task-cache/`；不修改真实用户项目/profile，不发未授权付费 provider 请求。
-- 子智能体沿用 GPT-6.1 Sol / medium，明确文件所有权，不回退他人改动；主智能体集成，实质改动完成后交 `code_reviewer` 独立只读复核。
+- 本轮及续作按用户指定使用 GPT-6 Luna / xhigh 子智能体，明确文件所有权，不回退他人改动；主智能体集成，实质改动完成后交 `code_reviewer` 独立只读复核。
 - 验证期间停止源码写入；构建、check、原生、服务与目录包检查串行执行。
 
 ## 本阶段已完成
@@ -18,19 +18,23 @@
 4. 评测生成结果目录加入忽略，格式清单覆盖新增同学模块和测试。
 5. 课程派生按实际已选 statementId 集合判断变化；自动默认后缀不算标题改动，显式改标题或选择集合可派生。5 项定向回归通过。
 6. SQLite CORRUPT/NOTADB（含扩展码）在完整性读取阶段归为 database_unreadable，其余异常保留；24 项备份回归验证具体 reason、源/原项目不变、关闭与暂存清理。随包 Node 22.22.2 的错误码也已核对。
+7. 模型原生配置/诊断成功后，状态读取失败不再改写为操作失败；有效配置回执清空密钥，未确认保存方式时明确提示重读，保留真实诊断且不自动重发。10 项回归覆盖真实 desktop 校验入口的地址规范化、server 原字符读回、无效/旧状态、native/schema 失败和 scope 失效；复核发现的 URL 比较漏判已修正。
+8. 备份路径提前拒绝 Windows 非法字符及 COM/LPT 上标数字设备名，仍接受合法 COM10；38 项备份回归覆盖恶意路径声明、源/备份不变、目标不存在及暂存清理，不实际创建危险文件名。README 同步移除过期的默认 provider 示例，说明加密不可用时只保留会话凭据。
 
-四项补丁和两项补漏均经独立只读复核，未发现剩余确认缺陷。既有备份容器、冻结评测、模型回执、真实画布聚焦及审核/发布链保留。
+本轮两项修复经独立只读复核，未发现剩余确认缺陷；公共命令与同学面板生命周期复查也无确认缺陷，未修改其行为。既有备份容器、冻结评测、真实画布聚焦及审核/发布链保留。
 
 ## 当前验证
 
-- 源码摘要：a98d2a00d94c6caf0baa2ff3d340481a1c7b2c6f440f5f1e70ed0917ac2b74de；298 个输入，BUILD_ID 6TMHM397RKm_ghlp424pO。
-- pnpm check：92 文件 / 793 项，0 跳过；类型（含真实 IPC）、lint、限定格式和 12 项工程门禁通过。
-- 真实 Electron 原生冒烟：36 组通过，含聚焦、备份恢复与模型回执，不发远程 provider 调用。
-- 随包服务组装与启动：14/14；清单 12370 文件，摘要和 BUILD_ID 与当前输入一致。
-- 新目录包：apps/desktop/release/m4-closeout-2026-10-05/win-unpacked；包启动 30/30、随包课堂 50/50，机器报告分别为同目录的 pack01-verification.json 与 classroom-verification.json。
-- 新目录直接由 electron-builder 输出，既有 win-unpacked/NSIS/安装态未覆盖，未运行安装升级卸载或干净 Windows 验收。
+- 源码摘要：6f9bc7d7a99855164e756461e21f41981b69c4920861f66f2a4baa1e2f77b4d7；299 个输入，BUILD_ID wSTVP7WYXxDmoTzohbWBk。
+- pnpm check：93 文件 / 817 项，0 跳过；类型（含真实 IPC）、lint、限定格式和 12 项工程门禁通过。
+- 真实 Electron 原生冒烟：36 组通过，含模型回执/失败读回/仅状态重读、真实 OS 剪贴板复制、昵称冲突和权威重读，不发远程 provider 调用。
+- 当前随包服务组装与启动：14/14；清单 12373 文件，摘要和 BUILD_ID 与当前输入一致。
+- 新目录包：apps/desktop/release/review-2026-10-05-luna/win-unpacked；包启动 30/30、随包课堂 50/50，机器报告分别为同目录的 pack01-verification.json 与 classroom-verification.json。
+- 新目录由 electron-builder 输出，既有 win-unpacked/NSIS/安装态未覆盖，未运行安装升级卸载或干净 Windows 验收。
 
-收尾期间仅 use-command.ts 又被更新并重建，首轮构建被取代；已对最终摘要重新检查。旧 BUILD_ID 与旧报告不作为当前签核。不把随包课堂 50 项误记为备份恢复或失效 Notice 的完整交互验收；Notice 的已有回归覆盖 gate/helper/SSR 与接线，真实失效后的 DOM 生命周期仍由 EVAL-03/UX-01 跟踪。
+本轮复核修正 URL 比较后已重建，首轮构建被取代；旧 BUILD_ID 与旧报告不作为当前签核。不把随包课堂 50 项误记为备份恢复或失效 Notice 的完整交互验收；Notice 的已有回归覆盖 gate/helper/SSR 与接线，真实失效后的 DOM 生命周期仍由 EVAL-03/UX-01 跟踪。
+
+原生冒烟首跑返回笼统渲染脚本错误，第二跑的个人档案 OS 剪贴板 UID 未匹配；第三跑添加诊断、保留原立即读回断言通过 36 组，未跳过 OS 复制。两次异常尚无稳定根因，保留为 EVAL-03/UX-01 待观察项，不声称剪贴板缺陷已修复。启动器在终态失败、超时和早退均保留最新阶段，剪贴板只输出六个可读/匹配布尔值，不记录内容、UID 或凭据；每个 started 阶段保留自有服务 PID，异常早退后仍可清理。最终两个失败诊断补漏只改变 smoke 脚本，另过语法/格式和只读复核，生产输入、成功路径及既有断言未变，无需替换已验证的产物。
 
 ## 剩余范围与续作
 
@@ -43,11 +47,11 @@
 ## 下一轮可复制的提示词
 
 ```text
-请接手 D:\File\Ai与辅助教学\subject-exam-workbench。先读适用 AGENTS.md、docs/optimization-handoff-2026-10-05.md、docs/规划书.md、docs/开工任务清单.md、docs/待办事项.md 与 docs/openmaic-feature-parity.json，核对 git status/log 和当前输入。上述四项质量补丁及两个补漏已收尾，不重复实现已完成的画布聚焦与场景勾选派生。
+请接手 D:\File\Ai与辅助教学\subject-exam-workbench。先读适用 AGENTS.md、docs/optimization-handoff-2026-10-05.md、docs/规划书.md、docs/开工任务清单.md、docs/待办事项.md 与 docs/openmaic-feature-parity.json，核对 git status/log 和当前输入。此前四项质量补丁、课程派生/SQLite 补漏及本轮模型回执/备份路径修复已收尾，不重复实现已完成的画布聚焦与场景勾选派生。
 
 优先推进 M2/LESSON-02 和 B 批次：明确派生重试语义，完成正文改写候选、来源绑定、独立审核、追加新版本和课堂消费闭环，再扩展完整课件生成与其余互动/PBL。按规划保留 M3/M4 和在线协作的剩余范围，持续实现、验证与复盘，不只给计划。
 
-子智能体用 GPT-6.1 Sol / medium，认领不重叠文件，主智能体集成并交 code_reviewer 独立只读复核。保留未知模型结果预占且不自动重发、scope 隔离、测验 nonce/持久收据、本人优先与 simulation 分区，以及严格 schema/摘要和审核守卫。不得读取/执行/删除/提交 .task-cache/、覆盖他人改动、修改真实 profile/项目或发未授权 provider 请求。
+子智能体按用户要求用 GPT-6 Luna / xhigh（极高），认领不重叠文件，主智能体指挥、集成、核验并交 code_reviewer 独立只读复核。保留未知模型结果预占且不自动重发、scope 隔离、测验 nonce/持久收据、本人优先与 simulation 分区，以及严格 schema/摘要和审核守卫。不得读取/执行/删除/提交 .task-cache/、覆盖他人改动、修改真实 profile/项目或发未授权 provider 请求。
 
 停止并行写入后串行执行 build:learning、check、原生冒烟、服务组装/验证和新的 stage 目录包/课堂验证；核对同一源码摘要、BUILD_ID 与文件清单，失败如实处理，生成结果不入库。按实测从待办删除确定完成范围，更新交接和能力清单并提交相关改动。用户暂缓的外部门槛保留，M1—M4 满足约定范围和适用验收后才交付成品。
 ```
