@@ -119,14 +119,14 @@ M1 已补严格 UTF-8 解码、空正文拒绝、不可变材料历史版本和�
 2026-10-05 本轮收尾已对**同一份源码内容**（294 个构建输入，SHA-256 `702b951ac01bdceab682e2aca632a01a3d74a9083834df630d0f4600af4a4f8c`）依次完成门禁、构建与产物验证，并随提交 `7067679` 保存（此前 HEAD 为 `6d423bb`）：
 
 - 源码门禁：`pnpm check` 全部通过——`typecheck`（含 `typecheck:ipc`）、`lint`、清单内 `format:check`、`check:code`（12 项工程反例，preload 20 个白名单方法），Vitest **89 文件 / 765 项通过、0 跳过**。
-- 生产构建：`pnpm build:learning` 产出 BUILD_ID `XTlrKzxq10meglOGXaEWK`。
+- 生产构建：`pnpm build:learning` 本轮产出 BUILD_ID `XTlrKzxq10meglOGXaEWK`；并行任务 09:27 对**同一源码摘要**重建得到 `0NaV76pOveX7LuPE577M_`，服务与目录包随后按后者重新组装并复验，源码内容没有再变化。
 - 原生冒烟：`node scripts/run-electron-boundary-smoke.cjs` **36 组通过**，含新接入的项目备份真实 native 链路（备份/恢复按钮、暂存恢复、容器摘要）与模型配置回执/密钥清空，全程不发远程调用。
 - 随包服务：`node scripts/prepare-learning-dist.mjs` 组装后 `node scripts/verify-learning-dist.mjs` **14/14 通过**（ready 握手、匿名与带会话 SSR/API、控制凭据边界、随包资产摘要一致、受控 shutdown 与端口关闭）。
 - 目录包：`pnpm package:desktop` 组装 `apps/desktop/release/win-unpacked` 后 `node scripts/verify-packaged-desktop.mjs` **30/30 通过**（实际目录包 exe、隔离 profile 与 PATH、sandbox preload 注入、页面无 Node 全局、退出完成服务清理）。
 
 本轮整合与修复：冻结评测导入接口改用集中入口 `apps/learning/lib/server/bounded-json.ts`（实际流式字节上限 → 严格 UTF-8 → json-codec），删除路由内重复的限额读取与直接 `JSON.parse`，允许入口相应收窄，并补非法 UTF-8、缺正文与解码诊断回归；`tests/attempt-grading-page.test.ts` 的服务 mock 缺 `requireSession`（自 `68e05ca` 起全量必失败）已补；`tests/domain-contracts.test.ts` 中与「绑定改写出处只保留材料改写身份」冲突的旧断言按现行规则更正，并为两条此前无覆盖的身份分支补测试。独立只读复核（评测解码、同学与个人档案命令迁移）未发现确认缺陷。
 
-**课堂实际走查未运行**：09:27 并行任务对同一源码摘要重新构建得到 BUILD_ID `0NaV76pOveX7LuPE577M_`，令本轮组装的 `dist/service` 与 `win-unpacked`（记录 `XTlrKzxq10meglOGXaEWK`）落后一版，`node scripts/verify-classroom-desktop.mjs` 因此按清单拒绝；源码内容摘要未变，重跑 `prepare-learning-dist` 与 `package:desktop` 后即可继续该走查。历史 697/699 测试与 34 组冒烟不作为当前签核。真实材料金标准、真人双设备与独立干净 Windows 仍按既有暂缓条件保留；未调用真实付费 provider。准确状态、剩余项与下一步见[全面优化交接](docs/optimization-handoff-2026-10-05.md)与[待办事项](docs/待办事项.md)。既有审查报告保持删除。
+**随包课堂实际走查已通过**：重新组装后 `verify-learning-dist` 再次 **14/14**、`verify-packaged-desktop` 再次 **30/30**，`node scripts/verify-classroom-desktop.mjs` **50/50 通过**——真实目录包 exe、原生中文带空格路径选择器、导入建立材料新版本、固定版本来源定位、切换到另一项目后旧项目写入不进入新项目、关闭应用后服务端口释放。首次尝试（09:37）报 `resources/learning/node_modules/next/.../app-page-turbo.runtime.dev.js.map` 的 ENOENT；该文件事后实测存在且可读，同一产物重试即通过，原因未确定（疑为刚写入产物上的瞬时竞态），列为待观察而不是产品缺陷。历史 697/699 测试与 34 组冒烟不作为当前签核。真实材料金标准、真人双设备与独立干净 Windows 仍按既有暂缓条件保留；未调用真实付费 provider。准确状态、剩余项与下一步见[全面优化交接](docs/optimization-handoff-2026-10-05.md)与[待办事项](docs/待办事项.md)。既有审查报告保持删除。
 
 ## 剩余范围（按里程碑）
 

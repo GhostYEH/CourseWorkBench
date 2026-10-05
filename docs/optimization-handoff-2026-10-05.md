@@ -28,14 +28,14 @@
 ## 已执行验证与当前阻断
 
 - 2026-10-05 09:17–09:26 对同一份源码内容（294 输入，SHA-256 `702b951ac01bdceab682e2aca632a01a3d74a9083834df630d0f4600af4a4f8c`，BUILD_ID `XTlrKzxq10meglOGXaEWK`）依次完成：`pnpm check` 全绿（typecheck 含 `typecheck:ipc`、lint、清单内 format:check、check:code 的 12 项工程反例与 20 个 preload 白名单方法，**89 文件 / 765 项测试通过、0 跳过**）；`node scripts/run-electron-boundary-smoke.cjs` **36 组通过**，含完整备份 native 链路与模型配置回执；`prepare-learning-dist.mjs` + `verify-learning-dist.mjs` **14/14**；`pnpm package:desktop` + `verify-packaged-desktop.mjs` **30/30**。
-- **课堂走查未运行（并发导致，非缺陷）**：09:27 并行任务对**相同源码摘要**重新构建，得到新 BUILD_ID `0NaV76pOveX7LuPE577M_`，使本轮组装的 `dist/service` 与 `win-unpacked`（记录 `XTlrKzxq10meglOGXaEWK`）落后一版；`node scripts/verify-classroom-desktop.mjs` 按 bundle 清单的 buildId 拒绝启动。重跑 `node scripts/prepare-learning-dist.mjs` 与 `pnpm package:desktop` 后即可继续该走查；源码内容未变，之前的门禁与冒烟结果仍适用于当前源码。
+- **随包课堂走查最终通过**：并行任务 09:27 对同一源码摘要重建得到 BUILD_ID `0NaV76pOveX7LuPE577M_`，使先前组装的产物落后一版；按它重跑 `prepare-learning-dist.mjs` 与 `pnpm package:desktop` 后，`verify-learning-dist` 再次 **14/14**、`verify-packaged-desktop` 再次 **30/30**，`verify-classroom-desktop` **50/50 通过**（原生中文空格路径选择器、导入建立新版本、固定版本来源定位、切换项目后旧项目写入隔离、退出后端口释放）。首次走查在 09:37 报打包内某 `app-page-turbo.runtime.dev.js.map` 的 ENOENT，但该文件实测存在且可读，同产物重试通过；机制未确定，按待观察项处理，不写成缺陷也不忽略。
 - 独立 `code_reviewer` 只读复核评测解码边界与同学/个人档案命令迁移：**未发现确认缺陷**。已落实其两项建议：解码诊断随 `details.error` 返回、路由层补非法 UTF-8 与缺正文断言。两项遗留需要产品判断，未擅自改动：同学面板 `useCommand` 的 key 含会话 `status`，别处更新状态会静默中断在途发言（没有取消提示）；`use-command.ts` 的 `setError` 缺少 owner 写侧守卫（现有调用点都有 `isActive`/`isCurrent` 守卫，实际不可达）。
 - 本轮另修复两处既有失败：`tests/attempt-grading-page.test.ts` 的服务 mock 缺 `requireSession`（自 `68e05ca` 起全量必失败，之前只在定向批次外）；`tests/domain-contracts.test.ts` 的旧断言与「绑定改写出处只保留材料改写身份」相冲突，已按现行身份派生规则更正并为两条新分支补测试（此前无覆盖）。
 - README、`code-quality.md`、本记录与待办已按上述实测结果更新；历史 697/699、34 组冒烟和旧 BUILD_ID 不再是签核依据。
 
 ## 剩余步骤（从这里继续）
 
-1. 等并行任务在备份模块上的改动稳定后按序重跑：`pnpm build:learning` → `pnpm check` → `node scripts/run-electron-boundary-smoke.cjs` → `node scripts/prepare-learning-dist.mjs` → `node scripts/verify-learning-dist.mjs` → `pnpm package:desktop` → `node scripts/verify-packaged-desktop.mjs --app-dir apps/desktop/release/win-unpacked` → `node scripts/verify-classroom-desktop.mjs`。构建期间若对方再次改变输入，构建脚本会拒绝记录摘要，协调完成后重建；不能伪造指纹或据旧产物通过。
+1. 本轮 09:17–09:40 已把这条链走通：`pnpm build:learning` → `pnpm check` → `run-electron-boundary-smoke.cjs` → `prepare-learning-dist.mjs` → `verify-learning-dist.mjs` → `pnpm package:desktop` → `verify-packaged-desktop.mjs` → `verify-classroom-desktop.mjs`。之后任何源码改动都要按同一顺序**串行**重跑：构建会重写 `apps/learning/.next`，而生产 HTTP 用例直接对该产物起服务，并发跑会伪报 500；构建期间对方再改输入会使摘要记录失效，须协调后重建，不能伪造指纹或据旧产物通过。
 2. 如需统一上游文档接口的 UTF-8 严格度：`apps/learning/app/api/maic/documents/**` 仍使用非致命解码（无效字节先被替换成 U+FFFD 才进 json-codec），改用 `lib/server/bounded-json.ts` 会把这类正文从接受变为拒绝，属于上游 `HttpDocumentStore` 写入合同变化，须单独带回归处理。
 3. 同学面板的中断提示（key 含 `status` 时静默 abort）与 `use-command.ts` 的 `setError` owner 写侧守卫需要产品判断，不在本轮重构范围内。
 4. 新的实质改动继续交 `code_reviewer` 做只读复核，并如实报告失败、跳过和未运行项。
@@ -51,7 +51,7 @@
 
 已完成且已验证，勿重做一轮泛化审计：HTTP/合同/存储服务拆分、模型调用分阶段、命令生命周期、测验 Hook、目录与用量批量读取、共享测试种子、lint/格式/分层门禁；完整备份恢复到原生 IPC 与界面；冻结评测 schema/重算/CLI/机械攻击与只读报告导入；改写题身份防伪装；模型状态可见错误与配置回执。评测接口已改用集中入口 apps/learning/lib/server/bounded-json.ts（实际字节上限→严格 UTF-8→json-codec），JSON.parse 允许入口已收窄。2026-10-05 09:17–09:26 对源码摘要 `702b951a…4f8c` 通过：pnpm check（89 文件 / 765 项，0 跳过）、原生冒烟 36 组、随包服务 14/14、目录包启动 30/30。
 
-先做：确认并行任务在备份模块上的改动已稳定 → 按本记录「剩余步骤」第 1 条依次重建并重跑全部产物验证（课堂实际走查因源码指纹过期尚未运行）→ 新的实质改动交 code_reviewer 独立只读复核 → 按实测更新 README、code-quality、待办与本记录 → 核对新增模块与根导出后提交相关源码。
+先做：本轮验证链（含随包课堂 50/50）已走完，直接从待办的产品缺口继续——M2 逐场景课件改写与画布实际聚焦、其余互动/PBL，M3 受控模型同学、复习调度、完整费用租约与故障恢复，以及 UID 邀请/同步/交流。改动源码后按「剩余步骤」第 1 条串行重跑整条验证链；新的实质改动交 code_reviewer 独立只读复核；按实测更新 README、code-quality、待办与本记录，再提交相关源码。
 
 保留语义：模型未知结果预占与同请求不重派、切换项目后不访问旧库、测验串行草稿写入/尾序号冲突重试/nonce/持久收据、本人优先等待与 simulation 隔离、严格 JSON/schema/摘要门禁；不改公开 HTTP/IPC 语义、不删必要回归、不把局部通过写成里程碑验收。真实材料与人工金标准、两位真人两台设备、独立干净 Windows 按现有暂缓条件保留，不用合成数据或单机双窗口替代。
 ```
