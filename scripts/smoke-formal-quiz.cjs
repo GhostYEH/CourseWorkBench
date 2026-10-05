@@ -2,7 +2,7 @@
  * owns the temporary project/service lifecycle; no provider requests are made. */
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 
-module.exports = async ({ window, origin, projectDirectory, serviceRequest, waitForText, cover }) => {
+module.exports = async ({ window, origin, projectDirectory, serviceRequest, waitForText, cover, markStep = () => {} }) => {
   const state = await serviceRequest('GET', '/api/study/state');
   const scope = { projectId: state.project.projectId, generation: state.project.generation };
   const imported = await serviceRequest('POST', '/api/study/materials', {
@@ -66,41 +66,96 @@ module.exports = async ({ window, origin, projectDirectory, serviceRequest, wait
   const quizzes = assembled.document.scenes.filter((scene) => scene.sceneType === 'quiz');
   assert(quizzes.length === 3, '正式课程未生成三种题型的真实测验场景');
 
-  const execute = (script) => window.webContents.executeJavaScript(script);
+  let activePhase = 'setup';
+  const setPhase = (phase) => {
+    activePhase = phase;
+    markStep(`formal-quiz:${phase}`);
+  };
+  const exceptionType = (error) => {
+    const name = error instanceof Error ? error.name : '';
+    return ['Error', 'TypeError', 'ReferenceError', 'SyntaxError', 'RangeError', 'AbortError'].includes(name)
+      ? name : 'Other';
+  };
+  const failPhase = (phase, error) => {
+    const type = exceptionType(error);
+    markStep(`formal-quiz:${phase}:failed:${type}`);
+    throw new Error(`formal quiz phase failed (${phase}; type=${type})`);
+  };
+  const execute = async (script, phase = activePhase) => {
+    try {
+      return await window.webContents.executeJavaScript(script);
+    } catch (error) {
+      failPhase(`${phase}:renderer-execute`, error);
+    }
+  };
   if (!window.webContents.debugger.isAttached()) window.webContents.debugger.attach('1.3');
-  const mouse = (type, position, button) => window.webContents.debugger.sendCommand('Input.dispatchMouseEvent', {
-    type, ...position, button, ...(button === 'left' ? { clickCount: 1 } : {}),
+  const mouse = (type, { x, y }, button) => window.webContents.debugger.sendCommand('Input.dispatchMouseEvent', {
+    type, x, y, button, ...(button === 'left' ? { clickCount: 1 } : {}),
   });
-  const waitFor = async (script, message) => {
+  const waitFor = async (script, message, phase = 'wait') => {
+    setPhase(phase);
     const deadline = Date.now() + 20000;
     while (Date.now() < deadline) {
       if (await execute(script)) return;
       await new Promise((resolveWait) => setTimeout(resolveWait, 100));
     }
+    markStep(`formal-quiz:${phase}:timeout`);
     throw new Error(message);
   };
-  const click = async (selector) => {
+  const click = async (selector, phase = 'click') => {
     const encoded = JSON.stringify(selector);
-    await waitFor(`Boolean(document.querySelector(${encoded})) && !document.querySelector(${encoded}).disabled`, `课堂控件尚未就绪：${selector}`);
+    await waitFor(`Boolean(document.querySelector(${encoded})) && !document.querySelector(${encoded}).disabled`, `课堂控件尚未就绪：${selector}`, `${phase}:enabled`);
+    setPhase(`${phase}:scroll`);
     await execute(`document.querySelector(${encoded})?.scrollIntoView({block:'center', behavior:'instant'})`);
+    setPhase(`${phase}:paint`);
     await execute(`new Promise(resolvePaint => requestAnimationFrame(() => requestAnimationFrame(resolvePaint)))`);
+    setPhase(`${phase}:position`);
     const position = await execute(`(() => {
-      const node = document.querySelector(${encoded});
-      if (!node || node.disabled) return null;
-      const box = node.getBoundingClientRect();
-      const x = Math.round(box.left + box.width / 2);
-      const y = Math.round(box.top + box.height / 2);
-      const hit = document.elementFromPoint(x,y);
-      if (hit !== node && !node.contains(hit)) throw new Error('点击位置被遮挡：' + ${encoded} + ' hit=' + hit?.tagName);
-      return {x,y};
-    })()`);
-    assert(position && position.x >= 0 && position.y >= 0, `课堂控件不可操作：${selector}`);
-    await mouse('mouseMoved', position, 'none');
-    await mouse('mousePressed', position, 'left');
-    await mouse('mouseReleased', position, 'left');
+      try {
+        const node = document.querySelector(${encoded});
+        if (!node) return {ok:false,reason:'target-missing'};
+        if (node.disabled) return {ok:false,reason:'target-disabled'};
+        const box = node.getBoundingClientRect();
+        const x = Math.round(box.left + box.width / 2);
+        const y = Math.round(box.top + box.height / 2);
+        const hit = document.elementFromPoint(x,y);
+        if (hit !== node && !node.contains(hit)) return {
+          ok:false,
+          reason:'hit-obstructed',
+          hitTag:['A','BUTTON','INPUT','LABEL','SPAN','DIV'].includes(hit?.tagName) ? hit.tagName : hit ? 'OTHER' : 'NONE',
+          associatedLabel:hit instanceof HTMLLabelElement && hit.control === node
+        };
+        return {ok:true,x,y};
+      } catch (error) {
+        const name = error instanceof TypeError ? 'TypeError' : error instanceof ReferenceError ? 'ReferenceError' : 'Error';
+        return {ok:false,reason:'renderer-exception',exceptionType:name};
+      }
+    })()`, `${phase}:position`);
+    if (!position?.ok) {
+      const reason = ['hit-obstructed', 'target-missing', 'target-disabled', 'renderer-exception'].includes(position?.reason)
+        ? position.reason : 'invalid-position';
+      const hitTag = ['A', 'BUTTON', 'INPUT', 'LABEL', 'SPAN', 'DIV', 'OTHER', 'NONE'].includes(position?.hitTag)
+        ? position.hitTag : 'UNKNOWN';
+      const associatedLabel = position?.associatedLabel === true;
+      const type = reason === 'renderer-exception' && ['TypeError', 'ReferenceError', 'Error'].includes(position?.exceptionType)
+        ? position.exceptionType : 'None';
+      markStep(`formal-quiz:${phase}:position-failed:${reason}:${type}`);
+      throw new Error(`formal quiz click failed (${phase}; reason=${reason}; hitTag=${hitTag}; associatedLabel=${associatedLabel}; type=${type})`);
+    }
+    assert(position.x >= 0 && position.y >= 0, `课堂控件不可操作：${selector}`);
+    setPhase(`${phase}:dispatch`);
+    try {
+      await mouse('mouseMoved', position, 'none');
+      await mouse('mousePressed', position, 'left');
+      await mouse('mouseReleased', position, 'left');
+    } catch (error) {
+      failPhase(`${phase}:dispatch`, error);
+    }
     await new Promise((resolveWait) => setTimeout(resolveWait, 80));
   };
-  const input = async (selector, value) => execute(`(() => {
+  const input = async (selector, value, phase = 'input') => {
+    setPhase(phase);
+    return execute(`(() => {
     const node = document.querySelector(${JSON.stringify(selector)});
     if (!node) throw new Error('找不到输入框');
     const proto = node.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -108,6 +163,7 @@ module.exports = async ({ window, origin, projectDirectory, serviceRequest, wait
     node.dispatchEvent(new Event('input', { bubbles: true }));
     node.dispatchEvent(new Event('change', { bubbles: true }));
   })()`);
+  };
 
   await window.loadURL(`${origin}/workbench/lessons`);
   await waitForText('登记题目与评分规则', '课程页未提供题目录入入口');

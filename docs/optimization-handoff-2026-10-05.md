@@ -4,7 +4,7 @@
 
 ## 工作区与边界
 
-- 项目：`D:\File\Ai与辅助教学\subject-exam-workbench`，PowerShell，分支 `main`；本阶段提交以 `git log -1` 为准。
+- 项目：`D:\File\Ai与辅助教学\subject-exam-workbench`，PowerShell，分支 `main`；本轮核心提交为 `a039835`，输入摘要维持 299 项不变。
 - 另一智能体的未提交实现已保留并整合；只提交相关源码、测试与文档。评测生成目录已忽略，数据保留；构建、release 和缓存不入库。
 - 不读取、执行、删除或提交 `.task-cache/`；不修改真实用户项目/profile，不发未授权付费 provider 请求。
 - 本轮及续作按用户指定使用 GPT-6 Luna / xhigh 子智能体，明确文件所有权，不回退他人改动；主智能体集成，实质改动完成后交 `code_reviewer` 独立只读复核。
@@ -25,16 +25,16 @@
 
 ## 当前验证
 
-- 源码摘要：6f9bc7d7a99855164e756461e21f41981b69c4920861f66f2a4baa1e2f77b4d7；299 个输入，BUILD_ID wSTVP7WYXxDmoTzohbWBk。
+- 源码摘要：6f9bc7d7a99855164e756461e21f41981b69c4920861f66f2a4baa1e2f77b4d7；299 个输入，当前 BUILD_ID `3EXxKtlNjqFaWCVH8X4Bn`。
 - pnpm check：93 文件 / 817 项，0 跳过；类型（含真实 IPC）、lint、限定格式和 12 项工程门禁通过。
-- 真实 Electron 原生冒烟：36 组通过，含模型回执/失败读回/仅状态重读、真实 OS 剪贴板复制、昵称冲突和权威重读，不发远程 provider 调用。
-- 当前随包服务组装与启动：14/14；清单 12373 文件，摘要和 BUILD_ID 与当前输入一致。
-- 新目录包：apps/desktop/release/review-2026-10-05-luna/win-unpacked；包启动 30/30、随包课堂 50/50，机器报告分别为同目录的 pack01-verification.json 与 classroom-verification.json。
+- 真实 Electron 原生冒烟第五、六跑：36 组通过，含真实 OS 剪贴板复制，不发远程 provider 调用。production HTTP 冒烟：3 个文件 / 21 项通过。
+- 当前随包服务组装与启动：14/14；清单 12376 文件，摘要和 BUILD_ID 与当前输入一致。
+- 新目录包：`apps/desktop/release/review-2026-10-05-luna-final/win-unpacked`；包启动 30/30、随包课堂 50/50，机器报告分别为同目录的 `pack01-verification.json` 与 `classroom-verification.json`。
 - 新目录由 electron-builder 输出，既有 win-unpacked/NSIS/安装态未覆盖，未运行安装升级卸载或干净 Windows 验收。
 
-本轮复核修正 URL 比较后已重建，首轮构建被取代；旧 BUILD_ID 与旧报告不作为当前签核。不把随包课堂 50 项误记为备份恢复或失效 Notice 的完整交互验收；Notice 的已有回归覆盖 gate/helper/SSR 与接线，真实失效后的 DOM 生命周期仍由 EVAL-03/UX-01 跟踪。
+源码摘要保持不变；同源码于 13:50 和 13:54 再次构建，BUILD_ID 更新为当前值。旧 `review-2026-10-05-luna` 目录保留作历史，最新目录包按当前编号组装并核验。不把随包课堂 50 项误记为备份恢复或失效 Notice 的完整交互验收；Notice 的已有回归覆盖 gate/helper/SSR 与接线，真实失效后的 DOM 生命周期仍由 EVAL-03/UX-01 跟踪。
 
-原生冒烟首跑返回笼统渲染脚本错误，第二跑的个人档案 OS 剪贴板 UID 未匹配；第三跑添加诊断、保留原立即读回断言通过 36 组，未跳过 OS 复制。两次异常尚无稳定根因，保留为 EVAL-03/UX-01 待观察项，不声称剪贴板缺陷已修复。启动器在终态失败、超时和早退均保留最新阶段，剪贴板只输出六个可读/匹配布尔值，不记录内容、UID 或凭据；每个 started 阶段保留自有服务 PID，异常早退后仍可清理。最终两个失败诊断补漏只改变 smoke 脚本，另过语法/格式和只读复核，生产输入、成功路径及既有断言未变，无需替换已验证的产物。
+原生冒烟六次结果依次为 generic renderer error、个人档案 OS 剪贴板 UID 未匹配、36 组通过、在 `classroom-widget-isolated` 阶段 generic renderer error、第五、六跑各 36 组通过（含真实剪贴板）。新增诊断记录 workbench/formal quiz 阶段、静态异常类型、受控 `hitTag` 枚举和 `associatedLabel` 布尔值；剪贴板诊断仅六个布尔值，原有断言保留。异常根因未确认，继续作为 EVAL-03/UX-01 待观察项；不声称根因或剪贴板缺陷已修复，不记录剪贴板内容、UID 或凭据。启动器仍在终态失败、超时和早退时保留最新阶段；每个 started 阶段保留自有服务 PID，异常早退后可清理。
 
 ## 剩余范围与续作
 

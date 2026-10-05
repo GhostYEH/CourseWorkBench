@@ -549,17 +549,33 @@ const run = async () => {
   );
   markStep('classroom-widget-isolated', { servicePid: serviceChild.pid ?? null });
 
+  markStep('workbench-return-after-widget-started', { servicePid: serviceChild.pid ?? null });
   await window.loadURL(`${ready.origin}/workbench`);
   await waitForText('关闭项目', 'returning to the workbench did not finish rendering');
 
-  const iframeResult = await window.webContents.executeJavaScript(`new Promise((resolveFrame) => {
+  const executeWorkbench = async (phase, script) => {
+    try {
+      return await window.webContents.executeJavaScript(script);
+    } catch (error) {
+      const type =
+        error instanceof TypeError ? 'TypeError' : error instanceof Error ? 'Error' : 'Other';
+      markStep(`workbench:${phase}:failed:${type}`, { servicePid: serviceChild?.pid ?? null });
+      throw new Error(`workbench renderer phase failed (${phase}; type=${type})`);
+    }
+  };
+
+  markStep('workbench-iframe-isolation-started', { servicePid: serviceChild.pid ?? null });
+  const iframeResult = await executeWorkbench(
+    'iframe-isolation',
+    `new Promise((resolveFrame) => {
     const frame = document.createElement('iframe');
     frame.id = 'boundary-iframe';
     frame.onload = () => resolveFrame(frame.contentDocument.body.innerText);
     frame.onerror = () => resolveFrame('iframe-load-error');
     frame.src = '/workbench?boundary-iframe=1';
     document.body.append(frame);
-  })`);
+  })`,
+  );
   assert(
     String(iframeResult).includes('SESSION_REQUIRED'),
     'same-origin iframe unexpectedly received session authentication',
@@ -578,8 +594,11 @@ const run = async () => {
   cover('same-origin iframe got no renderer credential; no control credential anywhere');
 
   // ——— 工作台项目树：层级结构、ARIA 语义与键盘导航 ———
+  markStep('workbench-tree-structure-started', { servicePid: serviceChild.pid ?? null });
   const readFocusedNode = () =>
-    window.webContents.executeJavaScript(`(() => {
+    executeWorkbench(
+      'tree-focused-node',
+      `(() => {
     const active = document.activeElement;
     const item = active instanceof Element ? active.closest('[role="treeitem"]') : null;
     if (!item) return { onTreeItem: false };
@@ -591,22 +610,28 @@ const run = async () => {
       tabIndex: item.tabIndex,
       text: item.textContent.slice(0, 24),
     };
-  })()`);
+  })()`,
+    );
 
   const pressKey = async (key) => {
     // 隐藏窗口拿不到原生键盘焦点，这里在真实渲染器内派发可冒泡的 KeyboardEvent，
     // 验证的仍是 React 事件处理器与随后的 DOM 焦点转移，而不是模型函数本身。
-    await window.webContents.executeJavaScript(`(() => {
+    await executeWorkbench(
+      'tree-key-dispatch',
+      `(() => {
       const target = document.activeElement;
       if (!target) return false;
       target.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true, cancelable: true }));
       target.dispatchEvent(new KeyboardEvent('keyup', { key: ${JSON.stringify(key)}, bubbles: true, cancelable: true }));
       return true;
-    })()`);
+    })()`,
+    );
     await new Promise((resolveWait) => setTimeout(resolveWait, 150));
   };
 
-  const treeStructure = await window.webContents.executeJavaScript(`(() => {
+  const treeStructure = await executeWorkbench(
+    'tree-structure',
+    `(() => {
     const tree = document.querySelector('ul[role="tree"][aria-label="项目树"]');
     if (!tree) return { found: false };
     const items = [...tree.querySelectorAll('[role="treeitem"]')];
@@ -623,7 +648,8 @@ const run = async () => {
       leafTabIndex: [...tree.querySelectorAll('a.tree-leaf')].every((leaf) => leaf.tabIndex === -1),
       answerLeak: [...tree.querySelectorAll('a.tree-leaf')].some((leaf) => leaf.textContent.includes('答案')),
     };
-  })()`);
+  })()`,
+  );
   assert(treeStructure.found, '工作台没有渲染出 role=tree 的项目树');
   assert(
     String(treeStructure.levels) === '1,2,3',
@@ -648,9 +674,11 @@ const run = async () => {
     'workbench project tree: 3 levels, role=tree/treeitem/group, single roving tab stop, no answer text',
   );
 
-  await window.webContents.executeJavaScript(
+  await executeWorkbench(
+    'tree-focus',
     `document.querySelector('ul[role="tree"] [role="treeitem"]').focus()`,
   );
+  markStep('workbench-tree-keyboard-started', { servicePid: serviceChild.pid ?? null });
   const rootFocus = await readFocusedNode();
   assert(rootFocus.onTreeItem && rootFocus.level === 1, '项目树根节点无法获得焦点');
   await pressKey('ArrowDown');
@@ -688,7 +716,10 @@ const run = async () => {
     'workbench tree keyboard model: arrows move focus and toggle expansion, Enter toggles branch',
   );
 
-  const tabState = await window.webContents.executeJavaScript(`(() => {
+  markStep('workbench-navigation-started', { servicePid: serviceChild.pid ?? null });
+  const tabState = await executeWorkbench(
+    'navigation-state',
+    `(() => {
     const tabs = [...document.querySelectorAll('nav.tabs a.tab')];
     return {
       count: tabs.length,
@@ -696,7 +727,8 @@ const run = async () => {
       ariaCurrent: tabs.filter((tab) => tab.getAttribute('aria-current') === 'page').length,
       fakeTablist: Boolean(document.querySelector('[role="tablist"]')),
     };
-  })()`);
+  })()`,
+  );
   assert(
     tabState.count >= 2 && tabState.current === 1 && tabState.ariaCurrent === 1,
     `分区导航没有恰好一个当前项：${JSON.stringify(tabState)}`,
@@ -704,6 +736,7 @@ const run = async () => {
   assert(!tabState.fakeTablist, '分区导航仍声明为 tablist，但它并不控制面板');
   cover('workbench section navigation marks exactly one current page without a fake tablist');
 
+  markStep('formal-quiz-smoke-started', { servicePid: serviceChild.pid ?? null });
   await require('./smoke-formal-quiz.cjs')({
     window,
     origin: ready.origin,
@@ -711,6 +744,7 @@ const run = async () => {
     serviceRequest,
     waitForText,
     cover,
+    markStep,
   });
   nativeProjects.adopt(await serviceRequest('GET', '/internal/project'));
   markStep('project-backup-smoke-started', { servicePid: serviceChild.pid ?? null });
