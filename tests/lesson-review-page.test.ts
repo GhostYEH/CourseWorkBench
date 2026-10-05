@@ -213,6 +213,9 @@ productionDescribe('课程审核界面（生产构建 SSR）', () => {
     expect(html).toContain('生成完整课件候选');
     expect(html).toContain('撤销');
     expect(html).toContain('新增幻灯片');
+    // 计划与候选都按「课程版本」绑定：候选列表为空时也说明生成/审批的前置条件。
+    expect(html).toContain('基线：v1');
+    expect(html).toContain('暂无待核候选');
     // 生成入口按事实提示：本环境没有配置模型连接，按钮必须说明原因而不是假装可用。
     expect(html).toContain('课程草案生成');
     expect(html).toContain('尚未配置模型连接');

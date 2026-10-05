@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { newId, type CoursewareProposeInput, type PlanPayloadDto } from '@sew/study-contracts';
 import { StudyStore, ensureProjectLayout, projectPaths } from '@sew/study-storage';
 import { createModelConnectionRuntime } from '../apps/learning/lib/server/model-connection';
@@ -24,7 +25,7 @@ describe('受 guard 约束的完整课件候选生成（注入假 fetcher）', (
   let lessonId = '';
   let lessonVersion = 1;
   let requests: string[] = [];
-  let responder: () => Response;
+  let responder: () => Response | Promise<Response>;
 
   const okResponder = (content: unknown): Response =>
     new Response(
@@ -232,6 +233,135 @@ describe('受 guard 约束的完整课件候选生成（注入假 fetcher）', (
     const result = await generate();
     expect(result.candidate).toBeNull();
     expect(store.listProjectCoursewareCandidates(projectId)).toHaveLength(0);
+  });
+
+  it('确定失败的响应丢失后读取相同失败回执，明确换nonce才开启新调用', async () => {
+    responder = () =>
+      okResponder({
+        scenes: [
+          { kind: 'slide', title: '越界', statementId: 'unknown', questionId: null, elements: [] },
+        ],
+      });
+    const first = await generate();
+    expect(first.generation.callState).toBe('failed');
+    const replay = await generate();
+    expect(replay).toEqual({ ...first, deduplicated: true });
+    expect(requests).toHaveLength(1);
+    responder = () =>
+      okResponder({
+        scenes: [{ kind: 'slide', title: '修正', statementId, questionId: null, elements: [] }],
+      });
+    const retry = await generate({ requestId: 'req-courseware-new-attempt' });
+    expect(retry.candidate).not.toBeNull();
+    expect(requests).toHaveLength(2);
+    expect(store.listModelUsageCalls(projectId)).toHaveLength(2);
+  });
+
+  it('provider已派发但结果未知时保留预占，重复核对回执不会重发', async () => {
+    responder = () => {
+      throw new Error('fixture network lost after dispatch');
+    };
+    const first = await generate();
+    expect(first.candidate).toBeNull();
+    expect(first.generation.callState).toBe('started');
+    const call = store.getModelUsageCall(projectId, input().requestId)!;
+    expect(call.accountedTokens).toBeNull();
+    expect(call.tokenMeasurement).toBe('unknown');
+    const reserved = store.modelCallUsage(call.runId).tokens;
+    expect(reserved).toBeGreaterThan(0);
+    const second = await generate();
+    expect(second).toEqual({ ...first, deduplicated: true });
+    expect(requests).toHaveLength(1);
+    expect(store.modelCallUsage(call.runId).tokens).toBe(reserved);
+  });
+
+  it('重启后已派发的台账没有结果或回执，读取未知状态而不是nonce冲突或再次调用', async () => {
+    const intent = createHash('sha256')
+      .update(
+        JSON.stringify({
+          lessonId,
+          version: lessonVersion,
+          instruction: input().instruction,
+        }),
+      )
+      .digest('hex');
+    const runId = store.getLatestRun()!.runId;
+    store.startModelUsageCall(
+      {
+        projectId,
+        runId,
+        requestId: input().requestId,
+        purpose: 'courseware_generation',
+        intent,
+        sessionId: null,
+        roundIndex: null,
+        reservedTokens: 800,
+        provider: 'openai-compatible',
+        requestedModel: 'fixture-model',
+      },
+      { maxCalls: 8, maxTokens: 20_000, maxWallClockMs: 600_000 },
+    );
+    // Recovery must work even if the lesson is no longer a draft or the model is unconfigured.
+    store.reviewLesson({
+      projectId,
+      lessonId,
+      version: lessonVersion,
+      decision: 'approved',
+      note: 'ok',
+    });
+    store.publishLesson({ projectId, lessonId, version: lessonVersion });
+    const result = await generateCourseware(
+      { store, projectId, connection: createModelConnectionRuntime() },
+      input(),
+    );
+    expect(result.generation.callState).toBe('started');
+    expect(result.deduplicated).toBe(true);
+    expect(result.candidate).toBeNull();
+    expect(requests).toHaveLength(0);
+    expect(store.getModelUsageCall(projectId, input().requestId)!.state).toBe('started');
+    expect(store.modelCallUsage(runId).tokens).toBe(800);
+  });
+
+  it('取消后的迟到provider结果不落候选，同nonce恢复失败回执', async () => {
+    let release!: (response: Response) => void;
+    responder = () =>
+      new Promise<Response>((resolve) => {
+        release = resolve;
+      });
+    const controller = new AbortController();
+    const pending = generateCourseware(
+      { store, projectId, connection: connection() },
+      input(),
+      controller.signal,
+    );
+    controller.abort();
+    release(
+      okResponder({
+        scenes: [{ kind: 'slide', title: '迟到', statementId, questionId: null, elements: [] }],
+      }),
+    );
+    const result = await pending;
+    expect(result.candidate).toBeNull();
+    expect(result.generation.callState).toBe('failed');
+    expect((await generate()).generation).toEqual(result.generation);
+    expect(requests).toHaveLength(1);
+    expect(store.listProjectCoursewareCandidates(projectId)).toHaveLength(0);
+  });
+
+  it('provider派发前的guard失败有可重放回执，改变nonce才重新判定', async () => {
+    const runtime = createModelConnectionRuntime();
+    await expect(
+      generateCourseware({ store, projectId, connection: runtime }, input()),
+    ).rejects.toMatchObject({
+      code: 'MODEL_NOT_CONFIGURED',
+      details: { receiptState: 'failed' },
+    });
+    const replay = await generate();
+    expect(replay.generation.callState).toBe('failed');
+    expect(replay.deduplicated).toBe(true);
+    expect(requests).toHaveLength(0);
+    expect((await generate({ requestId: 'configured-new-attempt' })).candidate).not.toBeNull();
+    expect(requests).toHaveLength(1);
   });
 
   it('基线版本已发布时拒绝生成候选', async () => {

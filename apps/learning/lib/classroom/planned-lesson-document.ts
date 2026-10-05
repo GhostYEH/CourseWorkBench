@@ -8,9 +8,8 @@
  * 同一份（证据包 + 计划）在任何时刻都装配出同一份文档与同一个指纹：时间戳取证据包冻结时刻，
  * 元素顺序与文本逐字来自计划，不掺入当前时间或随机值。
  *
- * 计划没有覆盖到的部分回退到确定性装配：测验场景取冻结题目快照，互动场景取审核定义，
- * 知识点由服务端从绑定的陈述/题目/定义沿用。这样「没有计划」与「计划缺某类场景」都不会
- * 让课件悄悄少讲或多讲。
+ * 场景集合以计划为准，显式删除的内容不自动加回；测验取冻结题目快照，互动按稳定身份查
+ * 审核定义，知识点由服务端从绑定对象沿用。互动/PBL 的完整内容生成仍属后续范围。
  */
 
 import type {
@@ -33,12 +32,7 @@ import type {
 } from '@sew/study-contracts';
 import type { ClassroomDocument, LessonScene } from './reviewed-lesson';
 import { FORMAL_SCENE_LIMIT, formalStageId } from './formal-lesson-document';
-
-const escapeText = (value: string): string =>
-  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-/** 计划正文是安全富文本（领域层已按白名单校验），这里只做转义与换行处理。 */
-const richText = (value: string): string => escapeText(value).replace(/\r?\n/g, '<br>');
+import { escapePlanText, renderPlanRichText } from './plan-rich-text';
 
 const theme = {
   backgroundColor: '#f4f6fb',
@@ -71,7 +65,7 @@ const planElementToDsl = (element: PlanElementDto) => {
     };
   }
   const { fontSize, color, bold, italic, align } = element.style;
-  const inner = richText(element.text);
+  const inner = renderPlanRichText(element.text);
   const style = [
     `font-size:${fontSize}px`,
     `color:${color}`,
@@ -204,7 +198,7 @@ export const buildPlannedLessonDocument = (input: {
                 height: 170,
                 rotate: 0,
                 type: 'text' as const,
-                content: `<p style="font-size:24px">${richText(statement.text)}</p>`,
+                content: `<p style="font-size:24px">${escapePlanText(statement.text).replace(/\r?\n/g, '<br>')}</p>`,
                 defaultFontName: 'Microsoft YaHei',
                 defaultColor: '#232323',
                 lineHeight: 1.5,

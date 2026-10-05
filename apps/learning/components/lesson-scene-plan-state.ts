@@ -9,6 +9,45 @@
  */
 
 import type { PlanElementDto, PlanElementStyleDto, PlanSceneDto } from '@sew/study-contracts';
+import type { EvidenceBundleDto, LessonVersionDto } from '@sew/study-contracts';
+
+/** Initializing an editor must preserve both selected statements and selected quizzes. */
+export const initialLessonPlanScenes = (
+  bundle: {
+    statements: ReadonlyArray<
+      Pick<EvidenceBundleDto['statements'][number], 'statementId' | 'knowledgeId'>
+    >;
+    questions: ReadonlyArray<
+      Pick<EvidenceBundleDto['questions'][number], 'questionId' | 'knowledgeIds'>
+    >;
+  },
+  lesson: Pick<LessonVersionDto, 'statementIds' | 'questionIds'>,
+): PlanSceneDto[] => [
+  ...bundle.statements
+    .filter((item) => lesson.statementIds.includes(item.statementId))
+    .map((statement, index): PlanSceneDto => ({
+      sceneId: `scene_slide_${statement.statementId}`.slice(0, 60),
+      kind: 'slide',
+      title: `陈述 ${index + 1}`,
+      statementId: statement.statementId,
+      questionId: null,
+      knowledgeIds: [statement.knowledgeId],
+      elements: [],
+      note: '',
+    })),
+  ...bundle.questions
+    .filter((item) => lesson.questionIds.includes(item.questionId))
+    .map((question, index): PlanSceneDto => ({
+      sceneId: `scene_quiz_${question.questionId}`.slice(0, 60),
+      kind: 'quiz',
+      title: `独立测验 ${index + 1}`,
+      statementId: null,
+      questionId: question.questionId,
+      knowledgeIds: [...question.knowledgeIds],
+      elements: [],
+      note: '',
+    })),
+];
 
 export interface ScenePlanEditorState {
   scenes: PlanSceneDto[];

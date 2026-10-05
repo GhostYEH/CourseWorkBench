@@ -36,35 +36,69 @@ import type {
 } from '@sew/study-storage';
 
 export const toLessonVersionDto = (row: LessonVersionRow): LessonVersionDto => ({
-  lessonId: row.lessonId, version: row.version, title: row.title, status: row.status,
-  bundleId: row.bundleId, bundleDigest: row.bundleDigest, statementIds: row.statementIds,
-  questionIds: row.questionIds, createdAt: row.createdAt, updatedAt: row.updatedAt,
+  lessonId: row.lessonId,
+  version: row.version,
+  title: row.title,
+  status: row.status,
+  bundleId: row.bundleId,
+  bundleDigest: row.bundleDigest,
+  statementIds: row.statementIds,
+  questionIds: row.questionIds,
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
 });
 
 export const toLessonReviewDto = (row: LessonReviewRow): LessonReviewRecordDto => ({
-  projectId: row.projectId, lessonId: row.lessonId, version: row.version, decision: row.decision,
-  note: row.note, admittedKnowledgeIds: row.admittedKnowledgeIds,
-  blockedKnowledgeIds: row.blockedKnowledgeIds, reviewedAt: row.reviewedAt,
+  projectId: row.projectId,
+  lessonId: row.lessonId,
+  version: row.version,
+  decision: row.decision,
+  note: row.note,
+  admittedKnowledgeIds: row.admittedKnowledgeIds,
+  blockedKnowledgeIds: row.blockedKnowledgeIds,
+  planRevision: row.planRevision,
+  planDigest: row.planDigest,
+  reviewedAt: row.reviewedAt,
 });
 
 /** 讲解卡与课堂会话按显式 DTO 出界面，存储行字段变化不会静默变成对外合同。 */
 export const toExplanationDto = (row: ExplanationRow): ExplanationCardDto => ({
-  explanationId: row.explanationId, projectId: row.projectId,
-  lessonId: row.lessonId, lessonVersion: row.lessonVersion, sceneId: row.sceneId,
-  position: row.position, kind: row.kind, origin: row.origin, status: row.status,
-  text: row.text, statementIds: row.statementIds, reviewNote: row.reviewNote,
-  createdAt: row.createdAt, updatedAt: row.updatedAt,
+  explanationId: row.explanationId,
+  projectId: row.projectId,
+  lessonId: row.lessonId,
+  lessonVersion: row.lessonVersion,
+  sceneId: row.sceneId,
+  position: row.position,
+  kind: row.kind,
+  origin: row.origin,
+  status: row.status,
+  text: row.text,
+  statementIds: row.statementIds,
+  reviewNote: row.reviewNote,
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
 });
 
 export const toClassroomSessionDto = (row: ClassroomSessionRow): ClassroomSessionDto => ({
-  sessionId: row.sessionId, projectId: row.projectId, runId: row.runId,
-  lessonId: row.lessonId, lessonVersion: row.lessonVersion, bundleId: row.bundleId,
-  stageId: row.stageId, learnerKey: row.learnerKey, status: row.status,
-  awaitingReason: row.awaitingReason, currentSceneId: row.currentSceneId,
-  roundIndex: row.roundIndex, roundCalls: row.roundCalls,
-  roundPeerTurns: row.roundPeerTurns, lessonCalls: row.lessonCalls,
-  peersEnabled: row.peersEnabled, peersEngagement: row.peersEngagement,
-  createdAt: row.createdAt, updatedAt: row.updatedAt,
+  sessionId: row.sessionId,
+  projectId: row.projectId,
+  runId: row.runId,
+  lessonId: row.lessonId,
+  lessonVersion: row.lessonVersion,
+  bundleId: row.bundleId,
+  stageId: row.stageId,
+  learnerKey: row.learnerKey,
+  status: row.status,
+  awaitingReason: row.awaitingReason,
+  currentSceneId: row.currentSceneId,
+  roundIndex: row.roundIndex,
+  roundCalls: row.roundCalls,
+  roundPeerTurns: row.roundPeerTurns,
+  lessonCalls: row.lessonCalls,
+  peersEnabled: row.peersEnabled,
+  peersEngagement: row.peersEngagement,
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
 });
 
 export const toMaterialDto = (row: MaterialRow): MaterialDto => ({
@@ -164,7 +198,8 @@ export const toRoleProfileDto = (row: RoleProfileRow): RoleProfileDto => ({
   updatedAt: row.updatedAt,
 });
 
-export const toSyllabusItemDto = (row: SyllabusItemRow): SyllabusItemDto => ({  itemId: row.itemId,
+export const toSyllabusItemDto = (row: SyllabusItemRow): SyllabusItemDto => ({
+  itemId: row.itemId,
   code: row.code,
   label: row.label,
   recordScope: row.recordScope,
@@ -176,7 +211,14 @@ export const toSyllabusItemDto = (row: SyllabusItemRow): SyllabusItemDto => ({  
 
 /** 列表项：不含答案与解析，供未授权列表与客户端缓存使用。 */
 export const toQuestionListItemDto = (row: QuestionRow): QuestionListItemDto => ({
-  assessment: row.assessment ? { type: row.assessment.type, options: row.assessment.options, maxScore: row.assessment.maxScore, answerVersion: row.assessment.answerVersion } : null,
+  assessment: row.assessment
+    ? {
+        type: row.assessment.type,
+        options: row.assessment.options,
+        maxScore: row.assessment.maxScore,
+        answerVersion: row.assessment.answerVersion,
+      }
+    : null,
   questionId: row.questionId,
   stem: row.stem,
   knowledgeIds: row.knowledgeIds,
@@ -196,7 +238,9 @@ export const toQuestionDetailDto = (row: QuestionRow): QuestionDto => ({
 });
 
 export const toAttemptDto = (row: AttemptRow, deduplicated = false): AttemptDto => ({
-  questionRevision: row.questionRevision, answerVersion: row.answerVersion, grading: row.grading,
+  questionRevision: row.questionRevision,
+  answerVersion: row.answerVersion,
+  grading: row.grading,
   recordScope: row.recordScope,
   attemptId: row.attemptId,
   questionId: row.questionId,

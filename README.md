@@ -116,19 +116,19 @@ M1 已补严格 UTF-8 解码、空正文拒绝、不可变材料历史版本和�
 
 ## 当前验证
 
-2026-10-05 本轮在上一核心提交 `9fcc486` 之上推进 LESSON-02 的模型完整课件生成与多场景编辑（OMA-006/021/022），源码摘要随新代码变化（313 个构建输入，BUILD_ID `srGhRAARMkylaCTK6qqpn`，见 `apps/learning/.next` 构建记录）。旧 `review-2026-10-05-luna`、`luna-final` 与 `review-2026-10-05-lesson-revision` 目录保留作历史。
+2026-10-05 本轮基于 `4eaa4ef` 收尾 LESSON-02 场景计划正确性，保留并整合并行任务。当前为 **316 个构建输入**，BUILD_ID `d5D529prjZ7Chbt5_Nos-`，源码 SHA-256 `6b67b22c0254db8599482ef6842c8d91d0da9118d2b321f8261e7c929eb6fca2`；此前 313 输入与旧报告不再代表当前源码。
 
-- `pnpm check`：**98 文件 / 866 项通过、0 跳过**；类型（含真实 IPC）、lint、清单内格式与 12 项工程门禁通过。
-- 真实 Electron 原生冒烟：**36 组通过**，含真实 OS 剪贴板复制；不发远程 provider 调用。本轮三次运行中两次在个人档案剪贴板处失败（`clipboardDiagnostics` 显示复制内容与身份不匹配），重跑通过；该偶发异常根因未确认，继续作为 EVAL-03/UX-01 待观察项。
-- 随包服务：组装清单 **12373 文件**，最长相对路径 132/140，源码摘要、BUILD_ID 与 SHA-256 一致；启动验证 **14/14**。
-- 桌面目录包：`apps/desktop/release/win-unpacked`（当前源码重建），实际启动 **30/30**（报告 `pack01-verification-2026-10-05T12-01-16.192Z.json`）、随包课堂 **50/50**（`m0-classroom-ui-2026-10-05T12-03-20.698Z.json`）。该目录由 `--dir` 输出（关闭签名与可执行资源编辑），既有 `review-*`、NSIS 与安装态未覆盖。
-- 本轮新增回归 `tests/lesson-scene-plan.test.ts`（16）、`tests/lesson-scene-plan-http.test.ts`（5）、`tests/lesson-courseware-model.test.ts`（7），并扩展生产 SSR 断言；迁移 27 与历史迁移测试同步。
+- `pnpm check`：**102 文件 / 951 项通过、0 跳过**；类型（含真实 IPC）、lint、清单内格式与 12 项工程门禁通过。最后仅拆分测试脚本，并重新通过工程检查与格式检查。
+- 真实 Electron 原生冒烟：**boundary 36 组 + lesson-plan 7 组通过**。默认 `node scripts/run-electron-boundary-smoke.cjs` 依次运行两套，每套使用独立临时项目/profile，保持原 240 秒时限。36 组含真实 OS 剪贴板和备份恢复；7 组含真实鼠标/键盘、无效输入修正、审核后编辑阻断发布、刷新冲突、已提交响应丢失后原请求恢复和课堂确切正文核验。不调用真实 provider。
+- 随包服务：清单 **12373 文件**（不含清单自身），最长相对路径 132/140；源码摘要、BUILD_ID 与文件 SHA-256 一致；启动验证 **14/14**。
+- 新桌面目录包：`apps/desktop/release/plan-closeout/win-unpacked`，实际启动 **30/30**（`apps/desktop/release/plan-closeout/pack01-verification.json`）、随包课堂 **50/50**（`apps/desktop/release/plan-closeout/classroom-verification.json`）。由 `--dir` 输出，关闭签名与可执行资源编辑；原 `win-unpacked`、历史 `review-*` 和 NSIS 产物保留。打包工具按自身流程下载 Electron 运行时。
+- 迁移专项 44 项、场景计划 29 项、模型入口 12 项、HTTP 完整性 8 项、客户端重试 3 项和富文本/默认题目/上限 12 项全部通过，均包含于全量 951 项。GPT-6.1-Sol / high 最终独立只读复核未发现额外确认缺陷。
 
-本轮落地 LESSON-02 的完整课件生成与场景计划编辑：新增 `lesson_scene_plans`（计划只挂在草案版本上，发布即冻结历史，`revision` 乐观并发）与 `lesson_courseware_candidates`/`lesson_courseware_receipts`（模型候选只落待核区、按 `requestId` 幂等）。模型只决定讲哪些已选陈述/题目、按什么顺序、每个场景怎么写，场景编号、知识点与来源由服务端从冻结证据包沿用并复验；人工通过才把候选场景写成该草案版本的场景计划。场景用稳定 `sceneId`（不靠序号映射），增删/排序/复制/局部重生成都不改已有场景身份；幻灯片元素支持富文本白名单与字号/颜色/加粗/斜体/对齐编辑，撤销/恢复由整份计划快照历史承担。课件装配按计划产出幻灯片/测验/互动/PBL 四类场景并通过真实 DSL 校验，同一份（证据包 + 计划）得到同一指纹。
+本轮修复审核与计划内容绑定、编辑器实际修订及刷新冲突、候选基线与显式覆盖、四态事务回执、原请求重试和模型派发台账恢复。v29 升级旧 JSON 与历史回执，拒绝损坏归属/意图；仅对可证明先保存、再审核、再发布的旧已发布计划恢复绑定，无法证明时仍需派生重审。运行时复算计划摘要，不能用旧摘要给改写正文背书。新写入上限 24，历史 48 场景仍可读取；默认计划保留已选测验，富文本只重建无属性白名单标签并安全转义。
 
-原生冒烟历史六跑结果依次为 generic renderer error、个人档案 OS 剪贴板 UID 不匹配、36 组通过、在 `classroom-widget-isolated` 阶段 generic renderer error、第五、六跑各 36 组通过（含真实剪贴板）。前述异常根因未确认，继续作为 EVAL-03/UX-01 待观察项，不声称根因或剪贴板缺陷已修复，也不记录剪贴板内容、UID 或凭据。
+原生冒烟历史有 generic renderer error、个人档案剪贴板匹配失败等观察项，根因仍未确认。本轮首次报控件命中遮挡，加入点击序号和几何诊断后未复现；第二次在新增计划流程完成后触及整条原生链的总时限，已拆成独立套件，最终默认命令两套均通过。保留点击命中断言，不扩大时限；不把重跑通过当作偶发异常根因已修复，不记录 UID、剪贴板内容或凭据。
 
-随包课堂 50 项不包含备份恢复，也不代替失效提示的完整 DOM 生命周期验收。真实材料金标准、真人双设备、独立干净 Windows、真实付费 provider 继续按用户要求暂缓；正式安装升级卸载本轮未执行。M1—M4 的未完成范围见[待办事项](docs/待办事项.md)，当前交接见[阶段交接](docs/optimization-handoff-2026-10-05.md)。既有审查报告保持删除。
+随包课堂 50 项不包含备份恢复，也不代替失效提示的完整 DOM 生命周期验收；备份恢复另由原生 boundary 覆盖。互动/PBL 完整内容、媒体生成与跨版本合并仍属未完成范围，partial 不算完成。真实材料金标准、真人双设备、独立干净 Windows、真实付费 provider 继续暂缓；正式安装升级卸载未执行。详细剩余工作见[待办事项](docs/待办事项.md)及[阶段交接](docs/optimization-handoff-2026-10-05.md)。
 
 ## 剩余范围（按里程碑）
 

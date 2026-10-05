@@ -49,7 +49,8 @@ const LESSON_RESPONSES = {
   'attach-document': apiResponses.lessonDocument,
 } as const;
 
-const STATUS_LABEL: Record<LessonVersionDto['status'], string> = {  draft: '草案',
+const STATUS_LABEL: Record<LessonVersionDto['status'], string> = {
+  draft: '草案',
   published: '已发布',
   superseded: '已被新版本取代',
   withdrawn: '已撤回',
@@ -86,7 +87,13 @@ export const LessonWorkbench = ({
   knowledge: Array<KnowledgePointDto & { admitted: boolean }>;
   questions: QuestionListItemDto[];
   /** 已挂接课件文档的课堂映射：按「课程 + 版本」匹配，新版本必须重新挂接。 */
-  documents?: Array<{ lessonId: string; lessonVersion: number; stageId: string; documentDigest: string; sceneIds: string[] }>;
+  documents?: Array<{
+    lessonId: string;
+    lessonVersion: number;
+    stageId: string;
+    documentDigest: string;
+    sceneIds: string[];
+  }>;
   /** 陈述正文改写候选：按课程 + 版本分组展示，待核的才可处置。 */
   statementRevisions?: StatementRevisionCandidateDto[];
   /** 场景计划：按课程 + 版本取用，草案版本可编辑。 */
@@ -157,13 +164,21 @@ export const LessonWorkbench = ({
     try {
       const result = await apiFetch('/api/study/lessons', apiResponses.lessonDocument, {
         method: 'POST',
-        body: JSON.stringify({ scope: { projectId, generation }, action: 'attach-document', lessonId, version }),
+        body: JSON.stringify({
+          scope: { projectId, generation },
+          action: 'attach-document',
+          lessonId,
+          version,
+        }),
       });
-      const skipped = result.document.skipped.length > 0
-        ? `；${result.document.skipped.length} 项未进入课件：${result.document.skipped[0]!.reason}`
-        : '';
-      setNote(`v${version} 课件文档已挂接：${result.document.sceneCount} 个场景，`
-        + `指纹 ${result.document.digest.slice(0, 12)}…${skipped}`);
+      const skipped =
+        result.document.skipped.length > 0
+          ? `；${result.document.skipped.length} 项未进入课件：${result.document.skipped[0]!.reason}`
+          : '';
+      setNote(
+        `v${version} 课件文档已挂接：${result.document.sceneCount} 个场景，` +
+          `指纹 ${result.document.digest.slice(0, 12)}…${skipped}`,
+      );
       router.refresh();
     } catch (caught) {
       setError(describeApiError(caught));
@@ -180,7 +195,10 @@ export const LessonWorkbench = ({
       setError('至少选择一条学科陈述；没有准入知识点时请先完成候选审核。');
       return;
     }
-    void call({ action: 'build-bundle', statements, questionIds }, '证据包已冻结（同一内容重复冻结会复用既有摘要）。');
+    void call(
+      { action: 'build-bundle', statements, questionIds },
+      '证据包已冻结（同一内容重复冻结会复用既有摘要）。',
+    );
   };
 
   const draft = (): void => {
@@ -224,7 +242,9 @@ export const LessonWorkbench = ({
                   checked={row.include}
                   onChange={(event) =>
                     setRows((current) =>
-                      current.map((item, position) => (position === index ? { ...item, include: event.target.checked } : item)),
+                      current.map((item, position) =>
+                        position === index ? { ...item, include: event.target.checked } : item,
+                      ),
                     )
                   }
                   disabled={busy}
@@ -238,7 +258,9 @@ export const LessonWorkbench = ({
                   value={row.text}
                   onChange={(event) =>
                     setRows((current) =>
-                      current.map((item, position) => (position === index ? { ...item, text: event.target.value } : item)),
+                      current.map((item, position) =>
+                        position === index ? { ...item, text: event.target.value } : item,
+                      ),
                     )
                   }
                 />
@@ -250,7 +272,9 @@ export const LessonWorkbench = ({
                   value={row.conditions}
                   onChange={(event) =>
                     setRows((current) =>
-                      current.map((item, position) => (position === index ? { ...item, conditions: event.target.value } : item)),
+                      current.map((item, position) =>
+                        position === index ? { ...item, conditions: event.target.value } : item,
+                      ),
                     )
                   }
                 />
@@ -264,7 +288,9 @@ export const LessonWorkbench = ({
             id="bundle-questions"
             multiple
             value={questionIds}
-            onChange={(event) => setQuestionIds([...event.target.selectedOptions].map((option) => option.value))}
+            onChange={(event) =>
+              setQuestionIds([...event.target.selectedOptions].map((option) => option.value))
+            }
             disabled={questions.length === 0 || busy}
           >
             {questions.map((question) => (
@@ -275,7 +301,12 @@ export const LessonWorkbench = ({
           </select>
           <span className="hint">题目只能引用包内知识点；引用包外知识点的题目会被拒绝冻结。</span>
         </div>
-        <button type="button" className="btn btn-primary" onClick={freeze} disabled={busy || rows.length === 0}>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={freeze}
+          disabled={busy || rows.length === 0}
+        >
           冻结证据包
         </button>
       </div>
@@ -296,9 +327,10 @@ export const LessonWorkbench = ({
                     onChange={() => setBundleId(bundle.bundleId)}
                     disabled={busy}
                   />{' '}
-                  <span className="mono">{bundle.digest.slice(0, 12)}…</span> · 计划 v{bundle.bundle.planVersion} ·
-                  {' '}{bundle.bundle.statements.length} 条陈述 · {bundle.bundle.questions.length} 道题 ·
-                  段落 {bundle.bundle.segmentDigests.length} 处摘要
+                  <span className="mono">{bundle.digest.slice(0, 12)}…</span> · 计划 v
+                  {bundle.bundle.planVersion} · {bundle.bundle.statements.length} 条陈述 ·{' '}
+                  {bundle.bundle.questions.length} 道题 · 段落 {bundle.bundle.segmentDigests.length}{' '}
+                  处摘要
                 </label>
               </li>
             ))}
@@ -307,9 +339,19 @@ export const LessonWorkbench = ({
         <div className="row-inline">
           <div className="field" style={{ flex: '1 1 260px' }}>
             <label htmlFor="lesson-title">课程标题</label>
-            <input id="lesson-title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：函数单调性（第 1 课时）" />
+            <input
+              id="lesson-title"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="例如：函数单调性（第 1 课时）"
+            />
           </div>
-          <button type="button" className="btn" onClick={draft} disabled={busy || activeBundle === null}>
+          <button
+            type="button"
+            className="btn"
+            onClick={draft}
+            disabled={busy || activeBundle === null}
+          >
             创建课程草案
           </button>
         </div>
@@ -338,8 +380,13 @@ export const LessonWorkbench = ({
             </thead>
             <tbody>
               {versions.map((lesson) => {
-                const review = reviews.find((item) => item.lessonId === lesson.lessonId && item.version === lesson.version);
-                const attached = documents.find((item) => item.lessonId === lesson.lessonId && item.lessonVersion === lesson.version);
+                const review = reviews.find(
+                  (item) => item.lessonId === lesson.lessonId && item.version === lesson.version,
+                );
+                const attached = documents.find(
+                  (item) =>
+                    item.lessonId === lesson.lessonId && item.lessonVersion === lesson.version,
+                );
                 return (
                   <tr key={`${lesson.lessonId}-v${lesson.version}`}>
                     <td className="mono">{lesson.lessonId}</td>
@@ -350,16 +397,33 @@ export const LessonWorkbench = ({
                       </span>
                     </td>
                     <td>
-                      {review
-                        ? <span className="mono">{review.decision === 'approved' ? '已通过' : '已退回'} · {review.reviewedAt.slice(0, 10)}</span>
-                        : <span className="muted">未审核</span>}
+                      {review ? (
+                        <span className="mono">
+                          {review.decision === 'approved' ? '已通过' : '已退回'} ·{' '}
+                          {review.reviewedAt.slice(0, 10)}
+                        </span>
+                      ) : (
+                        <span className="muted">未审核</span>
+                      )}
                     </td>
                     <td className="mono">
                       {lesson.statementIds.length} / {lesson.questionIds.length}
                     </td>
-                    <td className="mono" title={lesson.bundleDigest}>{lesson.bundleDigest.slice(0, 12)}…</td>
+                    <td className="mono" title={lesson.bundleDigest}>
+                      {lesson.bundleDigest.slice(0, 12)}…
+                    </td>
                     <td>
-                      {lesson.status === 'draft' && !review ? <FormalInteractionAuthor scope={{ projectId, generation }} lessonId={lesson.lessonId} lessonVersion={lesson.version} statements={(bundles.find(b => b.bundleId === lesson.bundleId)?.bundle.statements ?? []).filter(s => lesson.statementIds.includes(s.statementId))} /> : null}
+                      {lesson.status === 'draft' && !review ? (
+                        <FormalInteractionAuthor
+                          scope={{ projectId, generation }}
+                          lessonId={lesson.lessonId}
+                          lessonVersion={lesson.version}
+                          statements={(
+                            bundles.find((b) => b.bundleId === lesson.bundleId)?.bundle
+                              .statements ?? []
+                          ).filter((s) => lesson.statementIds.includes(s.statementId))}
+                        />
+                      ) : null}
                       <div className="row-inline">
                         {lesson.status === 'draft' ? (
                           <>
@@ -367,10 +431,18 @@ export const LessonWorkbench = ({
                               type="button"
                               className="btn"
                               disabled={busy}
-                              onClick={() => void call(
-                                { action: 'review', lessonId: lesson.lessonId, version: lesson.version, decision: 'approved', note: reviewNote },
-                                `课程 ${lesson.lessonId} v${lesson.version} 审核已通过（仅对本版本有效）。`,
-                              )}
+                              onClick={() =>
+                                void call(
+                                  {
+                                    action: 'review',
+                                    lessonId: lesson.lessonId,
+                                    version: lesson.version,
+                                    decision: 'approved',
+                                    note: reviewNote,
+                                  },
+                                  `课程 ${lesson.lessonId} v${lesson.version} 审核已通过（仅对本版本有效）。`,
+                                )
+                              }
                             >
                               审核通过
                             </button>
@@ -378,10 +450,18 @@ export const LessonWorkbench = ({
                               type="button"
                               className="btn"
                               disabled={busy}
-                              onClick={() => void call(
-                                { action: 'review', lessonId: lesson.lessonId, version: lesson.version, decision: 'rejected', note: reviewNote },
-                                `课程 ${lesson.lessonId} v${lesson.version} 已退回。`,
-                              )}
+                              onClick={() =>
+                                void call(
+                                  {
+                                    action: 'review',
+                                    lessonId: lesson.lessonId,
+                                    version: lesson.version,
+                                    decision: 'rejected',
+                                    note: reviewNote,
+                                  },
+                                  `课程 ${lesson.lessonId} v${lesson.version} 已退回。`,
+                                )
+                              }
                             >
                               退回
                             </button>
@@ -390,10 +470,16 @@ export const LessonWorkbench = ({
                                 type="button"
                                 className="btn btn-primary"
                                 disabled={busy}
-                                onClick={() => void call(
-                                  { action: 'publish', lessonId: lesson.lessonId, version: lesson.version },
-                                  `课程 ${lesson.lessonId} v${lesson.version} 已发布；旧已发布版本转为已被新版本取代。`,
-                                )}
+                                onClick={() =>
+                                  void call(
+                                    {
+                                      action: 'publish',
+                                      lessonId: lesson.lessonId,
+                                      version: lesson.version,
+                                    },
+                                    `课程 ${lesson.lessonId} v${lesson.version} 已发布；旧已发布版本转为已被新版本取代。`,
+                                  )
+                                }
                               >
                                 发布 v{lesson.version}
                               </button>
@@ -424,10 +510,16 @@ export const LessonWorkbench = ({
                               type="button"
                               className="btn"
                               disabled={busy}
-                              onClick={() => void call(
-                                { action: 'withdraw', lessonId: lesson.lessonId, reason: withdrawReason },
-                                `课程 ${lesson.lessonId} 已撤回，课堂入口随即阻断。`,
-                              )}
+                              onClick={() =>
+                                void call(
+                                  {
+                                    action: 'withdraw',
+                                    lessonId: lesson.lessonId,
+                                    reason: withdrawReason,
+                                  },
+                                  `课程 ${lesson.lessonId} 已撤回，课堂入口随即阻断。`,
+                                )
+                              }
                             >
                               撤回
                             </button>
@@ -440,17 +532,19 @@ export const LessonWorkbench = ({
                           bundle={versionBundle(lesson)!}
                           lesson={lesson}
                           busy={busy}
-                          onRevise={(nextTitle, statementIds) => void call(
-                            {
-                              action: 'draft',
-                              lessonId: lesson.lessonId,
-                              bundleId: lesson.bundleId,
-                              title: nextTitle,
-                              statementIds,
-                              questionIds: lesson.questionIds,
-                            },
-                            `已从 v${lesson.version} 派生新的草案版本，需重新审核后才会生效；旧版本保持不变。`,
-                          )}
+                          onRevise={(nextTitle, statementIds) =>
+                            void call(
+                              {
+                                action: 'draft',
+                                lessonId: lesson.lessonId,
+                                bundleId: lesson.bundleId,
+                                title: nextTitle,
+                                statementIds,
+                                questionIds: lesson.questionIds,
+                              },
+                              `已从 v${lesson.version} 派生新的草案版本，需重新审核后才会生效；旧版本保持不变。`,
+                            )
+                          }
                         />
                       ) : null}
                       {versionBundle(lesson) && lesson.status === 'draft' ? (
@@ -471,9 +565,13 @@ export const LessonWorkbench = ({
                           generation={generation}
                           lesson={lesson}
                           bundle={versionBundle(lesson)!}
-                          plan={scenePlans.find(
-                            (item) => item.lessonId === lesson.lessonId && item.lessonVersion === lesson.version,
-                          ) ?? null}
+                          plan={
+                            scenePlans.find(
+                              (item) =>
+                                item.lessonId === lesson.lessonId &&
+                                item.lessonVersion === lesson.version,
+                            ) ?? null
+                          }
                           busy={busy}
                           onSaved={setNote}
                         />
@@ -486,6 +584,13 @@ export const LessonWorkbench = ({
                           lesson={lesson}
                           bundle={versionBundle(lesson)!}
                           candidates={coursewareCandidates}
+                          plan={
+                            scenePlans.find(
+                              (item) =>
+                                item.lessonId === lesson.lessonId &&
+                                item.lessonVersion === lesson.version,
+                            ) ?? null
+                          }
                           configured={modelConfigured}
                         />
                       ) : null}
@@ -516,7 +621,9 @@ export const LessonWorkbench = ({
             />
           </div>
         </div>
-        <p className="hint">审核备注与撤回原因写入审核记录与课堂映射说明，撤回后仍可核对当时依据。</p>
+        <p className="hint">
+          审核备注与撤回原因写入审核记录与课堂映射说明，撤回后仍可核对当时依据。
+        </p>
       </div>
       {note ? <Notice tone="verified">{note}</Notice> : null}
       {error ? <Notice tone="error">{error}</Notice> : null}

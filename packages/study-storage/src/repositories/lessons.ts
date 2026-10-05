@@ -22,6 +22,8 @@ import type { SqlDatabase } from '../driver';
 import { encodeJson, evidenceBundleSchema, knowledgeIdsSchema } from '../json-codec';
 import {
   defaultJsonPolicy,
+  intOrNull,
+  nullableStr,
   num,
   readAuthoritativeJsonColumn,
   str,
@@ -122,6 +124,9 @@ const mapReview = (row: Row): LessonReviewRow => {
     note: str(row['note']),
     admittedKnowledgeIds: readIds('admitted_json'),
     blockedKnowledgeIds: readIds('blocked_json'),
+    // 迁移 28 之前的审核行没有计划基线：NULL 表示「当时没有计划」，不是损坏。
+    planRevision: intOrNull(row['plan_revision']),
+    planDigest: nullableStr(row['plan_digest']),
     reviewedAt: str(row['reviewed_at']),
   };
 };
@@ -417,6 +422,9 @@ export class LessonRepository {
   /**
    * 记录课程版本的审核结论。重复审核同一版本按更新处理：审核人改判不必等新版本，
    * 但新草案版本仍需一条自己的记录，旧结论不会顺延。
+   *
+   * `planRevision`/`planDigest` 由调用方给出**审核当时**的计划基线：无计划的历史课程为
+   * null（按「证据包即内容」处理），有计划时必须记录，之后计划内容变化即让本审核失效。
    */
   recordReview(input: {
     projectId: string;
@@ -426,15 +434,18 @@ export class LessonRepository {
     note: string;
     admittedKnowledgeIds: string[];
     blockedKnowledgeIds: string[];
+    planRevision: number | null;
+    planDigest: string | null;
   }): LessonReviewRow {
     const now = new Date().toISOString();
     this.db
       .prepare(
-        `INSERT INTO lesson_reviews (project_id, lesson_id, version, decision, note, admitted_json, blocked_json, reviewed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO lesson_reviews (project_id, lesson_id, version, decision, note, admitted_json, blocked_json, plan_revision, plan_digest, reviewed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(project_id, lesson_id, version)
          DO UPDATE SET decision = excluded.decision, note = excluded.note,
                        admitted_json = excluded.admitted_json, blocked_json = excluded.blocked_json,
+                       plan_revision = excluded.plan_revision, plan_digest = excluded.plan_digest,
                        reviewed_at = excluded.reviewed_at`,
       )
       .run(
@@ -445,6 +456,8 @@ export class LessonRepository {
         input.note,
         encodeJson([...new Set(input.admittedKnowledgeIds)]),
         encodeJson([...new Set(input.blockedKnowledgeIds)]),
+        input.planRevision,
+        input.planDigest,
         now,
       );
     const saved = this.getReview(input.lessonId, input.version, input.projectId);

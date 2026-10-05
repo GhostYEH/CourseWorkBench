@@ -483,13 +483,14 @@ describe('project directory backup and restore', () => {
   it('migration failure removes staging only and preserves original backup and current project', async () => {
     await create();
     // An interrupted/inconsistent legacy migration can leave columns without its receipt.
-    editDatabase(`DELETE FROM schema_migrations WHERE version=${SCHEMA_VERSION}`);
+    // v28 adds columns; missing its receipt must still fail on duplicate ALTER.
+    // v29 repairs JSON idempotently, so removing only its receipt is valid recovery.
+    editDatabase('DELETE FROM schema_migrations WHERE version>=28');
     editManifest((manifest) => {
-      manifest.schemaVersion = SCHEMA_VERSION - 1;
+      manifest.schemaVersion = 27;
     });
     const packageBefore = readFileSync(projectPaths(join(backup, 'project')).databaseFile);
     const currentBefore = readFileSync(projectPaths(source).databaseFile);
-    // 最新一条迁移是建表（v26）：中断/不一致的迁移会留下同名表，重放时报「已存在」。
     await expect(restore()).rejects.toThrow(/already exists|duplicate column/);
     expect(existsSync(destination)).toBe(false);
     expect(readFileSync(projectPaths(join(backup, 'project')).databaseFile)).toEqual(packageBefore);

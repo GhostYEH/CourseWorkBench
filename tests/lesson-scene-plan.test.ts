@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { validateScene, validateStage } from '@openmaic/dsl';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,8 +10,14 @@ import {
   removeScene,
   reorderScenes,
   replaceSceneElements,
+  scenePlanDigest,
 } from '@sew/study-domain';
-import { StudyStore, ensureProjectLayout, projectPaths } from '@sew/study-storage';
+import {
+  StudyStore,
+  createNodeSqliteDriver,
+  ensureProjectLayout,
+  projectPaths,
+} from '@sew/study-storage';
 import { buildPlannedLessonDocument } from '../apps/learning/lib/classroom/planned-lesson-document';
 import {
   addElement,
@@ -194,9 +201,161 @@ describe('场景计划与完整课件候选（存储层）', () => {
   it('保存计划推进 revision，并可从项目读回', () => {
     const plan = save();
     expect(plan.revision).toBe(1);
+    expect(plan.digest).toHaveLength(64);
     expect(plan.scenes.map((scene) => scene.sceneId)).toEqual(['scene_slide_a', 'scene_slide_b']);
     expect(store.getScenePlan(projectId, lessonId, lessonVersion)!.revision).toBe(1);
     expect(store.listProjectScenePlans(projectId)).toHaveLength(1);
+  });
+
+  it('计划摘要是内容的函数：内容不变则摘要不变，内容一变摘要即变', () => {
+    const first = save();
+    // 重存同一内容：revision 推进，但内容摘要保持不变（审核据此不被误伤）。
+    const second = save({ baseRevision: 1 });
+    expect(second.revision).toBe(2);
+    expect(second.digest).toBe(first.digest);
+
+    const changed = save({
+      baseRevision: 2,
+      scenes: [{ ...scenes()[0]!, title: '改了标题' }],
+    });
+    expect(changed.digest).not.toBe(first.digest);
+  });
+
+  it('审核绑定计划内容：计划被改写后旧审核失效，发布必须复核当前内容', () => {
+    const plan = save();
+    store.reviewLesson({
+      projectId,
+      lessonId,
+      version: lessonVersion,
+      decision: 'approved',
+      note: '按计划审核',
+    });
+    const review = store.getLessonReview(lessonId, lessonVersion, projectId)!;
+    expect(review.planRevision).toBe(plan.revision);
+    expect(review.planDigest).toBe(plan.digest);
+    // 审核后内容未变：发布放行。
+    expect(store.publishLesson({ projectId, lessonId, version: lessonVersion }).status).toBe(
+      'published',
+    );
+  });
+
+  it('审核后编辑计划：发布被阻断，重新审核后才放行', () => {
+    save();
+    store.reviewLesson({
+      projectId,
+      lessonId,
+      version: lessonVersion,
+      decision: 'approved',
+      note: '按计划审核',
+    });
+    // 审核之后改了内容（手工保存）。
+    const edited = save({ baseRevision: 1, scenes: [{ ...scenes()[0]!, title: '审核后改写' }] });
+    expect(edited.digest).not.toBe(
+      store.getLessonReview(lessonId, lessonVersion, projectId)!.planDigest,
+    );
+    expectCode(
+      () => store.publishLesson({ projectId, lessonId, version: lessonVersion }),
+      'VERSION_CONFLICT',
+      'review_plan_changed',
+    );
+    // 重新审核当前内容后发布才放行。
+    store.reviewLesson({
+      projectId,
+      lessonId,
+      version: lessonVersion,
+      decision: 'approved',
+      note: '按新计划复核',
+    });
+    expect(store.publishLesson({ projectId, lessonId, version: lessonVersion }).status).toBe(
+      'published',
+    );
+  });
+
+  it('无计划的旧课程保持兼容：审核基线为空，发布不因缺计划被阻断', () => {
+    store.reviewLesson({
+      projectId,
+      lessonId,
+      version: lessonVersion,
+      decision: 'approved',
+      note: '旧课程无计划',
+    });
+    const review = store.getLessonReview(lessonId, lessonVersion, projectId)!;
+    expect(review.planRevision).toBeNull();
+    expect(review.planDigest).toBeNull();
+    expect(store.getScenePlan(projectId, lessonId, lessonVersion)).toBeNull();
+    expect(store.publishLesson({ projectId, lessonId, version: lessonVersion }).status).toBe(
+      'published',
+    );
+  });
+
+  it('上课入口与审核/发布共用同一份计划判定：审核基线漂移即阻断课堂', () => {
+    save();
+    store.reviewLesson({
+      projectId,
+      lessonId,
+      version: lessonVersion,
+      decision: 'approved',
+      note: '按计划审核',
+    });
+    store.publishLesson({ projectId, lessonId, version: lessonVersion });
+    // 当前计划与审核基线相符：课堂入口放行。
+    expect(store.assertLessonClassroomReady(lessonId, projectId).lesson.status).toBe('published');
+
+    // 直接改写落库的计划内容（模拟「审核之后计划内容已变」的权威库状态）。
+    const plan = store.getScenePlan(projectId, lessonId, lessonVersion)!;
+    store.close();
+    const db = createNodeSqliteDriver().open(join(root, '.study', 'study.db'));
+    const changedPlan = {
+      ...plan,
+      scenes: plan.scenes.map((scene) => ({ ...scene, title: '实际变化后的内容' })),
+    };
+    db.prepare(
+      'UPDATE lesson_scene_plans SET plan_json = ? WHERE lesson_id = ? AND lesson_version = ?',
+    ).run(
+      JSON.stringify({ ...changedPlan, digest: scenePlanDigest(changedPlan) }),
+      lessonId,
+      lessonVersion,
+    );
+    db.close();
+    store = StudyStore.open({ file: projectPaths(root).databaseFile });
+    expectCode(
+      () => store.assertLessonClassroomReady(lessonId, projectId),
+      'VERSION_CONFLICT',
+      'review_plan_changed',
+    );
+  });
+
+  it('外部篡改已发布计划正文却保留旧摘要时，课堂入口与目录均拒绝', () => {
+    const plan = save();
+    store.reviewLesson({
+      projectId,
+      lessonId,
+      version: lessonVersion,
+      decision: 'approved',
+      note: '审核实际正文',
+    });
+    store.publishLesson({ projectId, lessonId, version: lessonVersion });
+    store.close();
+    const db = createNodeSqliteDriver().open(projectPaths(root).databaseFile);
+    db.prepare(
+      'UPDATE lesson_scene_plans SET plan_json=? WHERE project_id=? AND lesson_id=? AND lesson_version=?',
+    ).run(
+      JSON.stringify({
+        ...plan,
+        scenes: plan.scenes.map((scene) => ({ ...scene, title: '未经审核的篡改正文' })),
+      }),
+      projectId,
+      lessonId,
+      lessonVersion,
+    );
+    db.close();
+    store = StudyStore.open({ file: projectPaths(root).databaseFile });
+    expectCode(
+      () => store.assertLessonClassroomReady(lessonId, projectId),
+      'INTERNAL',
+      'invalid_scene_plan',
+    );
+    expectCode(() => store.listProjectScenePlans(projectId), 'INTERNAL', 'invalid_scene_plan');
   });
 
   it('乐观并发：revision 已推进时拒绝覆盖', () => {
@@ -301,6 +460,35 @@ describe('场景计划与完整课件候选（存储层）', () => {
     expect(first.document.scenes).toHaveLength(2);
   });
 
+  it('已保存富文本装配保留格式并通过真实 DSL 校验，编码标签仍为文本', () => {
+    const edited = scenes();
+    edited[0]!.elements = [element('el_rich', '<b>中文 &amp; 条件</b>：x &lt; y\n<i>比较</i>')];
+    const plan = store.saveScenePlan({
+      projectId,
+      lessonId,
+      lessonVersion,
+      bundleId,
+      baseRevision: 0,
+      scenes: edited,
+      origin: 'deterministic',
+    });
+    const bundle = store.getEvidenceBundle(projectId, bundleId)!;
+    const document = buildPlannedLessonDocument({
+      bundle: bundle.bundle,
+      bundleDigest: bundle.digest,
+      plan,
+      lessonId,
+      lessonVersion,
+      title: '富文本课件',
+      frozenAt: bundle.frozenAt,
+    }).document;
+    expect(validateStage(document.stage).valid).toBe(true);
+    expect(document.scenes.every((scene) => validateScene(scene).valid)).toBe(true);
+    expect(JSON.stringify(document.scenes[0])).toContain(
+      '<b>中文 &amp; 条件</b>：x &lt; y<br><i>比较</i>',
+    );
+  });
+
   it('完整课件候选只落待核区，通过才写入计划', () => {
     const candidate = store.createCoursewareCandidate({
       candidateId: newId<'cw'>('cw'),
@@ -312,6 +500,9 @@ describe('场景计划与完整课件候选（存储层）', () => {
     });
     expect(candidate.status).toBe('pending');
     expect(candidate.origin).toBe('model_generated');
+    // 生成时没有计划：基线记 0 与 null。
+    expect(candidate.basePlanRevision).toBe(0);
+    expect(candidate.basePlanDigest).toBeNull();
     // 候选存在但计划还没写入。
     expect(store.getScenePlan(projectId, lessonId, lessonVersion)).toBeNull();
     const applied = store.applyCoursewareCandidate({
@@ -326,6 +517,132 @@ describe('场景计划与完整课件候选（存储层）', () => {
     expect(applied.candidate.reviewedBy).toBe('tester');
     expect(applied.plan!.revision).toBe(1);
     expect(store.getScenePlan(projectId, lessonId, lessonVersion)!.scenes).toHaveLength(2);
+  });
+
+  it('候选记录生成时的计划基线；审批旧候选不静默覆盖新编辑', () => {
+    // 先生成候选（基线：无计划）。
+    const candidate = store.createCoursewareCandidate({
+      candidateId: newId<'cw'>('cw'),
+      projectId,
+      lessonId,
+      baseVersion: lessonVersion,
+      scenes: scenes(),
+      instruction: '基于无计划生成',
+    });
+    expect(candidate.basePlanRevision).toBe(0);
+    // 别处先手工保存了一份计划：候选的基线已经过期。
+    const manual = save();
+    expect(manual.revision).toBe(1);
+
+    // 审批旧候选且未确认覆盖：拒绝写入，返回版本冲突而不是静默覆盖手工编辑。
+    expectCode(
+      () =>
+        store.applyCoursewareCandidate({
+          projectId,
+          candidateId: candidate.candidateId,
+          decision: 'approved',
+          note: '未确认覆盖',
+          reviewedBy: 't',
+          scenes: scenes(),
+        }),
+      'VERSION_CONFLICT',
+      'plan_revision_stale',
+    );
+    // 冲突被拒后没有任何写入：计划仍是手工那一份，候选仍是待核。
+    expect(store.getScenePlan(projectId, lessonId, lessonVersion)!.revision).toBe(1);
+    expect(store.getCoursewareCandidate(projectId, candidate.candidateId)!.status).toBe('pending');
+
+    // 显式确认覆盖后，才按候选写入（revision 推进到 2）。
+    const applied = store.applyCoursewareCandidate({
+      projectId,
+      candidateId: candidate.candidateId,
+      decision: 'approved',
+      note: '确认覆盖',
+      reviewedBy: 't',
+      scenes: scenes(),
+      override: true,
+      expectedPlanRevision: manual.revision,
+    });
+    expect(applied.candidate.status).toBe('applied');
+    expect(applied.plan!.revision).toBe(2);
+  });
+
+  it('候选覆盖确认必须绑定当前计划，更新基线或沿用旧确认不能绕过冲突', () => {
+    const base = save();
+    const candidate = store.createCoursewareCandidate({
+      candidateId: newId<'cw'>('cw'),
+      projectId,
+      lessonId,
+      baseVersion: lessonVersion,
+      scenes: scenes(),
+      instruction: 'x',
+      basePlanRevision: base.revision,
+      basePlanDigest: base.digest,
+    });
+    expect(candidate.basePlanRevision).toBe(1);
+    expect(candidate.basePlanDigest).toBe(base.digest);
+    // 计划被再次推进（revision 2）。
+    save({ baseRevision: 1, scenes: [{ ...scenes()[0]!, title: '后续编辑' }] });
+    // 审批时给出过期的 expectedPlanRevision：拒绝。
+    expectCode(
+      () =>
+        store.applyCoursewareCandidate({
+          projectId,
+          candidateId: candidate.candidateId,
+          decision: 'approved',
+          note: '',
+          reviewedBy: 't',
+          scenes: scenes(),
+          expectedPlanRevision: 1,
+        }),
+      'VERSION_CONFLICT',
+      'plan_revision_stale',
+    );
+    // 仅更新 expectedPlanRevision 不能冒充显式覆盖确认。
+    expectCode(
+      () =>
+        store.applyCoursewareCandidate({
+          projectId,
+          candidateId: candidate.candidateId,
+          decision: 'approved',
+          note: '',
+          reviewedBy: 't',
+          scenes: scenes(),
+          expectedPlanRevision: 2,
+        }),
+      'VERSION_CONFLICT',
+      'plan_revision_stale',
+    );
+    // 用户对 revision 1 的旧确认也不能授权覆盖 revision 2。
+    expectCode(
+      () =>
+        store.applyCoursewareCandidate({
+          projectId,
+          candidateId: candidate.candidateId,
+          decision: 'approved',
+          note: '',
+          reviewedBy: 't',
+          scenes: scenes(),
+          expectedPlanRevision: 1,
+          override: true,
+        }),
+      'VERSION_CONFLICT',
+      'plan_revision_stale',
+    );
+    expect(store.getCoursewareCandidate(projectId, candidate.candidateId)!.status).toBe('pending');
+    expect(store.getScenePlan(projectId, lessonId, lessonVersion)!.revision).toBe(2);
+    // 明确确认当前 revision 才放行。
+    const applied = store.applyCoursewareCandidate({
+      projectId,
+      candidateId: candidate.candidateId,
+      decision: 'approved',
+      note: '',
+      reviewedBy: 't',
+      scenes: scenes(),
+      expectedPlanRevision: 2,
+      override: true,
+    });
+    expect(applied.plan!.revision).toBe(3);
   });
 
   it('拒绝候选只留档，不写入计划；同一候选不能处置两次', () => {
@@ -408,9 +725,70 @@ describe('场景计划与完整课件候选（存储层）', () => {
     );
   });
 
+  it('计划命令回执四态可查询：completed 带结果，failed/cancelled/unknown 不带业务结果', () => {
+    store.saveScenePlanReceipt({
+      projectId,
+      requestId: 'r-completed',
+      action: 'save-scene-plan',
+      intent: 'i',
+      state: 'completed',
+      result: { plan: { revision: 1 } },
+      message: '',
+    });
+    const completed = store.scenePlanReceipt(projectId, 'r-completed', 'save-scene-plan', 'i')!;
+    expect(completed.state).toBe('completed');
+    expect(completed.result).toMatchObject({ plan: { revision: 1 } });
+
+    for (const state of ['failed', 'cancelled', 'unknown'] as const) {
+      store.saveScenePlanReceipt({
+        projectId,
+        requestId: `r-${state}`,
+        action: 'save-scene-plan',
+        intent: 'i',
+        state,
+        result: { plan: { revision: 9 } },
+        message: `${state} 原因`,
+        errorCode: 'VERSION_CONFLICT',
+        errorReason: `${state}_reason`,
+      });
+      const receipt = store.scenePlanReceipt(projectId, `r-${state}`, 'save-scene-plan', 'i')!;
+      expect(receipt.state).toBe(state);
+      // 非 completed 一律不落业务结果：这些状态代表「没有业务写入」。
+      expect(receipt.result).toBeNull();
+      expect(receipt.errorCode).toBe('VERSION_CONFLICT');
+      expect(receipt.message).toBe(`${state} 原因`);
+    }
+
+    // 同 requestId 换用途/意图属于 nonce 复用，按冲突拒绝而不是静默返回旧回执。
+    expectCode(
+      () => store.scenePlanReceipt(projectId, 'r-completed', 'apply-courseware', 'i'),
+      'VERSION_CONFLICT',
+      'scene_plan_nonce_reused',
+    );
+  });
+
+  it('回执与业务同事务：进程重开后仍能按 requestId 读回同一结论', () => {
+    store.transaction(() =>
+      store.saveScenePlanReceipt({
+        projectId,
+        requestId: 'r-reopen',
+        action: 'save-scene-plan',
+        intent: 'i',
+        state: 'completed',
+        result: { plan: { revision: 1 } },
+        message: '',
+      }),
+    );
+    store.close();
+    store = StudyStore.open({ file: projectPaths(root).databaseFile });
+    const receipt = store.scenePlanReceipt(projectId, 'r-reopen', 'save-scene-plan', 'i')!;
+    expect(receipt.state).toBe('completed');
+    expect(receipt.result).toMatchObject({ plan: { revision: 1 } });
+  });
+
   it('questionId 未参与时不产生测验绑定；场景数量上限被强制', () => {
     expect(questionId).toBeNull();
-    const tooMany = Array.from({ length: 49 }, (_, index) => ({
+    const tooMany = Array.from({ length: 25 }, (_, index) => ({
       ...scenes()[0]!,
       sceneId: `scene_slide_${index}`,
     }));
@@ -492,5 +870,63 @@ describe('场景计划编辑器状态机（撤销/恢复与稳定编号）', () 
     expect(state.scenes[0]!.elements[0]!.style).toMatchObject({ fontSize: 48, bold: true });
     state = undo(state);
     expect(state.scenes[0]!.elements[0]!.style).toMatchObject({ fontSize: 24, bold: false });
+  });
+});
+
+describe('计划内容摘要（审核/发布绑定的唯一判据）', () => {
+  const plan = (over: Partial<PlanSceneDto> = {}) => ({
+    lessonId: 'lesson_a',
+    lessonVersion: 1,
+    bundleId: 'bundle_a',
+    scenes: [
+      {
+        sceneId: 'scene_slide_a',
+        kind: 'slide' as const,
+        title: 'A',
+        statementId: 'stmt_a',
+        questionId: null,
+        knowledgeIds: ['k_a'],
+        elements: [
+          {
+            elementId: 'el_a',
+            kind: 'text' as const,
+            text: '正文 A',
+            assetRef: null,
+            left: 90,
+            top: 130,
+            width: 820,
+            height: 100,
+            style: {
+              fontSize: 24,
+              color: '#232323',
+              bold: false,
+              italic: false,
+              align: 'left' as const,
+            },
+          },
+        ],
+        note: '',
+        ...over,
+      },
+    ],
+  });
+
+  it('同内容同摘要：大小写颜色与知识点顺序不影响判定', () => {
+    const left = scenePlanDigest(plan());
+    const right = scenePlanDigest({
+      ...plan(),
+      scenes: [{ ...plan().scenes[0]!, knowledgeIds: ['k_a'] }],
+    });
+    expect(left).toBe(right);
+  });
+
+  it('内容任一实质变化都会改变摘要：标题、正文、知识点、顺序', () => {
+    const base = scenePlanDigest(plan());
+    expect(scenePlanDigest(plan({ title: 'B' }))).not.toBe(base);
+    expect(scenePlanDigest(plan({ statementId: 'stmt_b' }))).not.toBe(base);
+    expect(scenePlanDigest(plan({ knowledgeIds: ['k_b'] }))).not.toBe(base);
+    const withElementEdit = plan();
+    withElementEdit.scenes[0]!.elements[0]!.text = '改过的正文';
+    expect(scenePlanDigest(withElementEdit)).not.toBe(base);
   });
 });

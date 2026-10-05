@@ -10,10 +10,15 @@
  * - 权威事实只在 `knowledge_points`；派生 Markdown 不是第二套权威。
  */
 
+import type { SqlDatabase } from './driver';
+import { migrateScenePlanJson } from './migrations/scene-plan';
+
 export interface Migration {
   version: number;
   name: string;
   sql: string;
+  /** 在同一个迁移事务中执行需要领域摘要/严格 JSON 校验的数据升级。 */
+  migrate?: (db: SqlDatabase) => void;
 }
 
 export const MIGRATIONS: Migration[] = [
@@ -825,19 +830,30 @@ CREATE TABLE classroom_action_receipts (
 CREATE INDEX idx_classroom_action_receipts_session ON classroom_action_receipts(session_id, at, step_key);
 `,
   },
-  { version: 16, name: 'question_assessment', sql: `
+  {
+    version: 16,
+    name: 'question_assessment',
+    sql: `
 ALTER TABLE questions ADD COLUMN assessment_json TEXT;
 ALTER TABLE attempts ADD COLUMN question_revision INTEGER;
 ALTER TABLE attempts ADD COLUMN answer_version INTEGER;
 ALTER TABLE attempts ADD COLUMN grading_json TEXT;
-` },
-{ version: 17, name: 'append_only_attempt_grading', sql: `
+`,
+  },
+  {
+    version: 17,
+    name: 'append_only_attempt_grading',
+    sql: `
 CREATE TABLE attempt_grade_candidates (candidate_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, attempt_id TEXT NOT NULL REFERENCES attempts(attempt_id), candidate_json TEXT NOT NULL);
 CREATE INDEX idx_grade_candidates_attempt ON attempt_grade_candidates(project_id, attempt_id);
 CREATE TABLE attempt_grade_reviews (review_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, attempt_id TEXT NOT NULL REFERENCES attempts(attempt_id), review_version INTEGER NOT NULL, review_json TEXT NOT NULL, UNIQUE(project_id,attempt_id,review_version));
 CREATE TABLE attempt_grade_receipts (project_id TEXT NOT NULL, request_id TEXT NOT NULL, action TEXT NOT NULL, attempt_id TEXT NOT NULL, intent_json TEXT NOT NULL, result_json TEXT NOT NULL, PRIMARY KEY(project_id,request_id));
-` },
-{ version: 18, name: 'durable_grading_generation', sql: `
+`,
+  },
+  {
+    version: 18,
+    name: 'durable_grading_generation',
+    sql: `
 CREATE TABLE attempt_grade_generation_calls (
   project_id TEXT NOT NULL, request_id TEXT NOT NULL, attempt_id TEXT NOT NULL REFERENCES attempts(attempt_id),
   expected_review_version INTEGER NOT NULL,
@@ -846,8 +862,12 @@ CREATE TABLE attempt_grade_generation_calls (
   failure_json TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
   PRIMARY KEY(project_id,request_id)
 );
-` },
-{ version: 19, name: 'local_learner_identity_binding', sql: `
+`,
+  },
+  {
+    version: 19,
+    name: 'local_learner_identity_binding',
+    sql: `
 CREATE TABLE learner_identity_bindings (
   project_id TEXT PRIMARY KEY REFERENCES projects(project_id),
   learner_key TEXT NOT NULL,
@@ -855,8 +875,12 @@ CREATE TABLE learner_identity_bindings (
   origin TEXT NOT NULL CHECK (origin IN ('created_local','legacy_local')),
   created_at TEXT NOT NULL
 );
-` },
-{ version: 20, name: 'local_classroom_room_authority', sql: `
+`,
+  },
+  {
+    version: 20,
+    name: 'local_classroom_room_authority',
+    sql: `
 CREATE TABLE classroom_rooms (
   project_id TEXT NOT NULL REFERENCES projects(project_id), room_id TEXT NOT NULL,
   room_json TEXT NOT NULL, snapshot_json TEXT NOT NULL, lease_json TEXT,
@@ -882,22 +906,38 @@ CREATE TABLE classroom_room_session_bindings (
   PRIMARY KEY(project_id,room_id), UNIQUE(project_id,session_id),
   FOREIGN KEY(project_id,room_id) REFERENCES classroom_rooms(project_id,room_id)
 );
-` },
-{ version: 21, name: 'reviewed_classroom_board', sql: `
+`,
+  },
+  {
+    version: 21,
+    name: 'reviewed_classroom_board',
+    sql: `
 CREATE TABLE classroom_board_items (item_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, lesson_id TEXT NOT NULL, lesson_version INTEGER NOT NULL, item_json TEXT NOT NULL);
 CREATE TABLE classroom_board_effects (project_id TEXT NOT NULL, session_id TEXT NOT NULL, seq INTEGER NOT NULL, item_id TEXT NOT NULL, effect_json TEXT NOT NULL, PRIMARY KEY(project_id,session_id,seq), UNIQUE(project_id,session_id,item_id));
 CREATE TABLE classroom_board_receipts (project_id TEXT NOT NULL, request_id TEXT NOT NULL, action TEXT NOT NULL, intent_json TEXT NOT NULL, result_json TEXT NOT NULL, PRIMARY KEY(project_id,request_id));
-` },
-{ version: 22, name: 'personal_feedback_and_review', sql: `
+`,
+  },
+  {
+    version: 22,
+    name: 'personal_feedback_and_review',
+    sql: `
 CREATE TABLE feedback_originals(project_id TEXT NOT NULL,uid TEXT NOT NULL,attempt_id TEXT NOT NULL UNIQUE,snapshot_json TEXT NOT NULL,PRIMARY KEY(project_id,uid,attempt_id));
 CREATE TABLE feedback_entries(project_id TEXT NOT NULL,uid TEXT NOT NULL,attempt_id TEXT NOT NULL,version INTEGER NOT NULL,entry_id TEXT NOT NULL UNIQUE,entry_json TEXT NOT NULL,PRIMARY KEY(project_id,uid,attempt_id,version));
 CREATE TABLE feedback_review_tasks(project_id TEXT NOT NULL,uid TEXT NOT NULL,task_id TEXT NOT NULL,attempt_id TEXT NOT NULL,due_at TEXT NOT NULL,task_json TEXT NOT NULL,PRIMARY KEY(project_id,uid,task_id));
 CREATE TABLE feedback_receipts(project_id TEXT NOT NULL,uid TEXT NOT NULL,request_id TEXT NOT NULL,intent_json TEXT NOT NULL,result_json TEXT NOT NULL,PRIMARY KEY(project_id,uid,request_id));
-` },
-{ version: 23, name: 'durable_shared_model_usage', sql: `
+`,
+  },
+  {
+    version: 23,
+    name: 'durable_shared_model_usage',
+    sql: `
 CREATE TABLE model_usage_calls(project_id TEXT NOT NULL,request_id TEXT NOT NULL,run_id TEXT NOT NULL,call_json TEXT NOT NULL,PRIMARY KEY(project_id,request_id));
-` },
-{ version: 24, name: 'classroom_peers_and_recovery', sql: `
+`,
+  },
+  {
+    version: 24,
+    name: 'classroom_peers_and_recovery',
+    sql: `
 -- AI 同学发言（PEER-01）。分区列由服务端写死为 simulation：同学的示范与练习
 -- 不能通过与本人作答相同的读路径被当成「本人完成」。
 CREATE TABLE classroom_peer_turns (
@@ -923,16 +963,24 @@ CREATE TABLE classroom_session_peer_settings (
   updated_at TEXT NOT NULL,
   PRIMARY KEY (project_id, session_id)
 );
-` },
-{ version: 25, name: 'grading_generation_accounting', sql: `
+`,
+  },
+  {
+    version: 25,
+    name: 'grading_generation_accounting',
+    sql: `
 -- 评分生成调用的结算计量（BUDGET-01）。
 -- 没有这三列时，「已结算的评分」在共享预算报告里会整个消失，且未知用量会被
 -- 静默按 0 计。加上之后评分与生成在同一份报告里可核对。
 ALTER TABLE attempt_grade_generation_calls ADD COLUMN accounted_tokens INTEGER;
 ALTER TABLE attempt_grade_generation_calls ADD COLUMN token_measurement TEXT;
 ALTER TABLE attempt_grade_generation_calls ADD COLUMN elapsed_ms INTEGER;
-` },
-{ version: 26, name: 'lesson_statement_revisions', sql: `
+`,
+  },
+  {
+    version: 26,
+    name: 'lesson_statement_revisions',
+    sql: `
 -- 陈述正文改写候选（LESSON-02）。模型改写只落待核区：既不写入课程版本，也不改写原陈述，
 -- 人工通过后才派生新的草案版本；拒绝只留档。正文、知识点与来源的沿用由服务端复验。
 CREATE TABLE lesson_statement_revisions (
@@ -958,8 +1006,12 @@ CREATE TABLE lesson_draft_receipts (
   project_id TEXT NOT NULL, request_id TEXT NOT NULL, intent_json TEXT NOT NULL,
   lesson_id TEXT NOT NULL, version INTEGER NOT NULL, PRIMARY KEY(project_id, request_id)
 );
-` },
-{ version: 27, name: 'lesson_scene_plans', sql: `
+`,
+  },
+  {
+    version: 27,
+    name: 'lesson_scene_plans',
+    sql: `
 -- 场景计划（LESSON-02 / OMA-006、OMA-021、OMA-022）。计划是「这一版课件由哪些场景、
 -- 按什么顺序、每个场景里有哪些元素」的可编辑草稿层：只挂在草案版本上，发布后不再改写。
 -- 场景用稳定 sceneId（不靠序号映射），增删/排序/复制/局部重生成都不改已有场景身份。
@@ -995,20 +1047,53 @@ CREATE TABLE lesson_courseware_receipts (
   project_id TEXT NOT NULL, request_id TEXT NOT NULL, action TEXT NOT NULL,
   intent_json TEXT NOT NULL, result_json TEXT NOT NULL, PRIMARY KEY(project_id, request_id)
 );
-` },
+`,
+  },
+  {
+    version: 28,
+    name: 'scene_plan_review_binding',
+    sql: `
+-- 审核绑定计划内容（LESSON-02）。审核结论必须对「这节课讲这些场景」有效：手工保存或候选
+-- 应用改了计划内容后，旧审核即失效，发布必须复核当前内容。历史课程没有计划，两列为 NULL，
+-- 按「证据包即内容」处理，保持兼容（不把旧审核一律判失效）。
+ALTER TABLE lesson_reviews ADD COLUMN plan_revision INTEGER;
+ALTER TABLE lesson_reviews ADD COLUMN plan_digest TEXT;
+
+-- 候选记录生成时的计划基线：审批旧候选不得静默覆盖新编辑，需要明确的版本比较与覆盖确认。
+-- 生成时该版本还没有计划则 revision 记 0、digest 记 NULL。
+ALTER TABLE lesson_courseware_candidates ADD COLUMN base_plan_revision INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE lesson_courseware_candidates ADD COLUMN base_plan_digest TEXT;
+
+-- 计划保存与候选处置的事务内请求回执。四种结果（completed/failed/cancelled/unknown）都要
+-- 可查询、可重放：同一 requestId 与意图重试读回既有回执，不因重发而推进第二个 revision。
+-- state 为 failed/cancelled/unknown 时 result_json 为 NULL（没有业务写入）。
+CREATE TABLE lesson_scene_plan_receipts (
+  project_id  TEXT NOT NULL,
+  request_id  TEXT NOT NULL,
+  action      TEXT NOT NULL CHECK (action IN ('save-scene-plan','apply-courseware')),
+  intent_json TEXT NOT NULL,
+  state       TEXT NOT NULL CHECK (state IN ('completed','failed','cancelled','unknown')),
+  result_json TEXT,
+  message     TEXT NOT NULL DEFAULT '',
+  error_code  TEXT,
+  error_reason TEXT,
+  created_at  TEXT NOT NULL,
+  PRIMARY KEY(project_id, request_id)
+);
+`,
+  },
+  {
+    version: 29,
+    name: 'scene_plan_json_and_receipt_upgrade',
+    // 独立版本同时修复已经执行 v28 SQL、但仍保存 v27 JSON 的数据库。
+    sql: '',
+    migrate: migrateScenePlanJson,
+  },
 ];
-
-
-
-
-
-
-
-
-
 
 // Registration order is part of the upgrade protocol; reject duplicate, skipped, or reordered versions.
 for (let index = 0; index < MIGRATIONS.length; index += 1) {
-  if (MIGRATIONS[index]?.version !== index + 1) throw new Error('Database migrations must be consecutive and ordered');
+  if (MIGRATIONS[index]?.version !== index + 1)
+    throw new Error('Database migrations must be consecutive and ordered');
 }
 export const SCHEMA_VERSION = MIGRATIONS.length;

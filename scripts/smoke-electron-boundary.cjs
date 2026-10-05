@@ -22,6 +22,7 @@ const serverEntry = join(projectRoot, 'apps', 'learning', 'server.mjs');
 const preloadPath = join(projectRoot, 'apps', 'desktop', 'src', 'preload.cjs');
 const nodeBinary = process.env.SEW_NODE_BINARY || 'node';
 const timeoutMs = 20000;
+const suite = process.env.SEW_ELECTRON_SMOKE_SUITE || 'boundary';
 const resultFile = process.env.SEW_ELECTRON_SMOKE_RESULT;
 const userDataPath = process.env.SEW_ELECTRON_SMOKE_USER_DATA;
 if (userDataPath && app && !app.isReady()) {
@@ -56,6 +57,7 @@ const markStep = (step, extra = {}) => {
   if (extra.clipboardDiagnostics) clipboardDiagnostics = extra.clipboardDiagnostics;
   writeResult({
     state: 'started',
+    suite,
     step,
     electronVersion: process.versions.electron || null,
     appApiAvailable: Boolean(app && typeof app.whenReady === 'function'),
@@ -242,7 +244,23 @@ const readClassroomPersistence = async () =>
   };
 })()`);
 
+const closeNativeProject = async () => {
+  const closeButton = await window.webContents.executeJavaScript(`(() => {
+    const button = [...document.querySelectorAll('button')].find((item) => item.textContent.includes('关闭项目'));
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  assert(closeButton, 'workbench page did not expose the native project-close action');
+  await waitForUrl(
+    (url) => url.endsWith('/no-project'),
+    'native project-close action did not navigate to no-project',
+  );
+  await waitForText('还没有打开项目', 'closed-project page did not finish rendering');
+};
+
 const run = async () => {
+  assert(['boundary', 'lesson-plan'].includes(suite), 'unknown Electron smoke suite');
   assert(existsSync(serverEntry), 'learning server entry is missing');
   assert(existsSync(preloadPath), 'sandboxed preload is missing');
   assert(
@@ -365,6 +383,22 @@ const run = async () => {
     'main-frame API request did not receive session authentication',
   );
   cover('main-frame API received session authentication');
+
+  if (suite === 'lesson-plan') {
+    markStep('lesson-plan-smoke-started', { servicePid: serviceChild.pid ?? null });
+    await require('./smoke-formal-quiz.cjs')({
+      window,
+      origin: ready.origin,
+      projectDirectory: tempRoot,
+      serviceRequest,
+      waitForText,
+      cover,
+      markStep,
+      planOnly: true,
+    });
+    await closeNativeProject();
+    return;
+  }
 
   // ——— 真实课堂：OpenMAIC SlideCanvas 渲染 + 互动 iframe 隔离 ———
   await window.loadURL(`${ready.origin}/classroom/lesson-demo-monotonicity-1`);
@@ -766,18 +800,7 @@ const run = async () => {
     markStep,
   });
 
-  const closeButton = await window.webContents.executeJavaScript(`(() => {
-    const button = [...document.querySelectorAll('button')].find((item) => item.textContent.includes('关闭项目'));
-    if (!button) return false;
-    button.click();
-    return true;
-  })()`);
-  assert(closeButton, 'workbench page did not expose the native project-close action');
-  await waitForUrl(
-    (url) => url.endsWith('/no-project'),
-    'native project-close action did not navigate to no-project',
-  );
-  await waitForText('还没有打开项目', 'closed-project page did not finish rendering');
+  await closeNativeProject();
 
   console.log(
     'PASS hidden Electron smoke: sandboxed preload, SSR/API auth, OpenMAIC slide render, sandboxed classroom widget, iframe isolation, ready projection, project open/close',
@@ -834,13 +857,15 @@ const finish = async (error = null) => {
   await cleanup();
   writeResult({
     state: failure ? 'failed' : 'passed',
+    suite,
+    checkCount: coveredChecks.length,
     step: lastStep,
     ...(clipboardDiagnostics ? { clipboardDiagnostics } : {}),
     message: failure
       ? failure instanceof Error
         ? failure.message
         : 'unknown error'
-      : `hidden Electron smoke completed: ${coveredChecks.join(' | ')}`,
+      : `hidden Electron smoke ${suite} completed (${coveredChecks.length} checks): ${coveredChecks.join(' | ')}`,
   });
   app.exit(failure ? 1 : 0);
 };

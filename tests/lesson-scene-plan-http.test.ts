@@ -145,7 +145,7 @@ describe('场景计划与完整课件 HTTP 边界', () => {
     },
   ];
 
-  it('保存场景计划：响应通过合同校验，重发带旧 revision 被拒', async () => {
+  it('保存场景计划：响应通过合同校验，同 requestId 重放，新 requestId 带旧 revision 被拒', async () => {
     const saveBody = {
       action: 'save-scene-plan',
       requestId: 'plan-1',
@@ -159,8 +159,20 @@ describe('场景计划与完整课件 HTTP 边界', () => {
     const firstData = (await first.json()).data;
     expect(apiResponses.lessonScenePlan.safeParse(firstData).success).toBe(true);
     expect(firstData.plan.revision).toBe(1);
+    expect(firstData.receipt).toMatchObject({ state: 'completed', requestId: 'plan-1' });
 
-    const stale = await post(saveBody);
+    // 「提交成功但响应丢失」后重发同 requestId：读回同一回执，不重复推进 revision。
+    const replay = await post(saveBody);
+    expect(replay.status).toBe(200);
+    const replayData = (await replay.json()).data;
+    expect(replayData.deduplicated).toBe(true);
+    expect(replayData.plan.revision).toBe(1);
+    expect(session.store.getScenePlan(session.projectId, lessonId, lessonVersion)!.revision).toBe(
+      1,
+    );
+
+    // 换新 requestId 但带旧 revision：这是一次真正的并发写，必须被乐观并发拒绝。
+    const stale = await post({ ...saveBody, requestId: 'plan-1b' });
     expect(stale.status).toBe(409);
     expect(((await stale.json()) as { error: { code: string } }).error.code).toBe(
       'VERSION_CONFLICT',

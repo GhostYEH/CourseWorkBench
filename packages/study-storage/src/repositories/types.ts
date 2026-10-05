@@ -22,7 +22,8 @@ import type {
   PeerEngagement,
   PlanPayloadDto,
   QuestionOrigin,
-  QuestionAssessmentDto, AssessmentGradingDto,
+  QuestionAssessmentDto,
+  AssessmentGradingDto,
   RecordScope,
   ReviewProvenance,
   RoleExplanation,
@@ -32,7 +33,13 @@ import type {
   ScopeStatus,
   SourceStatus,
 } from '@sew/study-contracts';
-import { assessmentGradingSchema, questionAssessmentSchema, LESSON_STATUS, RUN_STATE, StudyError } from '@sew/study-contracts';
+import {
+  assessmentGradingSchema,
+  questionAssessmentSchema,
+  LESSON_STATUS,
+  RUN_STATE,
+  StudyError,
+} from '@sew/study-contracts';
 import type { OriginRecord } from '@sew/study-domain';
 import { z } from 'zod';
 import {
@@ -48,8 +55,10 @@ import {
 export type Row = Record<string, unknown>;
 
 export const str = (value: unknown): string => (typeof value === 'string' ? value : '');
-export const num = (value: unknown): number => (typeof value === 'number' ? value : Number(value ?? 0));
-export const nullableStr = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+export const num = (value: unknown): number =>
+  typeof value === 'number' ? value : Number(value ?? 0);
+export const nullableStr = (value: unknown): string | null =>
+  typeof value === 'string' ? value : null;
 export const intOrNull = (value: unknown): number | null =>
   value === null || value === undefined ? null : Number(value);
 export const recordScope = (value: unknown): RecordScope => {
@@ -58,7 +67,8 @@ export const recordScope = (value: unknown): RecordScope => {
 };
 /** run 状态是恢复判定输入：未知状态不能降级成某个默认值继续跑。 */
 export const runState = (value: unknown): RunState => {
-  if (typeof value === 'string' && (RUN_STATE as readonly string[]).includes(value)) return value as RunState;
+  if (typeof value === 'string' && (RUN_STATE as readonly string[]).includes(value))
+    return value as RunState;
   throw new StudyError('INTERNAL', { reason: 'invalid_run_state' });
 };
 export const reviewProvenance = (value: unknown): ReviewProvenance | null => {
@@ -230,6 +240,12 @@ export interface LessonReviewRow {
   /** 审核当时的准入快照：记录「按当时事实批准」，而不是永久担保。 */
   admittedKnowledgeIds: string[];
   blockedKnowledgeIds: string[];
+  /**
+   * 审核当时的计划内容基线：计划改了内容，旧审核即失效。无计划的历史课程为 null，
+   * 按「证据包即内容」处理（保持兼容，不把旧审核一律判失效）。
+   */
+  planRevision: number | null;
+  planDigest: string | null;
   reviewedAt: string;
 }
 
@@ -477,13 +493,14 @@ export const readRequiredJsonColumn = <T>(
   schema: z.ZodType<T, z.ZodTypeDef, unknown>,
   context: string,
   details: Record<string, unknown>,
-): T => readAuthoritativeJsonColumn(value, schema, context, {
-  warn: defaultJsonPolicy.warn,
-  onAuthoritativeFailure: diagnostic => {
-    defaultJsonPolicy.warn(diagnostic);
-    throw new StudyError('INTERNAL', details);
-  },
-});
+): T =>
+  readAuthoritativeJsonColumn(value, schema, context, {
+    warn: defaultJsonPolicy.warn,
+    onAuthoritativeFailure: (diagnostic) => {
+      defaultJsonPolicy.warn(diagnostic);
+      throw new StudyError('INTERNAL', details);
+    },
+  });
 
 export const mapProject = (row: Row): ProjectRow => ({
   projectId: str(row['project_id']),
@@ -524,7 +541,10 @@ export const mapRawArchive = (row: Row): MaterialRawArchiveDto => {
     };
   }
   if (mode === 'absent') {
-    return { state: 'absent', reason: str(row['raw_absent_reason']) === 'text_import' ? 'text_import' : 'legacy_import' };
+    return {
+      state: 'absent',
+      reason: str(row['raw_absent_reason']) === 'text_import' ? 'text_import' : 'legacy_import',
+    };
   }
   // 每个材料版本都必须有一条归档记录：缺行说明不变量被破坏，不能当作未归档降级。
   throw new StudyError('INTERNAL', { reason: 'raw_archive_row_missing' });
@@ -556,8 +576,20 @@ export const mapProposal = (row: Row, policy: JsonColumnPolicy): ProposalRow => 
   conditions: str(row['conditions']),
   scopeStatus: str(row['scope_status']) as ScopeStatus,
   recordScope: recordScope(row['record_scope']),
-  prerequisites: readJsonColumn(row['prerequisites_json'], prerequisitesSchema, [], 'proposals.prerequisites_json', policy),
-  evidence: readJsonColumn(row['evidence_json'], evidenceListSchema, [], 'proposals.evidence_json', policy),
+  prerequisites: readJsonColumn(
+    row['prerequisites_json'],
+    prerequisitesSchema,
+    [],
+    'proposals.prerequisites_json',
+    policy,
+  ),
+  evidence: readJsonColumn(
+    row['evidence_json'],
+    evidenceListSchema,
+    [],
+    'proposals.evidence_json',
+    policy,
+  ),
   acceptance: str(row['acceptance']),
   priority: (str(row['priority']) || 'medium') as ProposalRow['priority'],
   proposedBy: str(row['proposed_by']) === 'user' ? 'user' : 'ai',
@@ -609,7 +641,15 @@ export const mapKnowledge = (row: Row, policy: JsonColumnPolicy): KnowledgeRow =
 });
 
 export const mapQuestion = (row: Row, policy: JsonColumnPolicy): QuestionRow => ({
-  assessment: row['assessment_json'] == null ? null : readAuthoritativeJsonColumn(row['assessment_json'], questionAssessmentSchema, 'questions.assessment_json', policy),
+  assessment:
+    row['assessment_json'] == null
+      ? null
+      : readAuthoritativeJsonColumn(
+          row['assessment_json'],
+          questionAssessmentSchema,
+          'questions.assessment_json',
+          policy,
+        ),
   questionId: str(row['question_id']),
   stem: str(row['stem']),
   answer: str(row['answer']),
@@ -641,7 +681,15 @@ export const mapQuestion = (row: Row, policy: JsonColumnPolicy): QuestionRow => 
 export const mapAttempt = (row: Row): AttemptRow => ({
   questionRevision: intOrNull(row['question_revision']),
   answerVersion: intOrNull(row['answer_version']),
-  grading: row['grading_json'] == null ? null : readAuthoritativeJsonColumn(row['grading_json'], assessmentGradingSchema, 'attempts.grading_json', defaultJsonPolicy),
+  grading:
+    row['grading_json'] == null
+      ? null
+      : readAuthoritativeJsonColumn(
+          row['grading_json'],
+          assessmentGradingSchema,
+          'attempts.grading_json',
+          defaultJsonPolicy,
+        ),
   recordScope: recordScope(row['record_scope']),
   attemptId: str(row['attempt_id']),
   questionId: str(row['question_id']),
@@ -660,7 +708,12 @@ export const mapAttempt = (row: Row): AttemptRow => ({
 export const mapRun = (row: Row, policy: JsonColumnPolicy): RunRow => ({
   runId: str(row['run_id']),
   state: runState(row['state']),
-  frozen: readAuthoritativeJsonColumn(row['frozen_json'], frozenVersionsSchema, 'runs.frozen_json', policy),
+  frozen: readAuthoritativeJsonColumn(
+    row['frozen_json'],
+    frozenVersionsSchema,
+    'runs.frozen_json',
+    policy,
+  ),
   terminatedReason: nullableStr(row['terminated_reason']),
   createdAt: str(row['created_at']),
   updatedAt: str(row['updated_at']),

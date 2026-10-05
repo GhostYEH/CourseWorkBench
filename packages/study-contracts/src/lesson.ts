@@ -41,7 +41,15 @@ export type BundleStatementDto = z.infer<typeof bundleStatementSchema>;
 export const bundleQuestionSchema = z
   .object({
     questionId: z.string().min(1),
-    snapshot: z.object({ stem: z.string(), answer: z.string(), solution: z.string(), assessment: questionAssessmentSchema.nullable() }).strict().optional(),
+    snapshot: z
+      .object({
+        stem: z.string(),
+        answer: z.string(),
+        solution: z.string(),
+        assessment: questionAssessmentSchema.nullable(),
+      })
+      .strict()
+      .optional(),
     /** 题目与答案版本一起冻结，旧课不会跟着新题本悄悄改写。 */
     revision: z.number().int().positive(),
     origin: z.string().min(1),
@@ -58,7 +66,9 @@ export const evidenceBundleSchema = z
     recordScope: z.enum(RECORD_SCOPE),
     planVersion: z.number().int().positive(),
     knowledgeVersions: z
-      .array(z.object({ knowledgeId: z.string(), revision: z.number().int().nonnegative() }).strict())
+      .array(
+        z.object({ knowledgeId: z.string(), revision: z.number().int().nonnegative() }).strict(),
+      )
       .min(1),
     materialRevisions: z.record(z.string(), z.number().int().positive()),
     segmentDigests: z
@@ -176,14 +186,21 @@ export const formalLessonDocumentSchema = z
     sceneCount: z.number().int().nonnegative(),
     scenes: z.array(formalLessonSceneSchema),
     /** 未进入课件的陈述/题目/场景与原因：缺口必须显示，不能静默省略。 */
-    skipped: z.array(z.object({ kind: z.enum(['statement', 'question', 'scene']), id: z.string(), reason: z.string() }).strict()),
+    skipped: z.array(
+      z
+        .object({
+          kind: z.enum(['statement', 'question', 'scene']),
+          id: z.string(),
+          reason: z.string(),
+        })
+        .strict(),
+    ),
     reused: z.boolean(),
     /** 课件是否已挂到该版本的课堂映射上；未挂接时课堂会给出明确指引而不是空白页。 */
     attached: z.boolean(),
   })
   .strict();
 export type FormalLessonDocumentDto = z.infer<typeof formalLessonDocumentSchema>;
-
 
 export const lessonReviewSchema = z
   .object({
@@ -213,6 +230,11 @@ export type LessonWithdrawInput = z.infer<typeof lessonWithdrawSchema>;
  * `admittedKnowledgeIds` / `blockedKnowledgeIds` 是审核当时的准入快照：审核结论只对
  * 该课程版本及其证据包摘要有效，来源更新后新版本必须重新审核。审核人身份由服务端写入，
  * 请求体里没有 reviewer 字段，客户端不能自报「已由谁审核」。
+ *
+ * `planRevision` / `planDigest` 记录**审核当时**该版本场景计划的内容基线：审核结论对
+ * 「这节课讲这些场景」有效，手工保存或候选应用改变了计划内容后，旧审核必须失效——
+ * 否则一次旧审核会给之后被改写的内容背书。无计划的历史课程两者都为 null，按
+ * 「证据包即内容」处理，保持兼容。
  */
 export const lessonReviewRecordSchema = z
   .object({
@@ -223,6 +245,10 @@ export const lessonReviewRecordSchema = z
     note: z.string(),
     admittedKnowledgeIds: z.array(z.string()),
     blockedKnowledgeIds: z.array(z.string()),
+    /** 审核当时的计划 revision；该版本当时没有计划时为 null。 */
+    planRevision: z.number().int().nonnegative().nullable(),
+    /** 审核当时的计划内容摘要；该版本当时没有计划时为 null。 */
+    planDigest: z.string().min(1).nullable(),
     reviewedAt: z.string(),
   })
   .strict();

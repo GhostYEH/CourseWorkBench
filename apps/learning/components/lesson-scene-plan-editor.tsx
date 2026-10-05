@@ -14,7 +14,7 @@
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiResponses } from '@sew/study-contracts';
+import { apiResponses, SCENE_PLAN_WRITE_LIMIT, scenePlanSaveSchema } from '@sew/study-contracts';
 import type {
   EvidenceBundleDto,
   LessonVersionDto,
@@ -24,6 +24,12 @@ import type {
 } from '@sew/study-contracts';
 import { Notice } from './ui';
 import { apiFetch, describeApiError } from '../lib/client';
+import { useCommand } from '../lib/use-command';
+import {
+  beginLessonCommandAttempt,
+  lessonCommandFailureState,
+  type LessonCommandAttempt,
+} from './lesson-command-retry';
 import {
   addElement,
   applyPartialRegeneration,
@@ -31,6 +37,7 @@ import {
   canUndo,
   commit,
   createEditorState,
+  initialLessonPlanScenes,
   DEFAULT_ELEMENT_STYLE,
   duplicateSceneAt,
   makeElement,
@@ -51,7 +58,7 @@ const KIND_LABEL: Record<PlanSceneDto['kind'], string> = {
   pbl: 'PBL',
 };
 
-export const LessonScenePlanEditor = ({
+const ScenePlanEditor = ({
   projectId,
   generation,
   lesson,
@@ -72,25 +79,32 @@ export const LessonScenePlanEditor = ({
   const editable = lesson.status === 'draft';
   const initial = useMemo<PlanSceneDto[]>(() => {
     if (plan) return plan.scenes;
-    // 没有计划时按本版本已选陈述给出一份确定性初稿：幻灯片场景一一对应。
-    return bundle.statements
-      .filter((statement) => lesson.statementIds.includes(statement.statementId))
-      .map((statement, index) => ({
-        sceneId: `scene_slide_${statement.statementId}`.slice(0, 60),
-        kind: 'slide' as const,
-        title: `陈述 ${index + 1}`,
-        statementId: statement.statementId,
-        questionId: null,
-        knowledgeIds: [statement.knowledgeId],
-        elements: [],
-        note: '',
-      }));
+    return initialLessonPlanScenes(bundle, lesson);
   }, [plan, bundle, lesson]);
 
+  /**
+   * 编辑器保存必须绑定**实际加载的那一版计划 revision**。
+   *
+   * `loadedRevision` 随每次装载的计划固定下来（初始 props 或一次成功的保存）；提交时用它做
+   * `baseRevision`，而不是用「当前 props 里最新的 revision」——否则界面刚收到别处推进的新计划、
+   * 手上却还是旧快照时，会用新 revision 给旧内容背书，服务端把冲突当成一次合法更新而静默覆盖。
+   * 新计划到达（`plan.revision` 变了）时这里显式进入冲突态，由用户选择「载入最新」或「覆盖」。
+   */
+  const [loadedRevision, setLoadedRevision] = useState<number>(plan?.revision ?? 0);
   const [editor, setEditor] = useState(() => createEditorState(initial));
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const command = useCommand([projectId, generation, lesson.lessonId, lesson.version].join(':'));
+  const { error, setError } = command;
+  const saving = command.busy;
+  const [attempt, setAttempt] = useState<LessonCommandAttempt | null>(null);
   const [openScene, setOpenScene] = useState<string | null>(initial[0]?.sceneId ?? null);
+
+  // 服务端计划推进后，本地快照可能落后：明确提示冲突，不静默换 revision 也不丢编辑。
+  //
+  // 只在服务端 revision **大于**本地已加载的 revision 时才算冲突：revision 每次保存都严格递增，
+  // 因此「服务端更小」只可能是保存成功后 props 尚未刷新的短暂窗口，不能倒过来误报冲突。
+  const remoteRevision = plan?.revision ?? 0;
+  const stale = remoteRevision > loadedRevision;
+  const overLimit = editor.scenes.length > SCENE_PLAN_WRITE_LIMIT;
 
   const selectedStatements = bundle.statements.filter((statement) =>
     lesson.statementIds.includes(statement.statementId),
@@ -101,31 +115,61 @@ export const LessonScenePlanEditor = ({
 
   const apply = (scenes: PlanSceneDto[]): void => setEditor((current) => commit(current, scenes));
 
-  const save = async (): Promise<void> => {
-    setSaving(true);
+  /** 载入服务端最新计划：放弃本地编辑（用户明确选择）。 */
+  const loadLatest = (): void => {
+    setEditor(createEditorState(initial));
+    setLoadedRevision(remoteRevision);
+    setOpenScene(initial[0]?.sceneId ?? null);
     setError(null);
-    try {
-      const result = await apiFetch('/api/study/lessons', apiResponses.lessonScenePlan, {
-        method: 'POST',
-        body: JSON.stringify({
-          scope: { projectId, generation },
-          action: 'save-scene-plan',
-          requestId: crypto.randomUUID(),
-          lessonId: lesson.lessonId,
-          version: lesson.version,
-          baseRevision: plan?.revision ?? 0,
-          scenes: scenesForSubmit(editor.scenes),
-        }),
+  };
+
+  const save = async (overwrite = false): Promise<void> => {
+    if (attempt?.state === 'failed') return;
+    // 未知结果时固定原内容、基线和 nonce；即便刷新推进了 props，也只读取这次命令的回执。
+    let submitted = attempt;
+    if (!submitted) {
+      const requestId = crypto.randomUUID();
+      const parsed = scenePlanSaveSchema.safeParse({
+        scope: { projectId, generation },
+        action: 'save-scene-plan',
+        requestId,
+        lessonId: lesson.lessonId,
+        version: lesson.version,
+        baseRevision: overwrite ? remoteRevision : loadedRevision,
+        scenes: scenesForSubmit(editor.scenes),
       });
-      onSaved(
-        `v${lesson.version} 场景计划已保存：${result.plan.scenes.length} 个场景，修订 ${result.plan.revision}。`,
-      );
-      router.refresh();
-    } catch (caught) {
-      setError(describeApiError(caught));
-    } finally {
-      setSaving(false);
+      if (!parsed.success) {
+        setError(
+          '计划内容无效：标题不能为空，正文最多 4000 字，字号需为 8–200，位置与尺寸需在允许范围内。请修改后保存。',
+        );
+        return;
+      }
+      submitted = beginLessonCommandAttempt(parsed.data, requestId);
     }
+    const original = submitted;
+    await command.run(
+      ({ signal }) =>
+        apiFetch('/api/study/lessons', apiResponses.lessonScenePlan, {
+          method: 'POST',
+          signal,
+          body: original.body,
+        }),
+      {
+        onStart: () => setAttempt({ ...original, state: 'pending' }),
+        onSuccess: (result) => {
+          setAttempt(null);
+          setLoadedRevision(result.plan.revision);
+          onSaved(
+            `v${lesson.version} 场景计划已保存：${result.plan.scenes.length} 个场景，修订 ${result.plan.revision}。`,
+          );
+          router.refresh();
+        },
+        onError: (caught) => {
+          setAttempt({ ...original, state: lessonCommandFailureState(caught) });
+          setError(describeApiError(caught));
+        },
+      },
+    );
   };
 
   const addScene = (kind: PlanSceneDto['kind']): void => {
@@ -232,7 +276,7 @@ export const LessonScenePlanEditor = ({
     );
   };
 
-  const disabled = busy || saving || !editable;
+  const disabled = busy || saving || !editable || attempt !== null;
 
   return (
     <details className="card">
@@ -245,6 +289,49 @@ export const LessonScenePlanEditor = ({
           ? '增删、排序、复制与局部重生成都不改已有场景的编号；幻灯片元素可改正文与样式。所有编辑支持撤销/恢复。'
           : '已发布版本的计划只读：发布即冻结历史，改动请派生新草案版本。'}
       </p>
+      {stale ? (
+        <Notice tone="pending">
+          服务端计划已推进到修订 {remoteRevision}（本地基于修订 {loadedRevision} 编辑）。
+          保存会被拒绝以避免覆盖；请选择「载入最新计划」放弃本地编辑，或确认覆盖服务端当前计划。
+        </Notice>
+      ) : null}
+      {overLimit ? (
+        <Notice tone="pending">
+          计划包含 {editor.scenes.length} 个场景，正式课堂最多支持 {SCENE_PLAN_WRITE_LIMIT}{' '}
+          个。请删减后保存，已有历史内容不会被自动截断。
+        </Notice>
+      ) : null}
+      {attempt?.state === 'unknown' ? (
+        <Notice tone="pending">
+          本次保存结果尚未确认，原内容与请求编号已保留。核对回执会重放原请求，已提交的保存不会再次推进修订。
+          <button
+            type="button"
+            className="btn"
+            disabled={busy || saving}
+            data-scene-plan-retry
+            onClick={() => void save()}
+          >
+            核对保存回执
+          </button>
+        </Notice>
+      ) : null}
+      {attempt?.state === 'failed' ? (
+        <Notice tone="pending">
+          回执确认本次保存失败或取消，未写入计划。可调整内容后明确开启新尝试。
+          <button
+            type="button"
+            className="btn"
+            disabled={busy || saving}
+            data-scene-plan-new-attempt
+            onClick={() => {
+              setAttempt(null);
+              setError(null);
+            }}
+          >
+            开启新的保存尝试
+          </button>
+        </Notice>
+      ) : null}
       <div className="row-inline">
         <button
           type="button"
@@ -265,18 +352,40 @@ export const LessonScenePlanEditor = ({
         <button
           type="button"
           className="btn btn-primary"
-          disabled={disabled || editor.scenes.length === 0}
+          disabled={disabled || editor.scenes.length === 0 || stale || overLimit}
           data-scene-plan-save
           onClick={() => void save()}
         >
           {saving ? '正在保存…' : '保存场景计划'}
         </button>
+        {stale ? (
+          <>
+            <button
+              type="button"
+              className="btn"
+              disabled={disabled}
+              data-scene-plan-load-latest
+              onClick={loadLatest}
+            >
+              载入最新计划
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={disabled || editor.scenes.length === 0 || overLimit}
+              data-scene-plan-overwrite
+              onClick={() => void save(true)}
+            >
+              确认覆盖服务端计划
+            </button>
+          </>
+        ) : null}
         {(['slide', 'quiz', 'interactive', 'pbl'] as const).map((kind) => (
           <button
             key={kind}
             type="button"
             className="btn"
-            disabled={disabled}
+            disabled={disabled || editor.scenes.length >= SCENE_PLAN_WRITE_LIMIT}
             onClick={() => addScene(kind)}
           >
             新增{KIND_LABEL[kind]}
@@ -320,7 +429,7 @@ export const LessonScenePlanEditor = ({
                 <button
                   type="button"
                   className="btn"
-                  disabled={disabled}
+                  disabled={disabled || editor.scenes.length >= SCENE_PLAN_WRITE_LIMIT}
                   data-scene-duplicate={scene.sceneId}
                   onClick={() => apply(duplicateSceneAt(editor.scenes, scene.sceneId))}
                 >
@@ -528,3 +637,11 @@ export const LessonScenePlanEditor = ({
     </details>
   );
 };
+
+/** Scope changes remount local snapshots; the command gate also isolates late network responses. */
+export const LessonScenePlanEditor = (props: Parameters<typeof ScenePlanEditor>[0]): ReactNode => (
+  <ScenePlanEditor
+    key={[props.projectId, props.generation, props.lesson.lessonId, props.lesson.version].join(':')}
+    {...props}
+  />
+);

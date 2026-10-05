@@ -9,5 +9,5 @@ import {
 export const dynamic = 'force-dynamic';
 export const GET = route(() => ok(readLessonCatalog(requireSession())));
 export const POST = route(async (request: Request) =>
-  ok(executeLessonCommand(await parseBody(request, lessonCommandSchema))),
+  ok(executeLessonCommand(await parseBody(request, lessonCommandSchema), request.signal)),
 );

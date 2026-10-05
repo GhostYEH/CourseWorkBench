@@ -12,160 +12,218 @@ import { normalizeSharedModelCalls } from './services/model-accounting';
  * 本地服务是唯一数据库写入者；所有写入串行执行，首版不支持多窗口并发编辑。
  */
 
-import type { ClassroomBoardBindingDto,ClassroomBoardContentDto,FeedbackReviewCommand,ModelUsageCallDto,ModelUsageReportDto } from '@sew/study-contracts';
-import {
-STEP_RECEIPT_VERSION,
-StudyError,
-newId,
-questionAssessmentSchema,
-type AdmissionResultDto,
-type AssessmentGradingDto,
-type ClassroomPeerTurnDto,
-type ClassroomStateDto,
-type ExplanationCardDto,
-type FrozenVersionsDto,
-type LessonReviewDecision,
-type MasteryStatus,
-type ModelCallPurpose,
-type PeerEngagement,
-type PlanPayloadDto,
-type QuestionAssessmentDto,
-type QuestionOrigin,
-type RecordScope,
-type ReviewDecision,
-type RoleKind,
-type RunEventPayloadDto,
-type RunState,
-type StatementRevisionCandidateDto,
-type CoursewareCandidateDto,
-type ScenePlanDto,
+import type {
+  ClassroomBoardBindingDto,
+  ClassroomBoardContentDto,
+  FeedbackReviewCommand,
+  ModelUsageCallDto,
+  ModelUsageReportDto,
 } from '@sew/study-contracts';
 import {
-assertCardApprovable,
-assertCardGrounded,
-assertLessonReviewable,
-assertLessonTeachable,
-assertSessionActive,
-buildEvidenceBundle,
-buildStepKey,
-computeInvalidation,
-computeSyllabusCoverage,
-decideAttempt,
-gradeQuestionAssessment,judgeAnswer,
-lessonReferencedKnowledgeIds,
-resolveQuestionOrigin,
-revisedStatements,
-type MaterialChangeImpact,
-type OriginRecord,
-type SyllabusCoverageResult,
-type SyllabusItemRecord,
-type SyllabusMappingRecord
+  STEP_RECEIPT_VERSION,
+  StudyError,
+  newId,
+  questionAssessmentSchema,
+  type AdmissionResultDto,
+  type AssessmentGradingDto,
+  type ClassroomPeerTurnDto,
+  type ClassroomStateDto,
+  type ExplanationCardDto,
+  type FrozenVersionsDto,
+  type LessonReviewDecision,
+  type MasteryStatus,
+  type ModelCallPurpose,
+  type PeerEngagement,
+  type PlanPayloadDto,
+  type QuestionAssessmentDto,
+  type QuestionOrigin,
+  type RecordScope,
+  type ReviewDecision,
+  type RoleKind,
+  type RunEventPayloadDto,
+  type RunState,
+  type StatementRevisionCandidateDto,
+  type CoursewareCandidateDto,
+  type ScenePlanDto,
+  type ScenePlanReceiptDto,
+  type ScenePlanReceiptState,
+} from '@sew/study-contracts';
+import {
+  assertCardApprovable,
+  assertCardGrounded,
+  assertLessonReviewable,
+  assertLessonTeachable,
+  assertPlanPublishable,
+  assertSessionActive,
+  buildEvidenceBundle,
+  buildStepKey,
+  computeInvalidation,
+  computeSyllabusCoverage,
+  decideAttempt,
+  gradeQuestionAssessment,
+  judgeAnswer,
+  lessonReferencedKnowledgeIds,
+  resolveQuestionOrigin,
+  revisedStatements,
+  type MaterialChangeImpact,
+  type OriginRecord,
+  type SyllabusCoverageResult,
+  type SyllabusItemRecord,
+  type SyllabusMappingRecord,
 } from '@sew/study-domain';
 import { createHash } from 'node:crypto';
-import { createNodeSqliteDriver,type SqlDatabase,type SqliteDriver } from './driver';
-import { AttemptGradingRepository,type AttemptGradeGenerationCallInput,type AttemptGradeGenerationFailure,type RejectAttemptGradeCandidateInput,type ReviewAttemptGradeInput,type SaveAttemptGradeCandidateInput } from './repositories/attempt-grading';
+import { createNodeSqliteDriver, type SqlDatabase, type SqliteDriver } from './driver';
+import {
+  AttemptGradingRepository,
+  type AttemptGradeGenerationCallInput,
+  type AttemptGradeGenerationFailure,
+  type RejectAttemptGradeCandidateInput,
+  type ReviewAttemptGradeInput,
+  type SaveAttemptGradeCandidateInput,
+} from './repositories/attempt-grading';
 import { AttemptsRepository } from './repositories/attempts';
 import { ClassroomRepository } from './repositories/classroom';
-import type { ClassroomAssetBindingRow,ClassroomAssetInfo,ClassroomAssetRow } from './repositories/classroom-assets';
+import type {
+  ClassroomAssetBindingRow,
+  ClassroomAssetInfo,
+  ClassroomAssetRow,
+} from './repositories/classroom-assets';
 import { ClassroomAssetsRepository } from './repositories/classroom-assets';
-import { ClassroomBoardRepository,type CreateClassroomBoardInput,type PlayClassroomBoardInput,type ReviewClassroomBoardInput } from './repositories/classroom-board';
+import {
+  ClassroomBoardRepository,
+  type CreateClassroomBoardInput,
+  type PlayClassroomBoardInput,
+  type ReviewClassroomBoardInput,
+} from './repositories/classroom-board';
 import { ClassroomKVRepository } from './repositories/classroom-kv';
-import { ClassroomRoomRepository,freezePublishedRoomCourse,type ClassroomRoomCloseInput,type ClassroomRoomSceneInput,type ClassroomTeacherLeaseAcquireInput,type ClassroomTeacherLeaseCheckInput,type CreateLocalClassroomRoomInput,type FreezeRoomCourseOptions } from './repositories/classroom-room';
+import {
+  ClassroomRoomRepository,
+  freezePublishedRoomCourse,
+  type ClassroomRoomCloseInput,
+  type ClassroomRoomSceneInput,
+  type ClassroomTeacherLeaseAcquireInput,
+  type ClassroomTeacherLeaseCheckInput,
+  type CreateLocalClassroomRoomInput,
+  type FreezeRoomCourseOptions,
+} from './repositories/classroom-room';
 import { ClassroomRuntimeRepository } from './repositories/classroom-runtime';
 import {
-DocumentOrganizationRepository,
-type DocumentFolderRow,
+  DocumentOrganizationRepository,
+  type DocumentFolderRow,
 } from './repositories/document-organization';
 import { FeedbackReviewRepository } from './repositories/feedback-review';
 import { KnowledgeRepository } from './repositories/knowledge';
 import { LearnerIdentityRepository } from './repositories/learner-identity';
 import {
-LessonRepository,
-type CreateLessonDraftInput,
-type PublishLessonInput,
+  LessonRepository,
+  type CreateLessonDraftInput,
+  type PublishLessonInput,
 } from './repositories/lessons';
 import { MaterialsRepository } from './repositories/materials';
 import {
-LessonStatementRevisionRepository,
-type CreateStatementRevisionInput,
+  LessonStatementRevisionRepository,
+  type CreateStatementRevisionInput,
 } from './repositories/lesson-statement-revision';
 import {
-LessonScenePlanRepository,
-type CreateCoursewareCandidateInput,
-type SaveScenePlanInput,
+  LessonScenePlanRepository,
+  type CreateCoursewareCandidateInput,
+  type SaveScenePlanInput,
 } from './repositories/lesson-scene-plan';
-import { ModelUsageRepository,type ModelUsageLimits,type SettleModelUsageCallInput,type StartModelUsageCallInput } from './repositories/model-usage';
+import {
+  ModelUsageRepository,
+  type ModelUsageLimits,
+  type SettleModelUsageCallInput,
+  type StartModelUsageCallInput,
+} from './repositories/model-usage';
 import { PlansRepository } from './repositories/plans';
 import { PreferencesRepository } from './repositories/preferences';
 import { ProjectsRepository } from './repositories/projects';
 import { ProposalsRepository } from './repositories/proposals';
 import { QuestionsRepository } from './repositories/questions';
-import { RoleRepository,type RoleWriteInput } from './repositories/roles';
-import type { RunEventRow,StepReceiptRow } from './repositories/runs';
+import { RoleRepository, type RoleWriteInput } from './repositories/roles';
+import type { RunEventRow, StepReceiptRow } from './repositories/runs';
 import { RunsRepository } from './repositories/runs';
-import type { CreateSyllabusItemInput,SyllabusItemRow } from './repositories/syllabus';
+import type { CreateSyllabusItemInput, SyllabusItemRow } from './repositories/syllabus';
 import { SyllabusRepository } from './repositories/syllabus';
-import {
-TeachingRepository,
-type CreateExplanationInput,
-} from './repositories/teaching';
+import { TeachingRepository, type CreateExplanationInput } from './repositories/teaching';
 import type {
-AttemptRow,
-ClassroomActionRow,
-ClassroomLinkRow,
-ClassroomSessionRow,
-CreateProposalInput,
-EvidenceBundleRow,
-ExplanationRow,
-ImportMaterialInput,
-KnowledgeRow,
-LessonReviewRow,
-LessonVersionRow,
-MaterialRow,
-ProjectRow,
-ProposalRow,
-QuestionRow,
-ReviewOutcome,
-RoleProfileRow,
-RunRow,
-SegmentRow,
-SubmitAttemptInput,
-SubmitAttemptOutcome,
+  AttemptRow,
+  ClassroomActionRow,
+  ClassroomLinkRow,
+  ClassroomSessionRow,
+  CreateProposalInput,
+  EvidenceBundleRow,
+  ExplanationRow,
+  ImportMaterialInput,
+  KnowledgeRow,
+  LessonReviewRow,
+  LessonVersionRow,
+  MaterialRow,
+  ProjectRow,
+  ProposalRow,
+  QuestionRow,
+  ReviewOutcome,
+  RoleProfileRow,
+  RunRow,
+  SegmentRow,
+  SubmitAttemptInput,
+  SubmitAttemptOutcome,
 } from './repositories/types';
 import { MIGRATIONS, SCHEMA_VERSION } from './schema';
 
 export type {
-ClassroomDocumentRow,
-ClassroomSceneSourceRow,
-ClassroomStateRow,
-SaveClassroomDocumentInput
+  ClassroomDocumentRow,
+  ClassroomSceneSourceRow,
+  ClassroomStateRow,
+  SaveClassroomDocumentInput,
 } from './repositories/classroom';
 export { ClassroomAssetReferencedError } from './repositories/classroom-assets';
-export type { ClassroomAssetBindingRow,ClassroomAssetInfo,ClassroomAssetRow } from './repositories/classroom-assets';
 export type {
-RuntimeAppendOptions,RuntimeQuizReceiptRow,RuntimeRecordInput,
-RuntimeRecordRow,RuntimeSessionRow,
-RuntimeStatus
+  ClassroomAssetBindingRow,
+  ClassroomAssetInfo,
+  ClassroomAssetRow,
+} from './repositories/classroom-assets';
+export type {
+  RuntimeAppendOptions,
+  RuntimeQuizReceiptRow,
+  RuntimeRecordInput,
+  RuntimeRecordRow,
+  RuntimeSessionRow,
+  RuntimeStatus,
 } from './repositories/classroom-runtime';
 export { DocumentOrganizationError } from './repositories/document-organization';
 export type { DocumentFolderRow } from './repositories/document-organization';
-export type {
-CreateLessonDraftInput,PublishLessonInput
-} from './repositories/lessons';
+export type { CreateLessonDraftInput, PublishLessonInput } from './repositories/lessons';
 export type { RoleWriteInput } from './repositories/roles';
-export type { RunEventRow,StepReceiptRow } from './repositories/runs';
-export type { CreateSyllabusItemInput,SyllabusItemRow } from './repositories/syllabus';
+export type { RunEventRow, StepReceiptRow } from './repositories/runs';
+export type { CreateSyllabusItemInput, SyllabusItemRow } from './repositories/syllabus';
 export type { CreateExplanationInput } from './repositories/teaching';
 export type {
-AttemptRow,ClassroomActionRow,ClassroomLinkRow,ClassroomSessionRow,CreateProposalInput,EvidenceBundleRow,EvidenceStored,ExplanationRow,ImportMaterialInput,
-KnowledgeRow,LessonReviewRow,LessonStatus,LessonVersionRow,MaterialRawArchiveRow,
-MaterialRow,PlanVersionRow,ProjectRow,
-ProposalRow,
-QuestionRow,
-ReviewOutcome,RoleProfileRow,RunRow,
-SegmentRow,
-SubmitAttemptInput,
-SubmitAttemptOutcome
+  AttemptRow,
+  ClassroomActionRow,
+  ClassroomLinkRow,
+  ClassroomSessionRow,
+  CreateProposalInput,
+  EvidenceBundleRow,
+  EvidenceStored,
+  ExplanationRow,
+  ImportMaterialInput,
+  KnowledgeRow,
+  LessonReviewRow,
+  LessonStatus,
+  LessonVersionRow,
+  MaterialRawArchiveRow,
+  MaterialRow,
+  PlanVersionRow,
+  ProjectRow,
+  ProposalRow,
+  QuestionRow,
+  ReviewOutcome,
+  RoleProfileRow,
+  RunRow,
+  SegmentRow,
+  SubmitAttemptInput,
+  SubmitAttemptOutcome,
 } from './repositories/types';
 
 interface Row {
@@ -208,7 +266,11 @@ export class StudyStore {
   readonly runtime: ClassroomRuntimeRepository;
   readonly classroomKV: ClassroomKVRepository;
 
-  private constructor(db: SqlDatabase, driverName: string, readonly databaseFile: string) {
+  private constructor(
+    db: SqlDatabase,
+    driverName: string,
+    readonly databaseFile: string,
+  ) {
     this.db = db;
     this.driverName = driverName;
     this.projects = new ProjectsRepository(db);
@@ -219,10 +281,16 @@ export class StudyStore {
     this.attempts = new AttemptsRepository(db);
     this.learnerIdentity = new LearnerIdentityRepository(db);
     this.attemptGrading = new AttemptGradingRepository(db, {
-      projectExists: id => this.projects.getProject(id) !== null,
-      question: id => this.questions.getQuestion(id, 'formal'),
-      admitted: ids => this.checkAdmission(ids, 'formal').allowed,
-      applyMastery: (ids, correct, at) => this.knowledge.updateMasteryIfVerified(ids, correct ? 'passed' : 'to_reinforce', at, 'formal'),
+      projectExists: (id) => this.projects.getProject(id) !== null,
+      question: (id) => this.questions.getQuestion(id, 'formal'),
+      admitted: (ids) => this.checkAdmission(ids, 'formal').allowed,
+      applyMastery: (ids, correct, at) =>
+        this.knowledge.updateMasteryIfVerified(
+          ids,
+          correct ? 'passed' : 'to_reinforce',
+          at,
+          'formal',
+        ),
     });
     this.runs = new RunsRepository(db);
     this.preferences = new PreferencesRepository(db);
@@ -239,30 +307,44 @@ export class StudyStore {
     this.runtime = new ClassroomRuntimeRepository(db);
     this.classroomKV = new ClassroomKVRepository(db);
     this.classroomRooms = new ClassroomRoomRepository(db, {
-      boundUid: projectId => this.learnerIdentity.read(projectId)?.uid ?? null,
+      boundUid: (projectId) => this.learnerIdentity.read(projectId)?.uid ?? null,
       freeze: (input, options) => {
         const ready = this.assertLessonClassroomReady(input.lessonId, input.projectId);
-        if (ready.lesson.version !== input.lessonVersion) throw new StudyError('VERSION_CONFLICT', { reason: 'room_lesson_version_changed' });
+        if (ready.lesson.version !== input.lessonVersion)
+          throw new StudyError('VERSION_CONFLICT', { reason: 'room_lesson_version_changed' });
         const stageId = ready.link.stageId;
-        if (!stageId) throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { reason: 'room_document_not_attached' });
+        if (!stageId)
+          throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+            reason: 'room_document_not_attached',
+          });
         const document = this.classroom.getDocument(input.projectId, stageId);
         const bundle = this.lessons.getBundle(ready.lesson.bundleId, input.projectId);
-        if (!document || !bundle) throw new StudyError('INTERNAL', { reason: 'room_course_missing' });
+        if (!document || !bundle)
+          throw new StudyError('INTERNAL', { reason: 'room_course_missing' });
         return freezePublishedRoomCourse({
-          projectId: input.projectId, ...ready, bundle, document,
+          projectId: input.projectId,
+          ...ready,
+          bundle,
+          document,
           // 由应用层传入已完整复验的冻结定义；存储层不再自己读一份更弱的版本。
           interactionDefinitions: options?.interactionDefinitions ?? null,
           sceneSources: [...this.classroom.listSceneSources(input.projectId, stageId).values()],
           bindings: this.classroomAssets.listBindings(input.projectId, stageId),
           lookupSegment: (m, r, s) => this.materials.lookupSegment(m, r, s, 'formal'),
-          asset: assetId => this.classroomAssets.get(input.projectId, assetId),
+          asset: (assetId) => this.classroomAssets.get(input.projectId, assetId),
         });
       },
       assertCourseReady: (projectId, course) => {
         const ready = this.assertLessonClassroomReady(course.lessonId, projectId);
-        if (ready.lesson.version !== course.lessonVersion || ready.lesson.bundleDigest !== course.bundleDigest
-          || ready.link.stageId !== course.stageId || ready.link.documentDigest !== course.documentDigest) {
-          throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { reason: 'room_course_version_changed' });
+        if (
+          ready.lesson.version !== course.lessonVersion ||
+          ready.lesson.bundleDigest !== course.bundleDigest ||
+          ready.link.stageId !== course.stageId ||
+          ready.link.documentDigest !== course.documentDigest
+        ) {
+          throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+            reason: 'room_course_version_changed',
+          });
         }
       },
     });
@@ -271,8 +353,11 @@ export class StudyStore {
       assertPlayable: (sessionId, binding) => {
         const ready = this.assertClassroomSessionReady(binding.projectId, sessionId);
         const classroom = this.requireSession(sessionId, binding.projectId);
-        if (ready.lesson.lessonId !== binding.lessonId || ready.lesson.version !== binding.lessonVersion
-          || classroom.currentSceneId !== binding.sceneId) {
+        if (
+          ready.lesson.lessonId !== binding.lessonId ||
+          ready.lesson.version !== binding.lessonVersion ||
+          classroom.currentSceneId !== binding.sceneId
+        ) {
           throw new StudyError('VERSION_CONFLICT', { reason: 'board_session_binding_changed' });
         }
       },
@@ -282,21 +367,26 @@ export class StudyStore {
       },
     });
     this.feedbackReview = new FeedbackReviewRepository(db, {
-      projectExists: id => this.projects.getProject(id) !== null,
-      question: id => this.questions.getQuestion(id, 'formal'),
-      knowledge: id => this.knowledge.getKnowledge(id, 'formal'),
-      admitted: ids => this.checkAdmission(ids, 'formal').allowed,
+      projectExists: (id) => this.projects.getProject(id) !== null,
+      question: (id) => this.questions.getQuestion(id, 'formal'),
+      knowledge: (id) => this.knowledge.getKnowledge(id, 'formal'),
+      admitted: (ids) => this.checkAdmission(ids, 'formal').allowed,
     });
     this.modelUsage = new ModelUsageRepository(db);
 
     this.classroomCommands = new ClassroomCommands({
-      teaching: this.teaching, runs: this.runs, roles: this.roles, lessons: this.lessons,
-      transaction: action => this.transaction(action),
-      assertClassroomSessionReady: (projectId, sessionId) => this.assertClassroomSessionReady(projectId, sessionId),
-      classroomBoardStatementIds: (projectId, sessionId) => this.classroomBoardStatementIds(projectId, sessionId),
+      teaching: this.teaching,
+      runs: this.runs,
+      roles: this.roles,
+      lessons: this.lessons,
+      transaction: (action) => this.transaction(action),
+      assertClassroomSessionReady: (projectId, sessionId) =>
+        this.assertClassroomSessionReady(projectId, sessionId),
+      classroomBoardStatementIds: (projectId, sessionId) =>
+        this.classroomBoardStatementIds(projectId, sessionId),
       checkAdmission: (knowledgeIds, scope) => this.checkAdmission(knowledgeIds, scope),
       requireSession: (sessionId, projectId) => this.requireSession(sessionId, projectId),
-      toCard: row => this.toCard(row),
+      toCard: (row) => this.toCard(row),
     });
   }
 
@@ -329,13 +419,21 @@ export class StudyStore {
         .all()
         .map((row) => Number((row as Row)['version'] ?? 0)),
     );
-    if ([...applied].some(version => !Number.isSafeInteger(version) || version < 1 || version > SCHEMA_VERSION)) {
-      throw new StudyError('PROJECT_FORMAT_UNSUPPORTED', { reason: 'unsupported_schema_version', supported: SCHEMA_VERSION });
+    if (
+      [...applied].some(
+        (version) => !Number.isSafeInteger(version) || version < 1 || version > SCHEMA_VERSION,
+      )
+    ) {
+      throw new StudyError('PROJECT_FORMAT_UNSUPPORTED', {
+        reason: 'unsupported_schema_version',
+        supported: SCHEMA_VERSION,
+      });
     }
     for (const migration of MIGRATIONS) {
       if (applied.has(migration.version)) continue;
       this.db.transaction(() => {
         this.db.exec(migration.sql);
+        migration.migrate?.(this.db);
         this.db
           .prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)')
           .run(migration.version, migration.name, new Date().toISOString());
@@ -401,12 +499,16 @@ export class StudyStore {
     invalidated: MaterialChangeImpact[];
   } {
     return this.materials.importMaterial(input, {
-      invalidateKnowledge: (currentRevisions, scope) => this.invalidateAfterImport(currentRevisions, scope),
+      invalidateKnowledge: (currentRevisions, scope) =>
+        this.invalidateAfterImport(currentRevisions, scope),
     });
   }
 
   /** 材料更新后的跨域失效：在同一事务内重算并落库（由 repository 回调注入）。 */
-  private invalidateAfterImport(currentRevisions: Record<string, number>, scope: RecordScope): MaterialChangeImpact[] {
+  private invalidateAfterImport(
+    currentRevisions: Record<string, number>,
+    scope: RecordScope,
+  ): MaterialChangeImpact[] {
     const impacts = computeInvalidation(
       this.knowledge.listKnowledge(scope).map((k) => ({
         knowledgeId: k.knowledgeId,
@@ -430,7 +532,11 @@ export class StudyStore {
     return this.materials.listMaterials(scope);
   }
 
-  getMaterial(materialId: string, revision?: number, scope: RecordScope = 'formal'): MaterialRow | null {
+  getMaterial(
+    materialId: string,
+    revision?: number,
+    scope: RecordScope = 'formal',
+  ): MaterialRow | null {
     return this.materials.getMaterial(materialId, revision, scope);
   }
 
@@ -605,7 +711,11 @@ export class StudyStore {
 
   /** 生成准入预检：所有入口共用同一实现，不存在「课堂生成特权」。 */
   checkAdmission(knowledgeIds: string[], scope: RecordScope = 'formal'): AdmissionResultDto {
-    return this.knowledge.checkAdmission(knowledgeIds, this.materials.currentRevisions(scope), scope);
+    return this.knowledge.checkAdmission(
+      knowledgeIds,
+      this.materials.currentRevisions(scope),
+      scope,
+    );
   }
 
   // ——————————————————————————— 题目 ———————————————————————————
@@ -621,8 +731,11 @@ export class StudyStore {
     recordScope?: RecordScope;
   }): { question: QuestionRow; forgedExamClaim: boolean; downgraded: boolean } {
     const scope = input.recordScope ?? 'formal';
-    const parsedAssessment = questionAssessmentSchema.nullable().safeParse(input.assessment ?? null);
-    if (!parsedAssessment.success) throw new StudyError('INVALID_ARGUMENT', { reason: 'invalid_assessment' });
+    const parsedAssessment = questionAssessmentSchema
+      .nullable()
+      .safeParse(input.assessment ?? null);
+    if (!parsedAssessment.success)
+      throw new StudyError('INVALID_ARGUMENT', { reason: 'invalid_assessment' });
     const admission = this.checkAdmission(input.knowledgeIds, scope);
     if (!admission.allowed) {
       const first = admission.blocked[0];
@@ -637,7 +750,8 @@ export class StudyStore {
     const trusted = input.originRecord
       ? {
           materialRegistered:
-            this.getMaterial(input.originRecord.materialId, input.originRecord.revision, scope) !== null,
+            this.getMaterial(input.originRecord.materialId, input.originRecord.revision, scope) !==
+            null,
           materialVerifiedAsExam: this.materials.isMaterialVerifiedAsExam(
             input.originRecord.materialId,
             input.originRecord.revision,
@@ -726,11 +840,25 @@ export class StudyStore {
     const grading: AssessmentGradingDto = question.assessment
       ? gradeQuestionAssessment(question.assessment, input.answerText)
       : question.recordScope === 'formal'
-        ? { status: 'pending_review', correct: null, earned: null, maxScore: 0, answerVersion: null, basis: 'assessment_not_registered' }
+        ? {
+            status: 'pending_review',
+            correct: null,
+            earned: null,
+            maxScore: 0,
+            answerVersion: null,
+            basis: 'assessment_not_registered',
+          }
         : (() => {
-          const verdict = judgeAnswer(question.answer, input.answerText);
-          return { status: verdict === 'unknown' ? 'pending_review' : verdict, correct: verdict === 'unknown' ? null : verdict === 'correct', earned: verdict === 'unknown' ? null : verdict === 'correct' ? 1 : 0, maxScore: 1, answerVersion: null, basis: 'demo_literal_answer' };
-        })();
+            const verdict = judgeAnswer(question.answer, input.answerText);
+            return {
+              status: verdict === 'unknown' ? 'pending_review' : verdict,
+              correct: verdict === 'unknown' ? null : verdict === 'correct',
+              earned: verdict === 'unknown' ? null : verdict === 'correct' ? 1 : 0,
+              maxScore: 1,
+              answerVersion: null,
+              basis: 'demo_literal_answer',
+            };
+          })();
     const decision = decideAttempt(
       {
         questionId: input.questionId,
@@ -749,7 +877,9 @@ export class StudyStore {
     const attempt = this.db.transaction(() => {
       const inserted = this.attempts.insertAttempt({
         attemptId,
-        questionRevision: question.revision, answerVersion: grading.answerVersion, grading,
+        questionRevision: question.revision,
+        answerVersion: grading.answerVersion,
+        grading,
         questionId: input.questionId,
         kind: decision.kind,
         requestedKind: input.kind,
@@ -762,13 +892,22 @@ export class StudyStore {
         submittedAt: now,
       });
 
-      if (question.recordScope === 'formal' && decision.kind === 'real' && input.actorType === 'human_learner') {
+      if (
+        question.recordScope === 'formal' &&
+        decision.kind === 'real' &&
+        input.actorType === 'human_learner'
+      ) {
         const uid = this.learnerIdentity.read(input.projectId)?.uid;
         if (uid) this.feedbackReview.captureOriginal(input.projectId, uid, inserted.attemptId);
       }
       // 只有真实作答才更新掌握状态；模拟作答永远不写本人记录。
       if (question.recordScope === 'formal' && decision.kind === 'real' && decision.masteryAfter) {
-        this.knowledge.updateMasteryIfVerified(question.knowledgeIds, decision.masteryAfter, now, 'formal');
+        this.knowledge.updateMasteryIfVerified(
+          question.knowledgeIds,
+          decision.masteryAfter,
+          now,
+          'formal',
+        );
       }
       return inserted;
     });
@@ -788,33 +927,99 @@ export class StudyStore {
     return this.attempts.countAttemptKinds('formal');
   }
 
-  getAttemptGradingContext(projectId: string, attemptId: string) { return this.attemptGrading.context(projectId, attemptId); }
-  getLocalLearnerBinding(projectId: string) { return this.learnerIdentity.read(projectId); }
-  bindLocalLearner(projectId: string, uid: string) { return this.learnerIdentity.bind(projectId, uid); }
-  createLocalClassroomRoom(input: CreateLocalClassroomRoomInput, trustedUid: string, options?: FreezeRoomCourseOptions) { return this.classroomRooms.create(input, trustedUid, options); }
-  getClassroomRoom(projectId: string, roomId: string, trustedUid: string) { return this.classroomRooms.get(projectId, roomId, trustedUid); }
-  listLocalClassroomRooms(projectId: string, trustedUid: string) { return this.classroomRooms.list(projectId, trustedUid); }
-  readClassroomRoomSnapshot(projectId: string, roomId: string, trustedUid: string) { return this.classroomRooms.snapshot(projectId, roomId, trustedUid); }
-  readClassroomRoomAsset(projectId: string, roomId: string, trustedUid: string, assetId: string) { return this.classroomRooms.asset(projectId, roomId, trustedUid, assetId); }
-  setClassroomRoomScene(input: ClassroomRoomSceneInput, trustedUid: string) { return this.classroomRooms.setScene(input, trustedUid); }
-  closeClassroomRoom(input: ClassroomRoomCloseInput, trustedUid: string) { return this.classroomRooms.close(input, trustedUid); }
-  acquireClassroomTeacherLease(input: ClassroomTeacherLeaseAcquireInput, trustedUid: string) { return this.classroomRooms.acquireLease(input, trustedUid); }
-  assertClassroomTeacherLease(input: ClassroomTeacherLeaseCheckInput, trustedUid: string) { return this.classroomRooms.assertLease(input, trustedUid); }
-  renewClassroomTeacherLease(input: ClassroomTeacherLeaseCheckInput & { ttlMs: number }, trustedUid: string) { return this.classroomRooms.renewLease(input, trustedUid); }
-  releaseClassroomTeacherLease(input: ClassroomTeacherLeaseCheckInput, trustedUid: string) { return this.classroomRooms.releaseLease(input, trustedUid); }
-  bindClassroomRoomSession(projectId: string, roomId: string, sessionId: string, trustedUid: string) { return this.classroomRooms.bindSession(projectId, roomId, sessionId, trustedUid); }
-  getClassroomRoomForSession(projectId: string, sessionId: string, trustedUid: string) { return this.classroomRooms.forSession(projectId, sessionId, trustedUid); }
-  getAttemptGradeCandidateReceipt(projectId: string, attemptId: string, requestId: string) { return this.attemptGrading.getCandidateReceipt(projectId, attemptId, requestId); }
-  getAttemptGradeGenerationCall(input: AttemptGradeGenerationCallInput) { return this.attemptGrading.getGenerationCall(input); }
-  startAttemptGradeGenerationCall(input: AttemptGradeGenerationCallInput, runId: string, reservedTokens: number) { return this.attemptGrading.startGenerationCall(input, runId, reservedTokens); }
+  getAttemptGradingContext(projectId: string, attemptId: string) {
+    return this.attemptGrading.context(projectId, attemptId);
+  }
+  getLocalLearnerBinding(projectId: string) {
+    return this.learnerIdentity.read(projectId);
+  }
+  bindLocalLearner(projectId: string, uid: string) {
+    return this.learnerIdentity.bind(projectId, uid);
+  }
+  createLocalClassroomRoom(
+    input: CreateLocalClassroomRoomInput,
+    trustedUid: string,
+    options?: FreezeRoomCourseOptions,
+  ) {
+    return this.classroomRooms.create(input, trustedUid, options);
+  }
+  getClassroomRoom(projectId: string, roomId: string, trustedUid: string) {
+    return this.classroomRooms.get(projectId, roomId, trustedUid);
+  }
+  listLocalClassroomRooms(projectId: string, trustedUid: string) {
+    return this.classroomRooms.list(projectId, trustedUid);
+  }
+  readClassroomRoomSnapshot(projectId: string, roomId: string, trustedUid: string) {
+    return this.classroomRooms.snapshot(projectId, roomId, trustedUid);
+  }
+  readClassroomRoomAsset(projectId: string, roomId: string, trustedUid: string, assetId: string) {
+    return this.classroomRooms.asset(projectId, roomId, trustedUid, assetId);
+  }
+  setClassroomRoomScene(input: ClassroomRoomSceneInput, trustedUid: string) {
+    return this.classroomRooms.setScene(input, trustedUid);
+  }
+  closeClassroomRoom(input: ClassroomRoomCloseInput, trustedUid: string) {
+    return this.classroomRooms.close(input, trustedUid);
+  }
+  acquireClassroomTeacherLease(input: ClassroomTeacherLeaseAcquireInput, trustedUid: string) {
+    return this.classroomRooms.acquireLease(input, trustedUid);
+  }
+  assertClassroomTeacherLease(input: ClassroomTeacherLeaseCheckInput, trustedUid: string) {
+    return this.classroomRooms.assertLease(input, trustedUid);
+  }
+  renewClassroomTeacherLease(
+    input: ClassroomTeacherLeaseCheckInput & { ttlMs: number },
+    trustedUid: string,
+  ) {
+    return this.classroomRooms.renewLease(input, trustedUid);
+  }
+  releaseClassroomTeacherLease(input: ClassroomTeacherLeaseCheckInput, trustedUid: string) {
+    return this.classroomRooms.releaseLease(input, trustedUid);
+  }
+  bindClassroomRoomSession(
+    projectId: string,
+    roomId: string,
+    sessionId: string,
+    trustedUid: string,
+  ) {
+    return this.classroomRooms.bindSession(projectId, roomId, sessionId, trustedUid);
+  }
+  getClassroomRoomForSession(projectId: string, sessionId: string, trustedUid: string) {
+    return this.classroomRooms.forSession(projectId, sessionId, trustedUid);
+  }
+  getAttemptGradeCandidateReceipt(projectId: string, attemptId: string, requestId: string) {
+    return this.attemptGrading.getCandidateReceipt(projectId, attemptId, requestId);
+  }
+  getAttemptGradeGenerationCall(input: AttemptGradeGenerationCallInput) {
+    return this.attemptGrading.getGenerationCall(input);
+  }
+  startAttemptGradeGenerationCall(
+    input: AttemptGradeGenerationCallInput,
+    runId: string,
+    reservedTokens: number,
+  ) {
+    return this.attemptGrading.startGenerationCall(input, runId, reservedTokens);
+  }
   settleAttemptGradeGenerationCall(
     input: AttemptGradeGenerationCallInput,
     failure: AttemptGradeGenerationFailure | null,
-    accounting?: { accountedTokens: number; tokenMeasurement: 'actual' | 'estimated' | 'unknown'; elapsedMs: number },
-  ) { return this.attemptGrading.settleGenerationCall(input, failure, accounting); }
-  saveAttemptGradeCandidate(input: SaveAttemptGradeCandidateInput) { return this.attemptGrading.saveCandidate(input); }
-  reviewAttemptGrade(input: ReviewAttemptGradeInput) { return this.attemptGrading.review(input); }
-  rejectAttemptGradeCandidate(input: RejectAttemptGradeCandidateInput) { return this.attemptGrading.reject(input); }
+    accounting?: {
+      accountedTokens: number;
+      tokenMeasurement: 'actual' | 'estimated' | 'unknown';
+      elapsedMs: number;
+    },
+  ) {
+    return this.attemptGrading.settleGenerationCall(input, failure, accounting);
+  }
+  saveAttemptGradeCandidate(input: SaveAttemptGradeCandidateInput) {
+    return this.attemptGrading.saveCandidate(input);
+  }
+  reviewAttemptGrade(input: ReviewAttemptGradeInput) {
+    return this.attemptGrading.review(input);
+  }
+  rejectAttemptGradeCandidate(input: RejectAttemptGradeCandidateInput) {
+    return this.attemptGrading.reject(input);
+  }
 
   // ————————————————————————— 运行与收据 —————————————————————————
 
@@ -865,7 +1070,10 @@ export class StudyStore {
     if (existing) {
       const run = this.runs.getRun(existing.result.runId);
       if (!run) {
-        throw new StudyError('INTERNAL', { reason: 'receipt_run_missing', runId: existing.result.runId });
+        throw new StudyError('INTERNAL', {
+          reason: 'receipt_run_missing',
+          runId: existing.result.runId,
+        });
       }
       return { run, deduplicated: true };
     }
@@ -907,20 +1115,37 @@ export class StudyStore {
    * 是已结算台账，加上尚未结算的预占。`activeElapsedMs` 只累计真正在跑的外部调用，
    * 等待本人输入不算执行时间——它是额外信息，不改变 `calls`/`tokens` 的既有含义。
    */
-  modelCallUsage(runId: string, ownGradingRequestId?: string, ownModelRequestId?: string): { calls: number; tokens: number; activeElapsedMs: number } {
+  modelCallUsage(
+    runId: string,
+    ownGradingRequestId?: string,
+    ownModelRequestId?: string,
+  ): { calls: number; tokens: number; activeElapsedMs: number } {
     const calls = this.sharedModelUsageCalls(runId, ownGradingRequestId, ownModelRequestId);
     const summary = summarizeModelUsage(calls);
-    return { calls: summary.total.calls, tokens: summary.consumedTokens, activeElapsedMs: summary.activeElapsedMs };
+    return {
+      calls: summary.total.calls,
+      tokens: summary.consumedTokens,
+      activeElapsedMs: summary.activeElapsedMs,
+    };
   }
 
   /** Read-only normalization: durable rows replace their run events; unmatched historical events remain visible. */
-  sharedModelUsageCalls(runId: string, ownGradingRequestId?: string, ownModelRequestId?: string): ModelUsageCallDto[]{
-    return normalizeSharedModelCalls({
-      calls: this.modelUsage.listForRun(runId),
-      grading: this.attemptGrading.generationAccounting(runId).rows,
-      events: this.runs.listRunEvents(runId),
-      projectId: this.listProjects()[0]?.projectId ?? 'historical',
-    }, runId, ownGradingRequestId, ownModelRequestId);
+  sharedModelUsageCalls(
+    runId: string,
+    ownGradingRequestId?: string,
+    ownModelRequestId?: string,
+  ): ModelUsageCallDto[] {
+    return normalizeSharedModelCalls(
+      {
+        calls: this.modelUsage.listForRun(runId),
+        grading: this.attemptGrading.generationAccounting(runId).rows,
+        events: this.runs.listRunEvents(runId),
+        projectId: this.listProjects()[0]?.projectId ?? 'historical',
+      },
+      runId,
+      ownGradingRequestId,
+      ownModelRequestId,
+    );
   }
 
   /** 按 run 内单调序号追加事件。序号来自既有事件，重启后仍延续同一台账。 */
@@ -989,7 +1214,9 @@ export class StudyStore {
     payload: PlanPayloadDto;
   } | null {
     const latest = this.plans.getLatestPlan(projectId);
-    return latest ? { version: latest.version, status: latest.status, payload: latest.payload } : null;
+    return latest
+      ? { version: latest.version, status: latest.status, payload: latest.payload }
+      : null;
   }
 
   // ———————————————————— 证据包与课程版本 ————————————————————
@@ -1042,7 +1269,12 @@ export class StudyStore {
           revision: row.revision,
           origin: row.origin,
           knowledgeIds: row.knowledgeIds,
-          snapshot: { stem: row.stem, answer: row.answer, solution: row.solution, assessment: row.assessment },
+          snapshot: {
+            stem: row.stem,
+            answer: row.answer,
+            solution: row.solution,
+            assessment: row.assessment,
+          },
         },
       ]),
     );
@@ -1057,9 +1289,13 @@ export class StudyStore {
       statements: composed,
       questionIds,
       admittedKnowledgeIds: admitted,
-      knowledgeVersions: knowledge.map((point) => ({ knowledgeId: point.knowledgeId, revision: point.revision })),
+      knowledgeVersions: knowledge.map((point) => ({
+        knowledgeId: point.knowledgeId,
+        revision: point.revision,
+      })),
       materialRevisions: this.materials.currentRevisions('formal'),
-      lookupSegment: (materialId, revision, segmentId) => this.materials.lookupSegment(materialId, revision, segmentId, 'formal'),
+      lookupSegment: (materialId, revision, segmentId) =>
+        this.materials.lookupSegment(materialId, revision, segmentId, 'formal'),
       questions,
     });
     return this.lessons.saveBundle(projectId, bundle, digest);
@@ -1149,10 +1385,21 @@ export class StudyStore {
   }): { candidate: StatementRevisionCandidateDto; lesson: LessonVersionRow | null } {
     const candidate = this.lessonRevisions.get(input.projectId, input.candidateId);
     if (!candidate) throw new StudyError('NOT_FOUND', { candidateId: input.candidateId });
-    const base = this.lessons.getVersion(candidate.lessonId, candidate.baseVersion, input.projectId);
-    if (!base) throw new StudyError('NOT_FOUND', { lessonId: candidate.lessonId, version: candidate.baseVersion });
+    const base = this.lessons.getVersion(
+      candidate.lessonId,
+      candidate.baseVersion,
+      input.projectId,
+    );
+    if (!base)
+      throw new StudyError('NOT_FOUND', {
+        lessonId: candidate.lessonId,
+        version: candidate.baseVersion,
+      });
     if (base.status !== 'draft') {
-      throw new StudyError('STEP_ALREADY_COMMITTED', { status: base.status, reason: 'revision_base_not_draft' });
+      throw new StudyError('STEP_ALREADY_COMMITTED', {
+        status: base.status,
+        reason: 'revision_base_not_draft',
+      });
     }
     return this.transaction(() => {
       const decided = this.lessonRevisions.decide(input);
@@ -1211,9 +1458,13 @@ export class StudyStore {
    */
   saveScenePlan(input: SaveScenePlanInput): ScenePlanDto {
     const lesson = this.lessons.getVersion(input.lessonId, input.lessonVersion, input.projectId);
-    if (!lesson) throw new StudyError('NOT_FOUND', { lessonId: input.lessonId, version: input.lessonVersion });
+    if (!lesson)
+      throw new StudyError('NOT_FOUND', { lessonId: input.lessonId, version: input.lessonVersion });
     if (lesson.status !== 'draft') {
-      throw new StudyError('STEP_ALREADY_COMMITTED', { status: lesson.status, reason: 'plan_base_not_draft' });
+      throw new StudyError('STEP_ALREADY_COMMITTED', {
+        status: lesson.status,
+        reason: 'plan_base_not_draft',
+      });
     }
     return this.scenePlans.savePlan({ ...input, bundleId: lesson.bundleId });
   }
@@ -1253,12 +1504,35 @@ export class StudyStore {
     this.scenePlans.saveReceipt(projectId, requestId, action, intent, result);
   }
 
+  /** 计划命令回执（四态）：成功/确定失败/取消/未知都可查询、可重放。 */
+  scenePlanReceipt(projectId: string, requestId: string, action: string, intent: string) {
+    return this.scenePlans.planReceipt(projectId, requestId, action, intent);
+  }
+
+  saveScenePlanReceipt(input: {
+    projectId: string;
+    requestId: string;
+    action: 'save-scene-plan' | 'apply-courseware';
+    intent: string;
+    state: ScenePlanReceiptState;
+    result: unknown;
+    message: string;
+    errorCode?: string | null;
+    errorReason?: string | null;
+  }): ScenePlanReceiptDto {
+    return this.scenePlans.savePlanReceipt(input);
+  }
+
   /**
    * 人工处置完整课件候选（OMA-006 的「通过→写入场景计划」闭环）。
    *
    * 通过时在同一个事务内：把调用方已按冻结证据包规范化并复验过的场景写成该草案版本的
    * 场景计划，并把候选标记为 applied；拒绝只留档，不产生计划。
    * 基线版本必须是草案：已发布版本的计划不被原地改写。
+   *
+   * 候选记录了生成时的计划基线：审批时若计划已被别处推进（手工保存或另一候选通过），
+   * 除非显式 `override`，否则返回 `VERSION_CONFLICT`（`plan_revision_stale`）而不是
+   * 静默覆盖当前计划——审批旧候选不能抹掉别人后来的编辑。
    */
   applyCoursewareCandidate(input: {
     projectId: string;
@@ -1268,18 +1542,55 @@ export class StudyStore {
     reviewedBy: string;
     /** 通过时写入计划的场景（调用方已用领域层复验来源与知识点）；拒绝时为 null。 */
     scenes: ScenePlanDto['scenes'] | null;
+    /** 审批所依据的计划 revision；省略时用候选自身的基线。 */
+    expectedPlanRevision?: number;
+    /** 明确确认覆盖已推进的计划。 */
+    override?: boolean;
   }): { candidate: CoursewareCandidateDto; plan: ScenePlanDto | null } {
-    const candidate = this.scenePlans.getCandidate(input.projectId, input.candidateId);
-    if (!candidate) throw new StudyError('NOT_FOUND', { candidateId: input.candidateId });
-    const base = this.lessons.getVersion(candidate.lessonId, candidate.baseVersion, input.projectId);
-    if (!base) throw new StudyError('NOT_FOUND', { lessonId: candidate.lessonId, version: candidate.baseVersion });
-    if (base.status !== 'draft') {
-      throw new StudyError('STEP_ALREADY_COMMITTED', { status: base.status, reason: 'courseware_base_not_draft' });
-    }
     return this.transaction(() => {
+      const candidate = this.scenePlans.getCandidate(input.projectId, input.candidateId);
+      if (!candidate) throw new StudyError('NOT_FOUND', { candidateId: input.candidateId });
+      const base = this.lessons.getVersion(
+        candidate.lessonId,
+        candidate.baseVersion,
+        input.projectId,
+      );
+      if (!base)
+        throw new StudyError('NOT_FOUND', {
+          lessonId: candidate.lessonId,
+          version: candidate.baseVersion,
+        });
+      if (base.status !== 'draft') {
+        throw new StudyError('STEP_ALREADY_COMMITTED', {
+          status: base.status,
+          reason: 'courseware_base_not_draft',
+        });
+      }
+      const current = this.scenePlans.getPlan(
+        input.projectId,
+        candidate.lessonId,
+        candidate.baseVersion,
+      );
+      const currentRevision = current?.revision ?? 0;
+      const expected = input.expectedPlanRevision ?? candidate.basePlanRevision;
+      // 确认覆盖只授权用户看到的那一版；计划再次推进后必须重新比较和确认。
+      const baselineChanged =
+        candidate.basePlanRevision !== currentRevision ||
+        candidate.basePlanDigest !== (current?.digest ?? null);
+      if (
+        input.decision === 'approved' &&
+        (expected !== currentRevision ||
+          (input.override ? input.expectedPlanRevision === undefined : baselineChanged))
+      ) {
+        throw new StudyError('VERSION_CONFLICT', {
+          reason: 'plan_revision_stale',
+          expected,
+          received: currentRevision,
+          candidatePlanRevision: candidate.basePlanRevision,
+        });
+      }
       const decided = this.scenePlans.decideCandidate(input);
       if (input.decision === 'rejected' || !input.scenes) return { candidate: decided, plan: null };
-      const current = this.scenePlans.getPlan(input.projectId, candidate.lessonId, candidate.baseVersion);
       const plan = this.scenePlans.savePlan({
         projectId: input.projectId,
         lessonId: candidate.lessonId,
@@ -1287,7 +1598,7 @@ export class StudyStore {
         bundleId: base.bundleId,
         scenes: input.scenes,
         origin: 'model_generated',
-        baseRevision: current?.revision ?? 0,
+        baseRevision: currentRevision,
       });
       return { candidate: decided, plan };
     });
@@ -1331,7 +1642,10 @@ export class StudyStore {
    * 审核、发布、上课与模型调用四个入口共用这一份判定，避免出现「某处放行、某处阻断」
    * 的口径分裂。陈述在证据包里定位不到时按缺来源处理，不当作空引用放行。
    */
-  private lessonAdmission(projectId: string, lesson: LessonVersionRow): {
+  private lessonAdmission(
+    projectId: string,
+    lesson: LessonVersionRow,
+  ): {
     referenced: string[];
     admitted: Set<string>;
     blocked: string[];
@@ -1341,10 +1655,15 @@ export class StudyStore {
     const bundle = this.lessons.getBundle(lesson.bundleId, projectId);
     if (!bundle) throw new StudyError('INTERNAL', { bundleId: lesson.bundleId });
     const statementKnowledgeOf = (statementId: string): string | null =>
-      bundle.bundle.statements.find((statement) => statement.statementId === statementId)?.knowledgeId ?? null;
+      bundle.bundle.statements.find((statement) => statement.statementId === statementId)
+        ?.knowledgeId ?? null;
     const questionKnowledgeOf = (questionId: string): string[] =>
-      bundle.bundle.questions.find((question) => question.questionId === questionId)?.knowledgeIds ?? [];
-    const referenced = lessonReferencedKnowledgeIds(lesson, { statementKnowledgeOf, questionKnowledgeOf });
+      bundle.bundle.questions.find((question) => question.questionId === questionId)
+        ?.knowledgeIds ?? [];
+    const referenced = lessonReferencedKnowledgeIds(lesson, {
+      statementKnowledgeOf,
+      questionKnowledgeOf,
+    });
     const admission = this.checkAdmission(referenced, 'formal');
     return {
       referenced,
@@ -1360,6 +1679,9 @@ export class StudyStore {
    *
    * 批准前先复核准入：来源已失效的版本不能靠一次点击放行，界面拿到的是被阻断的知识点清单。
    * 审核结论只绑定该版本，改表述产生新草案版本后必须重新审核。
+   *
+   * 同时记录**审核当时的计划内容基线**（`planRevision`/`planDigest`）：这节课讲哪些场景属于
+   * 版本审核的一部分，之后手工保存或候选应用改了计划内容，旧审核即失效，发布必须复核当前内容。
    */
   reviewLesson(input: {
     projectId: string;
@@ -1369,33 +1691,48 @@ export class StudyStore {
     note: string;
   }): LessonReviewRow {
     const lesson = this.lessons.getVersion(input.lessonId, input.version, input.projectId);
-    if (!lesson) throw new StudyError('NOT_FOUND', { lessonId: input.lessonId, version: input.version });
+    if (!lesson)
+      throw new StudyError('NOT_FOUND', { lessonId: input.lessonId, version: input.version });
     assertLessonReviewable(lesson.status);
     const facts = this.lessonAdmission(input.projectId, lesson);
     if (input.decision === 'approved' && facts.blocked.length > 0) {
       throw new StudyError('KNOWLEDGE_INVALIDATED', { knowledgeIds: facts.blocked });
     }
+    const plan = this.scenePlans.getPlan(input.projectId, input.lessonId, input.version);
     return this.lessons.recordReview({
       projectId: input.projectId,
       lessonId: input.lessonId,
       version: input.version,
       decision: input.decision,
       note: input.note,
-      admittedKnowledgeIds: facts.referenced.filter((knowledgeId) => facts.admitted.has(knowledgeId)),
+      admittedKnowledgeIds: facts.referenced.filter((knowledgeId) =>
+        facts.admitted.has(knowledgeId),
+      ),
       blockedKnowledgeIds: facts.blocked,
+      planRevision: plan?.revision ?? null,
+      planDigest: plan?.digest ?? null,
     });
   }
-
   getLessonReview(lessonId: string, version: number, projectId: string): LessonReviewRow | null {
     return this.lessons.getReview(lessonId, version, projectId);
   }
 
-  /** 发布课程：本版本必须已有人工审核通过记录，且引用来源仍准入。 */
+  /**
+   * 发布课程：本版本必须已有人工审核通过记录，且引用来源仍准入。
+   *
+   * 发布前再复核一次计划内容与审核基线一致：审核之后若有人改了场景计划（手工保存或候选
+   * 应用），旧审核不再给新内容背书，发布被阻断，必须先重新审核。
+   */
   publishLesson(input: PublishLessonInput): LessonVersionRow {
     const lesson = this.lessons.getVersion(input.lessonId, input.version, input.projectId);
-    if (!lesson) throw new StudyError('NOT_FOUND', { lessonId: input.lessonId, version: input.version });
+    if (!lesson)
+      throw new StudyError('NOT_FOUND', { lessonId: input.lessonId, version: input.version });
     const facts = this.lessonAdmission(input.projectId, lesson);
     const review = this.lessons.getReview(input.lessonId, input.version, input.projectId);
+    assertPlanPublishable(
+      review,
+      this.scenePlanRevisionDigest(input.projectId, input.lessonId, input.version),
+    );
     return this.lessons.publish(input, {
       admittedKnowledgeIds: facts.admitted,
       reviewApproved: review?.decision === 'approved',
@@ -1414,10 +1751,17 @@ export class StudyStore {
   /**
    * 上课入口的统一复核（LESSON-02）。
    *
-   * 返回当前可上的课程版本与课堂映射；未发布、未审核或来源失效都抛领域错误。
-   * 页面不能自行判断「这节课还能上」，模型的教学调用也必须先过这道复核。
+   * 返回当前可上的课程版本与课堂映射；未发布、未审核、来源失效或**审核之后计划内容已变**
+   * 都抛领域错误。页面不能自行判断「这节课还能上」，模型的教学调用也必须先过这道复核。
+   *
+   * 计划绑定在这里再核一次，与审核、发布共用同一份判定（四个入口口径一致）：
+   * 发布本身已要求当前计划与审核基线一致，这里复核的是「发布之后有没有别的路径改过计划」——
+   * 宁可整节阻断，也不按与审核不符的内容授课。
    */
-  assertLessonClassroomReady(lessonId: string, projectId: string): {
+  assertLessonClassroomReady(
+    lessonId: string,
+    projectId: string,
+  ): {
     lesson: LessonVersionRow;
     link: ClassroomLinkRow;
     referencedKnowledgeIds: string[];
@@ -1425,19 +1769,35 @@ export class StudyStore {
     const link = this.lessons.getLink(lessonId, projectId);
     if (!link || link.status !== 'published') {
       throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
-        reason: 'no_published_link', status: link?.status ?? null, note: link?.statusNote ?? '',
+        reason: 'no_published_link',
+        status: link?.status ?? null,
+        note: link?.statusNote ?? '',
       });
     }
     const lesson = this.lessons.getVersion(lessonId, link.lessonVersion, projectId);
     if (!lesson) throw new StudyError('INTERNAL', { lessonId, version: link.lessonVersion });
     const facts = this.lessonAdmission(projectId, lesson);
     const review = this.lessons.getReview(lessonId, lesson.version, projectId);
+    assertPlanPublishable(
+      review,
+      this.scenePlanRevisionDigest(projectId, lessonId, lesson.version),
+    );
     assertLessonTeachable(
       { lessonStatus: lesson.status, reviewApproved: review?.decision === 'approved' },
       facts.referenced,
       facts.admitted,
     );
     return { lesson, link, referencedKnowledgeIds: facts.referenced };
+  }
+
+  /** 当前计划的 (revision, digest)；无计划时为 null。审核/发布/上课三处共用。 */
+  private scenePlanRevisionDigest(
+    projectId: string,
+    lessonId: string,
+    lessonVersion: number,
+  ): { revision: number; digest: string } | null {
+    const plan = this.scenePlans.getPlan(projectId, lessonId, lessonVersion);
+    return plan ? { revision: plan.revision, digest: plan.digest } : null;
   }
 
   // ——————————————————— 讲解卡、课堂会话与动作收据 ———————————————————
@@ -1450,7 +1810,8 @@ export class StudyStore {
    */
   createExplanation(input: CreateExplanationInput): ExplanationRow {
     const lesson = this.lessons.getVersion(input.lessonId, input.lessonVersion, input.projectId);
-    if (!lesson) throw new StudyError('NOT_FOUND', { lessonId: input.lessonId, version: input.lessonVersion });
+    if (!lesson)
+      throw new StudyError('NOT_FOUND', { lessonId: input.lessonId, version: input.lessonVersion });
     const bundle = this.lessons.getBundle(lesson.bundleId, input.projectId);
     if (!bundle) throw new StudyError('INTERNAL', { bundleId: lesson.bundleId });
     if (input.origin === 'teacher_authored' || input.statementIds.length > 0) {
@@ -1468,7 +1829,8 @@ export class StudyStore {
   }): ExplanationRow {
     const card = this.teaching.getCard(input.explanationId, input.projectId);
     if (!card) throw new StudyError('NOT_FOUND', { explanationId: input.explanationId });
-    if (card.status !== 'draft') throw new StudyError('STEP_ALREADY_COMMITTED', { status: card.status });
+    if (card.status !== 'draft')
+      throw new StudyError('STEP_ALREADY_COMMITTED', { status: card.status });
     if (input.text === undefined && input.statementIds === undefined) {
       throw new StudyError('INVALID_ARGUMENT', { reason: 'nothing_to_edit' });
     }
@@ -1485,7 +1847,11 @@ export class StudyStore {
     });
   }
 
-  listExplanationCards(lessonId: string, lessonVersion: number, projectId: string): ExplanationRow[] {
+  listExplanationCards(
+    lessonId: string,
+    lessonVersion: number,
+    projectId: string,
+  ): ExplanationRow[] {
     return this.teaching.listCards(lessonId, lessonVersion, projectId);
   }
 
@@ -1512,7 +1878,12 @@ export class StudyStore {
         new Set(this.checkAdmission(knowledgeIds, 'formal').admitted),
       );
     }
-    return this.teaching.reviewCard(input.explanationId, input.projectId, input.decision, input.note);
+    return this.teaching.reviewCard(
+      input.explanationId,
+      input.projectId,
+      input.decision,
+      input.note,
+    );
   }
 
   /**
@@ -1531,7 +1902,10 @@ export class StudyStore {
     const ready = this.assertLessonClassroomReady(input.lessonId, input.projectId);
     const existing = this.teaching.getOpenSession(input.projectId);
     if (existing && existing.lessonId !== input.lessonId) {
-      throw new StudyError('PROJECT_ALREADY_OPEN', { reason: 'classroom_session_running', sessionId: existing.sessionId });
+      throw new StudyError('PROJECT_ALREADY_OPEN', {
+        reason: 'classroom_session_running',
+        sessionId: existing.sessionId,
+      });
     }
     if (existing) return existing;
     const run = this.runs.getLatestRun();
@@ -1566,15 +1940,23 @@ export class StudyStore {
   }
 
   /** Every teaching entry revalidates the exact published version frozen by this session. */
-  assertClassroomSessionReady(projectId: string, sessionId: string): ReturnType<StudyStore['assertLessonClassroomReady']> {
+  assertClassroomSessionReady(
+    projectId: string,
+    sessionId: string,
+  ): ReturnType<StudyStore['assertLessonClassroomReady']> {
     const session = this.requireSession(sessionId, projectId);
     assertSessionActive(session.status);
     if (session.status === 'awaiting_learner') {
       throw new StudyError('CLASSROOM_AWAITING_LEARNER', { reason: 'awaiting_learner' });
     }
     const ready = this.assertLessonClassroomReady(session.lessonId, projectId);
-    if (ready.lesson.version !== session.lessonVersion || ready.lesson.bundleId !== session.bundleId) {
-      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { reason: 'session_lesson_version_changed' });
+    if (
+      ready.lesson.version !== session.lessonVersion ||
+      ready.lesson.bundleId !== session.bundleId
+    ) {
+      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+        reason: 'session_lesson_version_changed',
+      });
     }
     return ready;
   }
@@ -1607,10 +1989,14 @@ export class StudyStore {
    * 开启时要求项目里至少存在一位同学档案：没有档案的「开启」只是空开关，
    * 会让人以为同学已经参与。关闭不影响教师会话，课堂照常继续。
    */
-  setClassroomPeers(projectId: string, sessionId: string, input: {
-    enabled: boolean;
-    engagement?: PeerEngagement;
-  }): ClassroomSessionRow{
+  setClassroomPeers(
+    projectId: string,
+    sessionId: string,
+    input: {
+      enabled: boolean;
+      engagement?: PeerEngagement;
+    },
+  ): ClassroomSessionRow {
     return this.classroomCommands.setClassroomPeers(projectId, sessionId, input);
   }
 
@@ -1619,22 +2005,37 @@ export class StudyStore {
     return this.teaching.peerTurnCount(sessionId, projectId, roundIndex);
   }
 
-  listClassroomPeerTurns(projectId: string, sessionId: string, roundIndex?: number): ClassroomPeerTurnDto[] {
+  listClassroomPeerTurns(
+    projectId: string,
+    sessionId: string,
+    roundIndex?: number,
+  ): ClassroomPeerTurnDto[] {
     return this.teaching.listPeerTurns(sessionId, projectId, roundIndex);
   }
 
   getClassroomPeerTurnReceipt(input: {
-    projectId: string; sessionId: string; requestId: string;
-    roleProfileId: string; kind: 'question' | 'discussion' | 'example';
+    projectId: string;
+    sessionId: string;
+    requestId: string;
+    roleProfileId: string;
+    kind: 'question' | 'discussion' | 'example';
   }): ClassroomPeerTurnDto | null {
     this.requireSession(input.sessionId, input.projectId);
-    const existing = this.teaching.getReceipt(buildStepKey('classroom-peer-turn', input.projectId, input.sessionId, input.requestId));
+    const existing = this.teaching.getReceipt(
+      buildStepKey('classroom-peer-turn', input.projectId, input.sessionId, input.requestId),
+    );
     if (!existing) return null;
     const receipt = existing.payload;
-    if (receipt.kind !== 'peer_turn' || receipt.roleProfileId !== input.roleProfileId || receipt.peerKind !== input.kind) {
+    if (
+      receipt.kind !== 'peer_turn' ||
+      receipt.roleProfileId !== input.roleProfileId ||
+      receipt.peerKind !== input.kind
+    ) {
       throw new StudyError('VERSION_CONFLICT', { reason: 'peer_turn_context_changed' });
     }
-    const turn = this.teaching.listPeerTurns(input.sessionId, input.projectId).find(item => item.turnId === receipt.turnId);
+    const turn = this.teaching
+      .listPeerTurns(input.sessionId, input.projectId)
+      .find((item) => item.turnId === receipt.turnId);
     if (!turn) throw new StudyError('INTERNAL', { reason: 'peer_turn_receipt_without_turn' });
     return turn;
   }
@@ -1655,7 +2056,7 @@ export class StudyStore {
     reviewedExampleId: string | null;
     /** 稳定请求 ID：同一次发言重试读回既有结果。 */
     requestId: string;
-  }): { turn: ClassroomPeerTurnDto; deduplicated: boolean }{
+  }): { turn: ClassroomPeerTurnDto; deduplicated: boolean } {
     return this.classroomCommands.recordClassroomPeerTurn(input);
   }
 
@@ -1666,56 +2067,96 @@ export class StudyStore {
    */
   getClassroomPlayReceipt(projectId: string, sessionId: string, requestId: string) {
     const session = this.requireSession(sessionId, projectId);
-    const existing = this.teaching.getReceipt(buildStepKey('classroom-play-request', projectId, sessionId, requestId));
+    const existing = this.teaching.getReceipt(
+      buildStepKey('classroom-play-request', projectId, sessionId, requestId),
+    );
     if (!existing) return null;
     // 收据命中就是幂等重放：此时不该再拿「当前场景」去比。切场景后重发同一个请求
     // 仍应读回原来那张卡，否则「重复提交读回既有收据」在换场后就失效了。
-    if (existing.payload.kind === 'queue_empty') return { card: null, deduplicated: true, session, playedIds: this.teaching.playedCardIds(sessionId, projectId) };
-    if (existing.payload.kind !== 'card_played') throw new StudyError('INTERNAL', { reason: 'play_receipt_invalid' });
+    if (existing.payload.kind === 'queue_empty')
+      return {
+        card: null,
+        deduplicated: true,
+        session,
+        playedIds: this.teaching.playedCardIds(sessionId, projectId),
+      };
+    if (existing.payload.kind !== 'card_played')
+      throw new StudyError('INTERNAL', { reason: 'play_receipt_invalid' });
     const saved = this.teaching.getCard(existing.payload.explanationId, projectId);
     if (!saved) throw new StudyError('INTERNAL', { reason: 'played_card_missing' });
-    if (saved.sceneId !== existing.sceneId || saved.lessonId !== session.lessonId || saved.lessonVersion !== session.lessonVersion) {
+    if (
+      saved.sceneId !== existing.sceneId ||
+      saved.lessonId !== session.lessonId ||
+      saved.lessonVersion !== session.lessonVersion
+    ) {
       throw new StudyError('INTERNAL', { reason: 'play_receipt_binding_mismatch' });
     }
-    return { card: this.toCard(saved), deduplicated: true, session, playedIds: this.teaching.playedCardIds(sessionId, projectId) };
+    return {
+      card: this.toCard(saved),
+      deduplicated: true,
+      session,
+      playedIds: this.teaching.playedCardIds(sessionId, projectId),
+    };
   }
 
-  getClassroomAdvanceReceipt(projectId: string, sessionId: string, sceneId: string, requestId: string) {
+  getClassroomAdvanceReceipt(
+    projectId: string,
+    sessionId: string,
+    sceneId: string,
+    requestId: string,
+  ) {
     const session = this.requireSession(sessionId, projectId);
-    const existing = this.teaching.getReceipt(buildStepKey('classroom-scene-request', projectId, sessionId, requestId));
+    const existing = this.teaching.getReceipt(
+      buildStepKey('classroom-scene-request', projectId, sessionId, requestId),
+    );
     if (!existing) return null;
-    if (existing.payload.kind !== 'scene_advanced' || existing.payload.toSceneId !== sceneId) throw new StudyError('VERSION_CONFLICT', { reason: 'scene_request_context_changed' });
+    if (existing.payload.kind !== 'scene_advanced' || existing.payload.toSceneId !== sceneId)
+      throw new StudyError('VERSION_CONFLICT', { reason: 'scene_request_context_changed' });
     return { session, deduplicated: true };
   }
 
-  playNextExplanation(projectId: string, sessionId: string, requestId: string): {
+  playNextExplanation(
+    projectId: string,
+    sessionId: string,
+    requestId: string,
+  ): {
     card: ExplanationCardDto | null;
     deduplicated: boolean;
     session: ClassroomSessionRow;
     playedIds: string[];
-  }{
+  } {
     return this.classroomCommands.playNextExplanation(projectId, sessionId, requestId);
   }
 
   /** 交还本人：会话进入等待状态并落库，重启后仍然等待，不会自行继续讲解。 */
-  handBackToLearner(projectId: string, sessionId: string, reason: string): ClassroomSessionRow{
+  handBackToLearner(projectId: string, sessionId: string, reason: string): ClassroomSessionRow {
     return this.classroomCommands.handBackToLearner(projectId, sessionId, reason);
   }
 
   /** 本人作答归来：开始新一轮，轮内计数清零，整节课累计继续保留。 */
-  markLearnerAnswered(projectId: string, sessionId: string): ClassroomSessionRow{
+  markLearnerAnswered(projectId: string, sessionId: string): ClassroomSessionRow {
     return this.classroomCommands.markLearnerAnswered(projectId, sessionId);
   }
 
   /** 切换场景同样开启新一轮；等待本人时不允许跳过。 */
-  advanceClassroomScene(projectId: string, sessionId: string, sceneId: string, requestId: string): {
+  advanceClassroomScene(
+    projectId: string,
+    sessionId: string,
+    sceneId: string,
+    requestId: string,
+  ): {
     session: ClassroomSessionRow;
     deduplicated: boolean;
-  }{
+  } {
     return this.classroomCommands.advanceClassroomScene(projectId, sessionId, sceneId, requestId);
   }
 
-  closeClassroomSession(projectId: string, sessionId: string, status: 'completed' | 'cancelled', reason: string): ClassroomSessionRow{
+  closeClassroomSession(
+    projectId: string,
+    sessionId: string,
+    status: 'completed' | 'cancelled',
+    reason: string,
+  ): ClassroomSessionRow {
     return this.classroomCommands.closeClassroomSession(projectId, sessionId, status, reason);
   }
 
@@ -1736,7 +2177,7 @@ export class StudyStore {
     /** A dispatched result whose frozen context is obsolete: account, never resume teaching. */
     discarded?: boolean;
     limits?: { maxCallsPerRound?: number; maxPeerTurnsPerRound?: number; maxLessonCalls?: number };
-  }): ClassroomSessionRow{
+  }): ClassroomSessionRow {
     return this.classroomCommands.noteClassroomModelCall(input);
   }
 
@@ -1772,11 +2213,19 @@ export class StudyStore {
     return this.roles.list(scope);
   }
 
-  createRoleProfile(kind: RoleKind, input: RoleWriteInput, scope: RecordScope = 'formal'): RoleProfileRow {
+  createRoleProfile(
+    kind: RoleKind,
+    input: RoleWriteInput,
+    scope: RecordScope = 'formal',
+  ): RoleProfileRow {
     return this.roles.create(kind, input, scope);
   }
 
-  updateRoleProfile(profileId: string, input: RoleWriteInput, scope: RecordScope = 'formal'): RoleProfileRow {
+  updateRoleProfile(
+    profileId: string,
+    input: RoleWriteInput,
+    scope: RecordScope = 'formal',
+  ): RoleProfileRow {
     return this.roles.update(profileId, input, scope);
   }
 
@@ -1852,7 +2301,14 @@ export class StudyStore {
     return this.classroom.writeState(projectId, stageId, currentSceneId);
   }
 
-  putClassroomAsset(projectId: string, assetId: string, mediaType: string, metadata: Record<string, unknown>, bytes: Uint8Array, scope: RecordScope = 'formal'): ClassroomAssetRow {
+  putClassroomAsset(
+    projectId: string,
+    assetId: string,
+    mediaType: string,
+    metadata: Record<string, unknown>,
+    bytes: Uint8Array,
+    scope: RecordScope = 'formal',
+  ): ClassroomAssetRow {
     return this.classroomAssets.put(projectId, assetId, mediaType, metadata, bytes, scope);
   }
 
@@ -1890,11 +2346,23 @@ export class StudyStore {
     return this.classroomAssets.reclaim(projectId, assetIds, scope);
   }
 
-  putClassroomAssetBinding(projectId: string, stageId: string, sceneId: string, slot: string, assetId: string, scope: RecordScope = 'formal'): ClassroomAssetBindingRow {
+  putClassroomAssetBinding(
+    projectId: string,
+    stageId: string,
+    sceneId: string,
+    slot: string,
+    assetId: string,
+    scope: RecordScope = 'formal',
+  ): ClassroomAssetBindingRow {
     return this.classroomAssets.putBinding(projectId, stageId, sceneId, slot, assetId, scope);
   }
 
-  getClassroomAssetBinding(projectId: string, stageId: string, sceneId: string, slot: string): ClassroomAssetBindingRow | null {
+  getClassroomAssetBinding(
+    projectId: string,
+    stageId: string,
+    sceneId: string,
+    slot: string,
+  ): ClassroomAssetBindingRow | null {
     return this.classroomAssets.getBinding(projectId, stageId, sceneId, slot);
   }
 
@@ -1902,44 +2370,82 @@ export class StudyStore {
     return this.classroomAssets.listBindings(projectId, stageId);
   }
 
-  private assertClassroomBoardBinding(binding: ClassroomBoardBindingDto, content: ClassroomBoardContentDto): void {
+  private assertClassroomBoardBinding(
+    binding: ClassroomBoardBindingDto,
+    content: ClassroomBoardContentDto,
+  ): void {
     const ready = this.assertLessonClassroomReady(binding.lessonId, binding.projectId);
     if (ready.lesson.version !== binding.lessonVersion || !ready.link.stageId) {
       throw new StudyError('VERSION_CONFLICT', { reason: 'board_lesson_version_changed' });
     }
-    const source = this.classroom.listSceneSources(binding.projectId, ready.link.stageId).get(binding.sceneId);
+    const source = this.classroom
+      .listSceneSources(binding.projectId, ready.link.stageId)
+      .get(binding.sceneId);
     const bundle = this.lessons.getBundle(ready.lesson.bundleId, binding.projectId);
     if (!source || source.recordScope !== 'formal' || !source.reviewedBy || !bundle) {
       throw new StudyError('CLASSROOM_SCENE_SOURCE_MISSING');
     }
-    const allowed = new Set(bundle.bundle.statements.filter(statement => ready.lesson.statementIds.includes(statement.statementId)
-      && source.knowledgeIds.includes(statement.knowledgeId)).map(statement => statement.statementId));
+    const allowed = new Set(
+      bundle.bundle.statements
+        .filter(
+          (statement) =>
+            ready.lesson.statementIds.includes(statement.statementId) &&
+            source.knowledgeIds.includes(statement.knowledgeId),
+        )
+        .map((statement) => statement.statementId),
+    );
     if (content.kind === 'focus') {
       // 教师聚焦只能指向**这一版冻结课件里真实存在**的元素：不能凭空指一个不存在的对象，
       // 否则共享投影与课堂画布会指向空白。
       const document = this.classroom.getDocument(binding.projectId, ready.link.stageId);
-      const scenes = (document?.document as { scenes?: Array<{ id?: string; content?: { canvas?: { elements?: Array<{ id?: string }> } } }> } | undefined)?.scenes ?? [];
-      const scene = scenes.find(item => item.id === binding.sceneId);
-      const elementIds = new Set((scene?.content?.canvas?.elements ?? []).map(element => String(element.id ?? '')));
+      const scenes =
+        (
+          document?.document as
+            | {
+                scenes?: Array<{
+                  id?: string;
+                  content?: { canvas?: { elements?: Array<{ id?: string }> } };
+                }>;
+              }
+            | undefined
+        )?.scenes ?? [];
+      const scene = scenes.find((item) => item.id === binding.sceneId);
+      const elementIds = new Set(
+        (scene?.content?.canvas?.elements ?? []).map((element) => String(element.id ?? '')),
+      );
       if (!elementIds.has(content.elementId)) {
-        throw new StudyError('CLASSROOM_SCENE_SOURCE_MISSING', { reason: 'board_focus_element_missing', elementId: content.elementId });
+        throw new StudyError('CLASSROOM_SCENE_SOURCE_MISSING', {
+          reason: 'board_focus_element_missing',
+          elementId: content.elementId,
+        });
       }
     }
-    if (binding.statementIds.length === 0 || binding.statementIds.some(id => !allowed.has(id))) {
-      throw new StudyError('CLASSROOM_SCENE_SOURCE_MISSING', { reason: 'board_statement_outside_scene' });
+    if (binding.statementIds.length === 0 || binding.statementIds.some((id) => !allowed.has(id))) {
+      throw new StudyError('CLASSROOM_SCENE_SOURCE_MISSING', {
+        reason: 'board_statement_outside_scene',
+      });
     }
   }
 
   /** Historical read does not resume a teacher or bypass the new-action guard. */
-  classroomBoardState(projectId: string, sessionId: string) { return this.classroomBoard.state(projectId, sessionId); }
+  classroomBoardState(projectId: string, sessionId: string) {
+    return this.classroomBoard.state(projectId, sessionId);
+  }
   classroomBoardStatementIds(projectId: string, sessionId: string): string[] {
     const classroom = this.requireSession(sessionId, projectId);
     const lesson = this.lessons.getVersion(classroom.lessonId, classroom.lessonVersion, projectId);
     const bundle = lesson ? this.lessons.getBundle(lesson.bundleId, projectId) : null;
-    const source = classroom.stageId ? this.classroom.listSceneSources(projectId, classroom.stageId).get(classroom.currentSceneId) : null;
+    const source = classroom.stageId
+      ? this.classroom.listSceneSources(projectId, classroom.stageId).get(classroom.currentSceneId)
+      : null;
     if (!lesson || !bundle || !source) return [];
-    return bundle.bundle.statements.filter(statement => lesson.statementIds.includes(statement.statementId)
-      && source.knowledgeIds.includes(statement.knowledgeId)).map(statement => statement.statementId);
+    return bundle.bundle.statements
+      .filter(
+        (statement) =>
+          lesson.statementIds.includes(statement.statementId) &&
+          source.knowledgeIds.includes(statement.knowledgeId),
+      )
+      .map((statement) => statement.statementId);
   }
   /**
    * 当前场景里可被教师聚焦的元素编号。
@@ -1951,26 +2457,71 @@ export class StudyStore {
     const classroom = this.requireSession(sessionId, projectId);
     if (!classroom.stageId) return [];
     const document = this.classroom.getDocument(projectId, classroom.stageId);
-    const scenes = (document?.document as { scenes?: Array<{ id?: string; content?: { canvas?: { elements?: Array<{ id?: string }> } } }> } | undefined)?.scenes ?? [];
-    const scene = scenes.find(item => item.id === classroom.currentSceneId);
-    return (scene?.content?.canvas?.elements ?? []).map(element => String(element.id ?? '')).filter(Boolean);
+    const scenes =
+      (
+        document?.document as
+          | {
+              scenes?: Array<{
+                id?: string;
+                content?: { canvas?: { elements?: Array<{ id?: string }> } };
+              }>;
+            }
+          | undefined
+      )?.scenes ?? [];
+    const scene = scenes.find((item) => item.id === classroom.currentSceneId);
+    return (scene?.content?.canvas?.elements ?? [])
+      .map((element) => String(element.id ?? ''))
+      .filter(Boolean);
   }
-  createClassroomBoardItem(input: CreateClassroomBoardInput) { return this.classroomBoard.create(input); }
-  reviewClassroomBoardItem(input: ReviewClassroomBoardInput) { return this.classroomBoard.review(input); }
-  playClassroomBoardItem(input: PlayClassroomBoardInput) { return this.classroomBoard.play(input); }
-  getClassroomBoardPlayReceipt(input: PlayClassroomBoardInput) { return this.classroomBoard.getPlayReceipt(input); }
+  createClassroomBoardItem(input: CreateClassroomBoardInput) {
+    return this.classroomBoard.create(input);
+  }
+  reviewClassroomBoardItem(input: ReviewClassroomBoardInput) {
+    return this.classroomBoard.review(input);
+  }
+  playClassroomBoardItem(input: PlayClassroomBoardInput) {
+    return this.classroomBoard.play(input);
+  }
+  getClassroomBoardPlayReceipt(input: PlayClassroomBoardInput) {
+    return this.classroomBoard.getPlayReceipt(input);
+  }
 
-  getFeedbackContext(projectId: string, uid: string, attemptId: string) { return this.feedbackReview.context(projectId, uid, attemptId); }
-  listReviewTasks(projectId: string, uid: string) { return this.feedbackReview.tasks(projectId, uid); }
-  feedbackCommand(projectId: string, uid: string, command: FeedbackReviewCommand, origin: 'manual' | 'model' = 'manual') { return this.feedbackReview.command(projectId, uid, command, origin); }
+  getFeedbackContext(projectId: string, uid: string, attemptId: string) {
+    return this.feedbackReview.context(projectId, uid, attemptId);
+  }
+  listReviewTasks(projectId: string, uid: string) {
+    return this.feedbackReview.tasks(projectId, uid);
+  }
+  feedbackCommand(
+    projectId: string,
+    uid: string,
+    command: FeedbackReviewCommand,
+    origin: 'manual' | 'model' = 'manual',
+  ) {
+    return this.feedbackReview.command(projectId, uid, command, origin);
+  }
 
-  getModelUsageCall(projectId: string, requestId: string, intent?: string) { return this.modelUsage.get(projectId, requestId, intent); }
-  listModelUsageCalls(projectId: string) { return this.modelUsage.list(projectId); }
+  getModelUsageCall(projectId: string, requestId: string, intent?: string) {
+    return this.modelUsage.get(projectId, requestId, intent);
+  }
+  listModelUsageCalls(projectId: string) {
+    return this.modelUsage.list(projectId);
+  }
   startModelUsageCall(input: StartModelUsageCallInput, limits: ModelUsageLimits) {
-    return this.transaction(() => this.modelUsage.start(input, this.modelCallUsage(input.runId), limits));
+    return this.transaction(() =>
+      this.modelUsage.start(input, this.modelCallUsage(input.runId), limits),
+    );
   }
-  settleModelUsageCall(projectId: string, requestId: string, input: SettleModelUsageCallInput) { return this.modelUsage.settle(projectId, requestId, input); }
-  saveModelUsageCallResult(projectId: string, requestId: string, result: ModelUsageCallDto['result']) { return this.modelUsage.saveResult(projectId, requestId, result); }
+  settleModelUsageCall(projectId: string, requestId: string, input: SettleModelUsageCallInput) {
+    return this.modelUsage.settle(projectId, requestId, input);
+  }
+  saveModelUsageCallResult(
+    projectId: string,
+    requestId: string,
+    result: ModelUsageCallDto['result'],
+  ) {
+    return this.modelUsage.saveResult(projectId, requestId, result);
+  }
   /**
    * 共享预算报告：实际/估算/未知分开，未结算清单可见（BUDGET-01）。
    *

@@ -116,5 +116,20 @@
   "apps/learning/app/api/study/lessons/courseware/route.ts",
   "tests/lesson-scene-plan.test.ts",
   "tests/lesson-scene-plan-http.test.ts",
-  "tests/lesson-courseware-model.test.ts"
+  "tests/lesson-courseware-model.test.ts",
+  "tests/lesson-plan-integrity-http.test.ts",
+  "packages/study-storage/src/repositories/types.ts",
+  "packages/study-storage/src/schema.ts",
+  "packages/study-contracts/src/lesson.ts",
+  "packages/study-contracts/src/responses.ts",
+  "apps/learning/lib/server/dto.ts",
+  "apps/learning/components/lesson-workbench.tsx",
+  "apps/learning/components/lesson-command-retry.ts",
+  "apps/learning/lib/classroom/plan-rich-text.ts",
+  "packages/study-storage/src/migrations/scene-plan.ts",
+  "tests/lesson-command-retry.test.ts",
+  "tests/lesson-plan-rich-text.test.ts",
+  "tests/lesson-scene-plan-migration.test.ts",
+  "scripts/smoke-formal-quiz.cjs",
+  "scripts/smoke-lesson-plan.cjs"
 ]

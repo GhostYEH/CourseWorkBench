@@ -16,6 +16,8 @@ import { projectScopeSchema } from './api';
 
 /** 场景计划结构版本。 */
 export const SCENE_PLAN_VERSION = 1;
+/** 新保存与模型生成的上限，与正式课件的可授课场景数保持一致。历史 DTO 仍可读取 48 项。 */
+export const SCENE_PLAN_WRITE_LIMIT = 24;
 
 /** 计划里允许出现的场景种类：与 `@openmaic/dsl` 的四类 Scene 一致。 */
 export const PLAN_SCENE_KINDS = ['slide', 'quiz', 'interactive', 'pbl'] as const;
@@ -83,6 +85,8 @@ export type PlanSceneDto = z.infer<typeof planSceneSchema>;
  *
  * `origin` 区分确定性装配与模型生成的计划；两者都必须经人工审核发布后才进入教学。
  * `revision` 是乐观并发版本：客户端基于读到的 revision 提交，服务端 revision 已推进即拒绝。
+ * `digest` 是**计划内容**的稳定摘要（由 `lessonId/lessonVersion/bundleId/scenes` 决定，不含
+ * revision 与时间戳）：审核结论与发布复核都绑定它，内容一变（手工保存或候选应用）旧审核即失效。
  */
 export const scenePlanSchema = z
   .object({
@@ -94,12 +98,20 @@ export const scenePlanSchema = z
     scenes: z.array(planSceneSchema).min(1).max(48),
     revision: z.number().int().nonnegative(),
     origin: z.enum(['deterministic', 'model_generated']),
+    digest: z.string().min(1),
     updatedAt: z.string(),
   })
   .strict();
 export type ScenePlanDto = z.infer<typeof scenePlanSchema>;
 
-/** 保存场景计划：整份计划覆盖写，带 `baseRevision` 做乐观并发。 */
+/**
+ * 保存场景计划：整份计划覆盖写，带 `baseRevision` 做乐观并发。
+ *
+ * `baseRevision` 必须是**编辑器实际加载的那一版**计划 revision，而不是「当前读到的最新 props」：
+ * 界面拿到新计划却仍持有旧快照时，用新 revision 提交等于给旧内容背书，服务端会把它当成
+ * 一次合法更新而静默覆盖。`requestId` 与 `action`+意图一起做幂等：同一次保存重试（例如
+ * 响应丢失后重发）读回既有结果，不因重发而推进第二个 revision。
+ */
 export const scenePlanSaveSchema = z
   .object({
     scope: projectScopeSchema,
@@ -109,7 +121,7 @@ export const scenePlanSaveSchema = z
     version: z.number().int().positive(),
     /** 客户端读到并据以编辑的 revision；服务端已推进时返回 VERSION_CONFLICT。 */
     baseRevision: z.number().int().nonnegative(),
-    scenes: z.array(planSceneSchema).min(1).max(48),
+    scenes: z.array(planSceneSchema).min(1).max(SCENE_PLAN_WRITE_LIMIT),
   })
   .strict();
 export type ScenePlanSaveInput = z.infer<typeof scenePlanSaveSchema>;
@@ -155,7 +167,7 @@ export const coursewareSceneOutputSchema = z
 export type CoursewareSceneOutput = z.infer<typeof coursewareSceneOutputSchema>;
 
 export const coursewareOutputSchema = z
-  .object({ scenes: z.array(coursewareSceneOutputSchema).min(1).max(48) })
+  .object({ scenes: z.array(coursewareSceneOutputSchema).min(1).max(SCENE_PLAN_WRITE_LIMIT) })
   .strict();
 export type CoursewareOutput = z.infer<typeof coursewareOutputSchema>;
 
@@ -163,13 +175,23 @@ export type CoursewareOutput = z.infer<typeof coursewareOutputSchema>;
 export const COURSEWARE_CANDIDATE_STATUS = ['pending', 'applied', 'rejected'] as const;
 export type CoursewareCandidateStatus = (typeof COURSEWARE_CANDIDATE_STATUS)[number];
 
-/** 一条完整课件生成候选。正文是模型草案，未通过前不进入任何课程计划或教学。 */
+/**
+ * 一条完整课件生成候选。正文是模型草案，未通过前不进入任何课程计划或教学。
+ *
+ * `basePlanRevision` / `basePlanDigest` 记录**生成候选时**该版本场景计划的基线：
+ * 人工审批时若计划已被别处推进（手工保存或另一候选通过），通过操作必须显式确认覆盖，
+ * 不能把「审批一份基于旧计划的候选」静默写成对当前计划的替换。
+ */
 export const coursewareCandidateSchema = z
   .object({
     candidateId: z.string().min(1),
     projectId: z.string().min(1),
     lessonId: z.string().min(1),
     baseVersion: z.number().int().positive(),
+    /** 生成时的计划 revision；该版本当时没有计划时为 0。 */
+    basePlanRevision: z.number().int().nonnegative(),
+    /** 生成时的计划内容摘要；该版本当时没有计划时为 null。 */
+    basePlanDigest: z.string().min(1).nullable(),
     origin: z.literal('model_generated'),
     status: z.enum(COURSEWARE_CANDIDATE_STATUS),
     scenes: z.array(planSceneSchema).min(1).max(48),
@@ -183,7 +205,14 @@ export const coursewareCandidateSchema = z
   .strict();
 export type CoursewareCandidateDto = z.infer<typeof coursewareCandidateSchema>;
 
-/** 人工处置完整课件候选：通过则把候选场景写入该草案版本的场景计划。 */
+/**
+ * 人工处置完整课件候选：通过则把候选场景写入该草案版本的场景计划。
+ *
+ * `expectedPlanRevision` 是审批人**看到并据以决策**的计划 revision（通常取自候选的
+ * `basePlanRevision`）。计划已被推进时服务端返回 `VERSION_CONFLICT`（`plan_revision_stale`），
+ * 审批人需重新查看当前计划后显式设置 `override: true`，并用 `expectedPlanRevision` 绑定
+ * 当时看到的当前修订；计划再次推进后旧确认也会失效。仅修改预期修订不能代替覆盖确认。
+ */
 export const coursewareApplySchema = z
   .object({
     scope: projectScopeSchema,
@@ -192,6 +221,44 @@ export const coursewareApplySchema = z
     candidateId: z.string().min(1),
     decision: z.enum(['approved', 'rejected']),
     note: z.string().max(500),
+    /** 审批所依据的修订；覆盖时必须为用户看到的当前修订，拒绝时忽略。 */
+    expectedPlanRevision: z.number().int().nonnegative().optional(),
+    /** 明确确认覆盖已推进的计划；缺省（false）时计划已变化即拒绝。 */
+    override: z.boolean().default(false),
   })
   .strict();
 export type CoursewareApplyInput = z.infer<typeof coursewareApplySchema>;
+
+/**
+ * 计划保存与候选处置的**事务内回执**（LESSON-02）。
+ *
+ * 四种结果语义必须可区分、可查询、可重放：
+ * - `completed`：业务写入已提交，回执与业务在同一事务落库；重发同 requestId 读回既有结果。
+ * - `failed`：确定失败（校验/冲突/权限），事务已回滚，没有任何业务写入；重发同 requestId
+ *   返回同一条失败回执，调用方必须换新 requestId 才能真正重试。
+ * - `cancelled`：调用方在提交前取消，事务未提交；同样不产生业务写入，重发读回取消回执。
+ * - `unknown`：外部/未知结果（例如 provider 已派发但结果未能确认）。**不写入业务结果**，
+ *   保留预占且不自动重发；调用方需人工核对用量记录后再决定。
+ */
+export const SCENE_PLAN_RECEIPT_STATES = ['completed', 'failed', 'cancelled', 'unknown'] as const;
+export type ScenePlanReceiptState = (typeof SCENE_PLAN_RECEIPT_STATES)[number];
+
+export const scenePlanReceiptSchema = z
+  .object({
+    requestId: z.string().min(1),
+    action: z.enum(['save-scene-plan', 'apply-courseware']),
+    state: z.enum(SCENE_PLAN_RECEIPT_STATES),
+    /** 业务结果（completed 时为计划/候选 DTO）；failed/cancelled/unknown 时为 null。 */
+    result: z.unknown().nullable(),
+    /** 人类可读的原因；completed 时为空串。 */
+    message: z.string(),
+    /**
+     * 确定失败时的领域错误码与原因：重发同 requestId 时据此**可重放**同一结论，
+     * 不需要重新执行一遍写入（也不允许悄悄换成一个「重试成功」的结果）。
+     */
+    errorCode: z.string().nullable().default(null),
+    errorReason: z.string().nullable().default(null),
+    createdAt: z.string(),
+  })
+  .strict();
+export type ScenePlanReceiptDto = z.infer<typeof scenePlanReceiptSchema>;

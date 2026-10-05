@@ -1,10 +1,34 @@
 /* Node-side launcher for the hidden Electron smoke; it records only status. */
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const { existsSync, mkdtempSync, readFileSync, rmSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join, resolve, sep } = require('node:path');
 
 const root = resolve(__dirname, '..');
+const suites = ['boundary', 'lesson-plan'];
+const args = process.argv.slice(2);
+let suite;
+if (args.length === 0) {
+  for (const nextSuite of suites) {
+    const launched = spawnSync(process.execPath, [__filename, '--suite', nextSuite], {
+      cwd: root,
+      windowsHide: true,
+      stdio: 'inherit',
+    });
+    if (launched.error || launched.status !== 0) {
+      process.exit(1);
+    }
+  }
+  console.log('PASS hidden Electron smoke: both boundary and lesson-plan suites completed');
+  process.exit(0);
+} else if (args.length === 2 && args[0] === '--suite' && suites.includes(args[1])) {
+  suite = args[1];
+} else {
+  console.error(
+    'FAIL usage: node scripts/run-electron-boundary-smoke.cjs [--suite boundary|lesson-plan]',
+  );
+  process.exit(1);
+}
 const electron = join(root, 'apps', 'desktop', 'node_modules', 'electron', 'dist', 'electron.exe');
 const entry = join(__dirname, 'smoke-electron-boundary.cjs');
 const maxWaitMs = 240000;
@@ -85,6 +109,7 @@ const run = async () => {
   const resultFile = join(tempDir, 'result.json');
   const env = {
     ...process.env,
+    SEW_ELECTRON_SMOKE_SUITE: suite,
     SEW_ELECTRON_SMOKE_RESULT: resultFile,
     SEW_ELECTRON_SMOKE_USER_DATA: join(tempDir, 'profile'),
   };

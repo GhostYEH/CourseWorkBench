@@ -10,11 +10,13 @@
 
 import { StudyError } from '@sew/study-contracts';
 import type { EvidenceBundleDto } from '@sew/study-contracts';
-import { RICH_TEXT_TAGS } from '@sew/study-contracts';
-import type { PlanElementDto, PlanSceneDto } from '@sew/study-contracts';
+import { RICH_TEXT_TAGS, SCENE_PLAN_WRITE_LIMIT } from '@sew/study-contracts';
+import type { PlanElementDto, PlanSceneDto, ScenePlanDto } from '@sew/study-contracts';
+import { canonicalJson } from './classroom';
+import { fingerprintOf } from './normalize';
 
 /** 单份计划的场景上限：与正式课件装配的 `FORMAL_SCENE_LIMIT` 对齐，异常大的输入直接拒绝。 */
-export const SCENE_PLAN_LIMIT = 48;
+export const SCENE_PLAN_LIMIT = SCENE_PLAN_WRITE_LIMIT;
 
 const TAG_PATTERN = /<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g;
 const EVENT_ATTRIBUTE_PATTERN = /\son[a-z]+\s*=/i;
@@ -191,6 +193,59 @@ export const assertPlanGrounded = (
 /** 场景顺序规范化为数组下标：排序是计划的唯一权威，不靠场景自带的 order 字段。 */
 export const normalizeSceneOrder = (scenes: readonly PlanSceneDto[]): PlanSceneDto[] => [...scenes];
 
+/**
+ * 计划**内容**的稳定摘要。
+ *
+ * 只由「这节课讲哪些场景、按什么顺序、每个场景怎么写」决定，不含 `revision`、`origin` 与
+ * `updatedAt`：同一份内容无论保存几次、由确定性装配还是模型候选写入，摘要都相同；内容一变
+ * 摘要立刻变。审核结论与发布复核都绑定它，因此「保存一次但内容没变」不会误伤旧审核，
+ * 而「改了场景或正文」必然让旧审核失效。
+ */
+export const scenePlanDigest = (plan: {
+  lessonId: string;
+  lessonVersion: number;
+  bundleId: string;
+  scenes: readonly PlanSceneDto[];
+}): string =>
+  fingerprintOf(
+    canonicalJson({
+      lessonId: plan.lessonId,
+      lessonVersion: plan.lessonVersion,
+      bundleId: plan.bundleId,
+      scenes: plan.scenes.map((scene) => ({
+        sceneId: scene.sceneId,
+        kind: scene.kind,
+        title: scene.title,
+        statementId: scene.statementId,
+        questionId: scene.questionId,
+        knowledgeIds: [...scene.knowledgeIds].sort(),
+        note: scene.note,
+        elements: scene.elements.map((element) => ({
+          elementId: element.elementId,
+          kind: element.kind,
+          text: element.text,
+          assetRef: element.assetRef,
+          left: element.left,
+          top: element.top,
+          width: element.width,
+          height: element.height,
+          style: {
+            fontSize: element.style.fontSize,
+            color: element.style.color.toLowerCase(),
+            bold: element.style.bold,
+            italic: element.style.italic,
+            align: element.style.align,
+          },
+        })),
+      })),
+    }),
+  );
+
+/** 计划当前的内容摘要（读回计划自身）。 */
+export const digestOfScenePlan = (
+  plan: Pick<ScenePlanDto, 'lessonId' | 'lessonVersion' | 'bundleId' | 'scenes'>,
+): string => scenePlanDigest(plan);
+
 /** 新场景编号：稳定、可预测前缀 + 随机段，绝不与既有场景重复。 */
 export const planSceneId = (kind: string, seed: () => string): string => `scene_${kind}_${seed()}`;
 
@@ -271,6 +326,54 @@ export const assertCoursewareDecidable = (status: string): void => {
       reason: 'courseware_already_decided',
     });
   }
+};
+
+/**
+ * 审核结论必须对**当前的**计划内容有效。
+ *
+ * 审核当时记录了计划基线（`planRevision`/`planDigest`），此后手工保存或候选应用改了内容，
+ * 旧审核就不能再给新内容背书。判定同时比较摘要与 revision：
+ * - 摘要一致 → 内容没变，即使 revision 因重存推进也仍然有效（避免误伤）；
+ * - 摘要不一致 → 内容已变，旧审核失效，必须重新审核；
+ * - 历史课程无计划（基线为 null）→ 只要求当前也没有计划，保持兼容。
+ */
+export const assertReviewMatchesPlan = (
+  review: { decision: string; planRevision: number | null; planDigest: string | null },
+  current: { revision: number; digest: string } | null,
+): void => {
+  if (current === null) {
+    if (review.planDigest !== null) {
+      throw new StudyError('VERSION_CONFLICT', { reason: 'review_plan_removed' });
+    }
+    return;
+  }
+  if (review.planDigest === null) {
+    throw new StudyError('VERSION_CONFLICT', { reason: 'review_plan_missing' });
+  }
+  if (review.planDigest !== current.digest) {
+    throw new StudyError('VERSION_CONFLICT', {
+      reason: 'review_plan_changed',
+      reviewedRevision: review.planRevision,
+      currentRevision: current.revision,
+    });
+  }
+};
+
+/**
+ * 发布前的计划复核：当前计划内容必须与审核当时的基线一致。
+ *
+ * 与审核入口共用同一份判定，避免出现「审核拦了、发布却放行」的口径分裂。
+ */
+export const assertPlanPublishable = (
+  review: { decision: string; planRevision: number | null; planDigest: string | null } | null,
+  current: { revision: number; digest: string } | null,
+): void => {
+  if (!review || review.decision !== 'approved') {
+    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+      reason: 'lesson_version_not_approved',
+    });
+  }
+  assertReviewMatchesPlan(review, current);
 };
 
 /**

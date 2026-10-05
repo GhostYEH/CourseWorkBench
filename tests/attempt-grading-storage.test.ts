@@ -115,6 +115,8 @@ describe('append-only short answer reviews', () => {
       .flatMap(migration => [...migration.sql.matchAll(/CREATE TABLE(?: IF NOT EXISTS)? ([a-z_]+)/g)].map(match => match[1]!));
     db.exec('PRAGMA foreign_keys=OFF');
     for (const table of laterTables.reverse()) db.exec(`DROP TABLE IF EXISTS ${table}`);
+    // v28 给 v14 就存在的 lesson_reviews 补了两列：重建历史库时要一并移除，否则重放迁移会撞上重复列。
+    db.exec('ALTER TABLE lesson_reviews DROP COLUMN plan_revision; ALTER TABLE lesson_reviews DROP COLUMN plan_digest;');
     db.exec('DELETE FROM schema_migrations WHERE version>=17;');
     db.close(); f.store.close(); stores.splice(stores.indexOf(f.store), 1);
     const reopened = StudyStore.open({ file: f.file }); stores.push(reopened);
@@ -337,6 +339,9 @@ describe('production shared grading budget regressions', () => {
     db.exec('DROP TABLE IF EXISTS lesson_statement_revisions; DROP TABLE IF EXISTS lesson_statement_revision_receipts; DROP TABLE IF EXISTS lesson_draft_receipts;');
     // 同理移除场景计划与完整课件候选表（v27）：历史库重放迁移时不能撞上已存在的表。
     db.exec('DROP TABLE IF EXISTS lesson_scene_plans; DROP TABLE IF EXISTS lesson_courseware_candidates; DROP TABLE IF EXISTS lesson_courseware_receipts;');
+    // v28：计划命令回执表与 lesson_reviews 的两列（后者在 v14 建表，须单独移除列）。
+    db.exec('DROP TABLE IF EXISTS lesson_scene_plan_receipts;');
+    db.exec('ALTER TABLE lesson_reviews DROP COLUMN plan_revision; ALTER TABLE lesson_reviews DROP COLUMN plan_digest;');
     db.prepare('DELETE FROM schema_migrations WHERE version>?').run(version); db.close();
     const reopened = StudyStore.open({ file: f.file }); stores.push(reopened);
     const report = reopened.modelUsageReport('r', limits);
