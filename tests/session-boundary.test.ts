@@ -1,5 +1,13 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { StudyError } from '@sew/study-contracts';
@@ -38,7 +46,8 @@ describe('session and disk authorization boundaries', () => {
     // files. Start this bootstrap test from a fresh-process state, rather than
     // inheriting another suite's explicit-close suppression flag.
     closeProject();
-    const holder = (globalThis as { __sewSession?: { environmentBootstrapSuppressed: boolean } }).__sewSession;
+    const holder = (globalThis as { __sewSession?: { environmentBootstrapSuppressed: boolean } })
+      .__sewSession;
     if (holder) holder.environmentBootstrapSuppressed = false;
     process.env.SEW_PROJECT_ROOT = temporaryDirectory();
   });
@@ -75,8 +84,14 @@ describe('session and disk authorization boundaries', () => {
     const session = openProjectFromDisk(root);
     expect(readAuthorizedFile(session, source).text).toBe('lesson text');
     expect(readAuthorizedFile(session, source).originalName).toBe('lesson.md');
-    expectStudyError(() => readAuthorizedFile(session, join(root, '..', basename(outside), 'secret.md')), 'PROJECT_NOT_AUTHORIZED');
-    expectStudyError(() => readAuthorizedFile(session, join(junction, 'secret.md')), 'PROJECT_NOT_AUTHORIZED');
+    expectStudyError(
+      () => readAuthorizedFile(session, join(root, '..', basename(outside), 'secret.md')),
+      'PROJECT_NOT_AUTHORIZED',
+    );
+    expectStudyError(
+      () => readAuthorizedFile(session, join(junction, 'secret.md')),
+      'PROJECT_NOT_AUTHORIZED',
+    );
     expectStudyError(() => readAuthorizedFile(session, root), 'MATERIAL_NOT_FOUND');
   });
 
@@ -98,17 +113,45 @@ describe('session and disk authorization boundaries', () => {
   it('preserves the active project when opening a malformed replacement fails', () => {
     const activeRoot = temporaryDirectory();
     const invalidRoot = temporaryDirectory();
-    writeFileSync(join(invalidRoot, 'project.json'), JSON.stringify({ formatVersion: 999 }), 'utf8');
+    writeFileSync(
+      join(invalidRoot, 'project.json'),
+      JSON.stringify({ formatVersion: 999 }),
+      'utf8',
+    );
     const active = openProjectFromDisk(activeRoot);
 
     expect(() => openProjectFromDisk(invalidRoot)).toThrow();
     expect(getSession()).toBe(active);
     expect(requireSession()).toBe(active);
+    expect(existsSync(join(invalidRoot, '.study'))).toBe(false);
+  });
+
+  it.each([
+    '{bad json',
+    JSON.stringify({ formatVersion: 1 }),
+    JSON.stringify({
+      formatVersion: '1',
+      projectId: 'invalid',
+      displayName: '项目',
+      createdAt: new Date().toISOString(),
+    }),
+  ])('rejects malformed manifests before creating or rewriting project data', (raw) => {
+    const active = openProjectFromDisk(temporaryDirectory());
+    const invalid = temporaryDirectory();
+    const manifest = join(invalid, 'project.json');
+    writeFileSync(manifest, raw);
+    expectStudyError(() => openProjectFromDisk(invalid), 'PROJECT_FORMAT_UNSUPPORTED');
+    expect(getSession()).toBe(active);
+    expect(readFileSync(manifest, 'utf8')).toBe(raw);
+    expect(existsSync(join(invalid, '.study'))).toBe(false);
   });
 
   it('rejects stale session handles after the project has been closed', () => {
     const session = openProjectFromDisk(temporaryDirectory());
     closeProject();
-    expectStudyError(() => readAuthorizedFile(session, join(session.displayPath, 'missing.md')), 'PROJECT_GENERATION_STALE');
+    expectStudyError(
+      () => readAuthorizedFile(session, join(session.displayPath, 'missing.md')),
+      'PROJECT_GENERATION_STALE',
+    );
   });
 });

@@ -119,7 +119,7 @@ SegmentRow,
 SubmitAttemptInput,
 SubmitAttemptOutcome,
 } from './repositories/types';
-import { MIGRATIONS } from './schema';
+import { MIGRATIONS, SCHEMA_VERSION } from './schema';
 
 export type {
 ClassroomDocumentRow,
@@ -193,7 +193,7 @@ export class StudyStore {
   readonly runtime: ClassroomRuntimeRepository;
   readonly classroomKV: ClassroomKVRepository;
 
-  private constructor(db: SqlDatabase, driverName: string) {
+  private constructor(db: SqlDatabase, driverName: string, readonly databaseFile: string) {
     this.db = db;
     this.driverName = driverName;
     this.projects = new ProjectsRepository(db);
@@ -287,7 +287,7 @@ export class StudyStore {
     const driver = options.driver ?? createNodeSqliteDriver();
     const db = driver.open(options.file);
     try {
-      const store = new StudyStore(db, driver.name);
+      const store = new StudyStore(db, driver.name, options.file);
       store.migrate();
       return store;
     } catch (error) {
@@ -312,6 +312,9 @@ export class StudyStore {
         .all()
         .map((row) => Number((row as Row)['version'] ?? 0)),
     );
+    if ([...applied].some(version => !Number.isSafeInteger(version) || version < 1 || version > SCHEMA_VERSION)) {
+      throw new StudyError('PROJECT_FORMAT_UNSUPPORTED', { reason: 'unsupported_schema_version', supported: SCHEMA_VERSION });
+    }
     for (const migration of MIGRATIONS) {
       if (applied.has(migration.version)) continue;
       this.db.transaction(() => {
@@ -1059,6 +1062,10 @@ export class StudyStore {
 
   listLessonVersions(lessonId: string, projectId: string): LessonVersionRow[] {
     return this.lessons.listVersions(lessonId, projectId);
+  }
+
+  readLessonCatalog(projectId: string) {
+    return this.lessons.readCatalog(projectId);
   }
 
   /** 单个课程版本行：课件装配与发布复核都要按版本精确取，不能取「最新一条」。 */

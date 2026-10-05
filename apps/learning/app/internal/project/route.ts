@@ -1,10 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import {
-  StudyError,
-  materialOriginalOpenSchema,
-  projectScopeSchema,
-} from '@sew/study-contracts';
+import { StudyError, materialOriginalOpenSchema, projectScopeSchema } from '@sew/study-contracts';
 import { parseBody, route } from '../../../lib/server/http';
 import {
   authorizePaths,
@@ -20,7 +16,11 @@ export const dynamic = 'force-dynamic';
 const bodySchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('open'), path: z.string().min(1) }),
   z.object({ action: z.literal('close') }),
-  z.object({ action: z.literal('authorize'), scope: projectScopeSchema, paths: z.array(z.string()).max(50) }),
+  z.object({
+    action: z.literal('authorize'),
+    scope: projectScopeSchema,
+    paths: z.array(z.string()).max(50),
+  }),
   materialOriginalOpenSchema.extend({ action: z.literal('materialize-original') }),
 ]);
 
@@ -67,6 +67,7 @@ export const POST = route(async (request: Request) => {
         displayName: session.displayName,
         displayPath: session.displayPath,
         generation: session.generation,
+        formatVersion: session.formatVersion,
       },
     },
   });
@@ -82,6 +83,7 @@ export const GET = route(() => {
       displayName: session.displayName,
       displayPath: session.displayPath,
       generation: session.generation,
+      formatVersion: session.formatVersion,
     },
   });
 });

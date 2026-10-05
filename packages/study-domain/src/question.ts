@@ -40,6 +40,9 @@ export interface OriginResolution {
 const detailOf = (record: OriginRecord): string =>
   `材料 ${record.materialId} r${record.revision}${record.questionNumber ? ` 第 ${record.questionNumber} 题` : ''}`;
 
+const rewriteDetailOf = (record: OriginRecord): string =>
+  `${detailOf(record)}${record.rewriteNote ? `；主要变化：${record.rewriteNote}` : ''}`;
+
 /**
  * 依据可信创建/导入记录与**服务端权威事实**裁定题目身份。不抛错：伪装真题只被降级，
  * 合法的新编身份仍然可用。`trusted` 必须来自权威存储，不能来自请求自报。
@@ -66,6 +69,15 @@ export const resolveQuestionOrigin = (
 
   switch (requestedOrigin) {
     case 'exam_original': {
+      if (record?.rewrittenFrom && trusted.materialRegistered) {
+        return finish(
+          'material_rewrite',
+          rewriteDetailOf(record),
+          true,
+          '改写题不能标记为真题原题',
+          true,
+        );
+      }
       if (!record || !record.questionNumber) {
         return finish('ai_new', null, true, '缺少可信出处记录，不能标记为真题', true);
       }
@@ -85,6 +97,14 @@ export const resolveQuestionOrigin = (
     }
 
     case 'material_original': {
+      if (record?.rewrittenFrom && trusted.materialRegistered) {
+        return finish(
+          'material_rewrite',
+          rewriteDetailOf(record),
+          true,
+          '已绑定改写出处，只保留材料改写身份',
+        );
+      }
       if (!record || !record.questionNumber) {
         return finish('ai_new', null, true, '缺少材料题号记录，降级为 AI 新编题');
       }
@@ -101,8 +121,7 @@ export const resolveQuestionOrigin = (
       if (!trusted.materialRegistered) {
         return finish('ai_new', null, true, '引用的材料版本未登记，降级为 AI 新编题');
       }
-      const note = record.rewriteNote ? `；主要变化：${record.rewriteNote}` : '';
-      return finish('material_rewrite', `${detailOf(record)}${note}`, false, null);
+      return finish('material_rewrite', rewriteDetailOf(record), false, null);
     }
 
     case 'ai_new':

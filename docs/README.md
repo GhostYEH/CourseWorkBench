@@ -8,7 +8,7 @@
 [upstream-adaptation.md](upstream-adaptation.md)，架构决定见 [adr/](adr/)。
 当前待办与未解决的代码审查项见 [待办事项.md](待办事项.md)，工程实施顺序与任务依赖见 [开工任务清单.md](开工任务清单.md)。
 工程约定与检查入口见 [code-quality.md](code-quality.md)。
-本轮全面优化的已保存改动、暂停时验证和继续顺序见[优化续作记录](optimization-checkpoint-2026-10-05.md)。
+本轮最新状态、验证与可复制提示词见[全面优化交接](optimization-handoff-2026-10-05.md)；暂停时历史快照见[优化续作记录](optimization-checkpoint-2026-10-05.md)。
 
 快速入口：了解完整产品目标读[规划书](规划书.md)，接手开发读[开工任务清单](开工任务清单.md)，确认未完成范围读[待办事项](待办事项.md)，检查单项最终能力读[85 项能力清单](openmaic-feature-parity.json)。不要仅凭某一份文档中的里程碑或测试数量判断全功能进度。
 

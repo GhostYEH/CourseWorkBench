@@ -6,10 +6,17 @@
  * 课程↔stage 侧表。JSON 列都按权威列读取，损坏即拒绝。
  */
 
-import { StudyError, newId, type EvidenceBundleDto, type LessonReviewDecision } from '@sew/study-contracts';
+import {
+  StudyError,
+  newId,
+  type EvidenceBundleDto,
+  type LessonReviewDecision,
+} from '@sew/study-contracts';
 import { LESSON_REVIEW_DECISION, LESSON_STATUS } from '@sew/study-contracts';
 import {
-  assertLessonPublishable, lessonReferencedKnowledgeIds, nextLessonVersion,
+  assertLessonPublishable,
+  lessonReferencedKnowledgeIds,
+  nextLessonVersion,
 } from '@sew/study-domain';
 import type { SqlDatabase } from '../driver';
 import { encodeJson, evidenceBundleSchema, knowledgeIdsSchema } from '../json-codec';
@@ -64,12 +71,13 @@ const mapBundle = (row: Row): EvidenceBundleRow => {
 
 const mapLesson = (row: Row): LessonVersionRow => {
   const lessonId = str(row['lesson_id']);
-  const readIds = (column: string): string[] => readAuthoritativeJsonColumn(
-    row[column],
-    knowledgeIdsSchema,
-    `lesson_versions.${column}[${lessonId}#${num(row['version'])}]`,
-    defaultJsonPolicy,
-  );
+  const readIds = (column: string): string[] =>
+    readAuthoritativeJsonColumn(
+      row[column],
+      knowledgeIdsSchema,
+      `lesson_versions.${column}[${lessonId}#${num(row['version'])}]`,
+      defaultJsonPolicy,
+    );
   return {
     lessonId,
     version: num(row['version']),
@@ -91,19 +99,21 @@ export function mapLessonStatus(value: string): LessonStatus {
 }
 
 const mapLessonReviewDecision = (value: string): LessonReviewDecision => {
-  if ((LESSON_REVIEW_DECISION as readonly string[]).includes(value)) return value as LessonReviewDecision;
+  if ((LESSON_REVIEW_DECISION as readonly string[]).includes(value))
+    return value as LessonReviewDecision;
   throw new StudyError('INTERNAL', { reason: 'invalid_lesson_review_decision', decision: value });
 };
 
 const mapReview = (row: Row): LessonReviewRow => {
   const lessonId = str(row['lesson_id']);
   const version = num(row['version']);
-  const readIds = (column: string): string[] => readAuthoritativeJsonColumn(
-    row[column],
-    knowledgeIdsSchema,
-    `lesson_reviews.${column}[${lessonId}#${version}]`,
-    defaultJsonPolicy,
-  );
+  const readIds = (column: string): string[] =>
+    readAuthoritativeJsonColumn(
+      row[column],
+      knowledgeIdsSchema,
+      `lesson_reviews.${column}[${lessonId}#${version}]`,
+      defaultJsonPolicy,
+    );
   return {
     projectId: str(row['project_id']),
     lessonId,
@@ -113,6 +123,23 @@ const mapReview = (row: Row): LessonReviewRow => {
     admittedKnowledgeIds: readIds('admitted_json'),
     blockedKnowledgeIds: readIds('blocked_json'),
     reviewedAt: str(row['reviewed_at']),
+  };
+};
+
+const mapLink = (row: Row): ClassroomLinkRow => {
+  const stageDocumentVersion = num(row['stage_document_version']);
+  return {
+    lessonId: str(row['lesson_id']),
+    projectId: str(row['project_id']),
+    lessonVersion: num(row['lesson_version']),
+    stageId: str(row['stage_id']) || null,
+    stageDocumentVersion: stageDocumentVersion > 0 ? stageDocumentVersion : null,
+    documentDigest: str(row['document_digest']) || null,
+    evidenceBundleId: str(row['evidence_bundle_id']) || null,
+    status: mapLessonStatus(str(row['status'])),
+    statusNote: str(row['status_note']),
+    createdAt: str(row['created_at']),
+    updatedAt: str(row['updated_at']),
   };
 };
 
@@ -128,7 +155,9 @@ export class LessonRepository {
 
     const bundleId = newId<'bundle'>('bundle');
     this.db
-      .prepare('INSERT INTO evidence_bundles (bundle_id, project_id, digest, bundle_json, frozen_at) VALUES (?, ?, ?, ?, ?)')
+      .prepare(
+        'INSERT INTO evidence_bundles (bundle_id, project_id, digest, bundle_json, frozen_at) VALUES (?, ?, ?, ?, ?)',
+      )
       .run(bundleId, projectId, digest, encodeJson(bundle), new Date().toISOString());
     const saved = this.getBundle(bundleId, projectId);
     if (!saved) throw new StudyError('INTERNAL', { bundleId });
@@ -144,7 +173,9 @@ export class LessonRepository {
 
   listBundles(projectId: string): EvidenceBundleRow[] {
     const rows = this.db
-      .prepare('SELECT * FROM evidence_bundles WHERE project_id = ? ORDER BY frozen_at DESC, bundle_id')
+      .prepare(
+        'SELECT * FROM evidence_bundles WHERE project_id = ? ORDER BY frozen_at DESC, bundle_id',
+      )
       .all(projectId) as Row[];
     return rows.map(mapBundle);
   }
@@ -155,7 +186,9 @@ export class LessonRepository {
 
   listVersions(lessonId: string, projectId: string): LessonVersionRow[] {
     const rows = this.db
-      .prepare('SELECT * FROM lesson_versions WHERE lesson_id = ? AND project_id = ? ORDER BY version DESC')
+      .prepare(
+        'SELECT * FROM lesson_versions WHERE lesson_id = ? AND project_id = ? ORDER BY version DESC',
+      )
       .all(lessonId, projectId) as Row[];
     return rows.map(mapLesson);
   }
@@ -173,9 +206,68 @@ export class LessonRepository {
     return rows.map(mapLesson);
   }
 
+  /** One consistent read with a fixed query count, independent of lesson/version count. */
+  readCatalog(projectId: string) {
+    return this.db.transaction(() => {
+      const lessons = this.listLessons(projectId);
+      const rows = this.db
+        .prepare('SELECT * FROM lesson_versions WHERE project_id = ? ORDER BY version DESC')
+        .all(projectId) as Row[];
+      const versionsByLesson = new Map<string, LessonVersionRow[]>();
+      for (const row of rows) {
+        const version = mapLesson(row);
+        const versions = versionsByLesson.get(version.lessonId) ?? [];
+        versions.push(version);
+        versionsByLesson.set(version.lessonId, versions);
+      }
+      const versions = lessons.flatMap((lesson) => versionsByLesson.get(lesson.lessonId) ?? []);
+      const versionKeys = new Set(
+        versions.map((version) => `${version.lessonId}:${version.version}`),
+      );
+      const reviews = this.db
+        .prepare('SELECT * FROM lesson_reviews WHERE project_id = ?')
+        .all(projectId) as Row[];
+      const reviewByVersion = new Map(
+        reviews
+          .filter((row) => versionKeys.has(`${str(row['lesson_id'])}:${num(row['version'])}`))
+          .map((row) => {
+            const review = mapReview(row);
+            return [`${review.lessonId}:${review.version}`, review] as const;
+          }),
+      );
+      const links = this.db
+        .prepare('SELECT * FROM classroom_links WHERE project_id = ?')
+        .all(projectId) as Row[];
+      const lessonIds = new Set(lessons.map((lesson) => lesson.lessonId));
+      const linkByLesson = new Map(
+        links
+          .filter((row) => lessonIds.has(str(row['lesson_id'])))
+          .map((row) => {
+            const link = mapLink(row);
+            return [link.lessonId, link] as const;
+          }),
+      );
+      return {
+        bundles: this.listBundles(projectId),
+        lessons,
+        versions,
+        reviews: versions.flatMap((version) => {
+          const review = reviewByVersion.get(`${version.lessonId}:${version.version}`);
+          return review ? [review] : [];
+        }),
+        links: lessons.flatMap((lesson) => {
+          const link = linkByLesson.get(lesson.lessonId);
+          return link ? [link] : [];
+        }),
+      };
+    });
+  }
+
   getVersion(lessonId: string, version: number, projectId: string): LessonVersionRow | null {
     const row = this.db
-      .prepare('SELECT * FROM lesson_versions WHERE lesson_id = ? AND version = ? AND project_id = ?')
+      .prepare(
+        'SELECT * FROM lesson_versions WHERE lesson_id = ? AND version = ? AND project_id = ?',
+      )
       .get(lessonId, version, projectId) as Row | undefined;
     return row ? mapLesson(row) : null;
   }
@@ -189,7 +281,9 @@ export class LessonRepository {
       const owned = this.listVersions(input.lessonId, input.projectId);
       if (owned.length === 0) throw new StudyError('NOT_FOUND', { lessonId: input.lessonId });
     }
-    const version = nextLessonVersion(this.listVersions(lessonId, input.projectId).map((row) => row.version));
+    const version = nextLessonVersion(
+      this.listVersions(lessonId, input.projectId).map((row) => row.version),
+    );
     const statementIds = [...new Set(input.statementIds)];
     const unknown = statementIds.filter(
       (id) => !bundle.bundle.statements.some((statement) => statement.statementId === id),
@@ -202,7 +296,10 @@ export class LessonRepository {
       (id) => !bundle.bundle.questions.some((question) => question.questionId === id),
     );
     if (unknownQuestions.length > 0) {
-      throw new StudyError('INVALID_ARGUMENT', { reason: 'question_outside_bundle', unknownQuestions });
+      throw new StudyError('INVALID_ARGUMENT', {
+        reason: 'question_outside_bundle',
+        unknownQuestions,
+      });
     }
     const now = new Date().toISOString();
     this.db
@@ -242,7 +339,8 @@ export class LessonRepository {
     },
   ): LessonVersionRow {
     const lesson = this.getVersion(input.lessonId, input.version, input.projectId);
-    if (!lesson) throw new StudyError('NOT_FOUND', { lessonId: input.lessonId, version: input.version });
+    if (!lesson)
+      throw new StudyError('NOT_FOUND', { lessonId: input.lessonId, version: input.version });
     assertLessonPublishable(
       {
         status: lesson.status,
@@ -256,23 +354,30 @@ export class LessonRepository {
     this.db.transaction(() => {
       // 同一课程只保留一个当前已发布版本；其他课程（同项目可有多课时）不受影响。
       this.db
-        .prepare("UPDATE lesson_versions SET status = 'superseded', updated_at = ? WHERE project_id = ? AND lesson_id = ? AND status = 'published'")
+        .prepare(
+          "UPDATE lesson_versions SET status = 'superseded', updated_at = ? WHERE project_id = ? AND lesson_id = ? AND status = 'published'",
+        )
         .run(now, input.projectId, input.lessonId);
       this.db
-        .prepare("UPDATE lesson_versions SET status = 'published', updated_at = ? WHERE lesson_id = ? AND version = ? AND project_id = ?")
+        .prepare(
+          "UPDATE lesson_versions SET status = 'published', updated_at = ? WHERE lesson_id = ? AND version = ? AND project_id = ?",
+        )
         .run(now, input.lessonId, input.version, input.projectId);
       this.upsertLink(input, lesson.bundleId, now);
     });
 
     const published = this.getVersion(input.lessonId, input.version, input.projectId);
-    if (!published) throw new StudyError('INTERNAL', { lessonId: input.lessonId, version: input.version });
+    if (!published)
+      throw new StudyError('INTERNAL', { lessonId: input.lessonId, version: input.version });
     return published;
   }
 
   /** 当前已发布的版本；没有则返回 null。撤回与课堂入口都以这一条为准。 */
   publishedVersion(lessonId: string, projectId: string): LessonVersionRow | null {
     const row = this.db
-      .prepare("SELECT * FROM lesson_versions WHERE lesson_id = ? AND project_id = ? AND status = 'published'")
+      .prepare(
+        "SELECT * FROM lesson_versions WHERE lesson_id = ? AND project_id = ? AND status = 'published'",
+      )
       .get(lessonId, projectId) as Row | undefined;
     return row ? mapLesson(row) : null;
   }
@@ -281,21 +386,31 @@ export class LessonRepository {
    * 主动停用已发布课程：版本状态记 withdrawn（与被新版本取代不同），
    * 侧表同步停用并保留可读原因，课堂入口随即受阻。
    */
-  withdraw(input: { projectId: string; lessonId: string; version: number; reason: string }): LessonVersionRow {
+  withdraw(input: {
+    projectId: string;
+    lessonId: string;
+    version: number;
+    reason: string;
+  }): LessonVersionRow {
     const now = new Date().toISOString();
     this.db.transaction(() => {
       const result = this.db
-        .prepare("UPDATE lesson_versions SET status = 'withdrawn', updated_at = ? WHERE lesson_id = ? AND version = ? AND project_id = ? AND status = 'published'")
+        .prepare(
+          "UPDATE lesson_versions SET status = 'withdrawn', updated_at = ? WHERE lesson_id = ? AND version = ? AND project_id = ? AND status = 'published'",
+        )
         .run(now, input.lessonId, input.version, input.projectId);
       if (result.changes !== 1) {
         throw new StudyError('STEP_ALREADY_COMMITTED', { reason: 'lesson_not_published' });
       }
       this.db
-        .prepare("UPDATE classroom_links SET status = 'withdrawn', status_note = ?, updated_at = ? WHERE lesson_id = ? AND project_id = ?")
+        .prepare(
+          "UPDATE classroom_links SET status = 'withdrawn', status_note = ?, updated_at = ? WHERE lesson_id = ? AND project_id = ?",
+        )
         .run(input.reason, now, input.lessonId, input.projectId);
     });
     const withdrawn = this.getVersion(input.lessonId, input.version, input.projectId);
-    if (!withdrawn) throw new StudyError('INTERNAL', { lessonId: input.lessonId, version: input.version });
+    if (!withdrawn)
+      throw new StudyError('INTERNAL', { lessonId: input.lessonId, version: input.version });
     return withdrawn;
   }
 
@@ -333,13 +448,16 @@ export class LessonRepository {
         now,
       );
     const saved = this.getReview(input.lessonId, input.version, input.projectId);
-    if (!saved) throw new StudyError('INTERNAL', { lessonId: input.lessonId, version: input.version });
+    if (!saved)
+      throw new StudyError('INTERNAL', { lessonId: input.lessonId, version: input.version });
     return saved;
   }
 
   getReview(lessonId: string, version: number, projectId: string): LessonReviewRow | null {
     const row = this.db
-      .prepare('SELECT * FROM lesson_reviews WHERE lesson_id = ? AND version = ? AND project_id = ?')
+      .prepare(
+        'SELECT * FROM lesson_reviews WHERE lesson_id = ? AND version = ? AND project_id = ?',
+      )
       .get(lessonId, version, projectId) as Row | undefined;
     return row ? mapReview(row) : null;
   }
@@ -351,7 +469,9 @@ export class LessonRepository {
       .get(input.lessonId, input.projectId) as Row | undefined;
     if (existing) {
       this.db
-        .prepare('UPDATE classroom_links SET lesson_version = ?, stage_id = ?, stage_document_version = ?, document_digest = ?, evidence_bundle_id = ?, status = ?, status_note = ?, updated_at = ? WHERE lesson_id = ? AND project_id = ?')
+        .prepare(
+          'UPDATE classroom_links SET lesson_version = ?, stage_id = ?, stage_document_version = ?, document_digest = ?, evidence_bundle_id = ?, status = ?, status_note = ?, updated_at = ? WHERE lesson_id = ? AND project_id = ?',
+        )
         .run(
           input.version,
           input.stageId ?? null,
@@ -399,11 +519,24 @@ export class LessonRepository {
   }): ClassroomLinkRow {
     const now = new Date().toISOString();
     const result = this.db
-      .prepare('UPDATE classroom_links SET stage_id = ?, stage_document_version = ?, document_digest = ?, updated_at = ? WHERE lesson_id = ? AND project_id = ? AND lesson_version = ? AND status = ?')
-      .run(input.stageId, 1, input.documentDigest, now, input.lessonId, input.projectId, input.version, 'published');
+      .prepare(
+        'UPDATE classroom_links SET stage_id = ?, stage_document_version = ?, document_digest = ?, updated_at = ? WHERE lesson_id = ? AND project_id = ? AND lesson_version = ? AND status = ?',
+      )
+      .run(
+        input.stageId,
+        1,
+        input.documentDigest,
+        now,
+        input.lessonId,
+        input.projectId,
+        input.version,
+        'published',
+      );
     if (result.changes !== 1) {
       throw new StudyError('STEP_ALREADY_COMMITTED', {
-        reason: 'lesson_not_currently_published', lessonId: input.lessonId, version: input.version,
+        reason: 'lesson_not_currently_published',
+        lessonId: input.lessonId,
+        version: input.version,
       });
     }
     const link = this.getLink(input.lessonId, input.projectId);
@@ -411,23 +544,10 @@ export class LessonRepository {
     return link;
   }
 
-  getLink(lessonId: string, projectId: string): ClassroomLinkRow | null {    const row = this.db
+  getLink(lessonId: string, projectId: string): ClassroomLinkRow | null {
+    const row = this.db
       .prepare('SELECT * FROM classroom_links WHERE lesson_id = ? AND project_id = ?')
       .get(lessonId, projectId) as Row | undefined;
-    if (!row) return null;
-    const stageDocumentVersion = num(row['stage_document_version']);
-    return {
-      lessonId: str(row['lesson_id']),
-      projectId: str(row['project_id']),
-      lessonVersion: num(row['lesson_version']),
-      stageId: str(row['stage_id']) || null,
-      stageDocumentVersion: stageDocumentVersion > 0 ? stageDocumentVersion : null,
-      documentDigest: str(row['document_digest']) || null,
-      evidenceBundleId: str(row['evidence_bundle_id']) || null,
-      status: mapLessonStatus(str(row['status'])),
-      statusNote: str(row['status_note']),
-      createdAt: str(row['created_at']),
-      updatedAt: str(row['updated_at']),
-    };
+    return row ? mapLink(row) : null;
   }
 }

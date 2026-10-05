@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('sewNative', {
 
   pickExportTarget: (defaultName) => ipcRenderer.invoke(channels.exportsPickTarget, defaultName),
   backupProject: () => ipcRenderer.invoke(channels.exportsBackupProject),
+  restoreProject: () => ipcRenderer.invoke(channels.exportsRestoreProject),
 
   readPreferences: () => ipcRenderer.invoke(channels.preferencesRead),
   savePreferences: (value) => ipcRenderer.invoke(channels.preferencesSave, value),

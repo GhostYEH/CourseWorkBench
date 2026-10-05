@@ -14,6 +14,7 @@ const channels = Object.freeze({
   "materialsOpenOriginal": "sew:materials:open-original",
   "exportsPickTarget": "sew:exports:pick-target",
   "exportsBackupProject": "sew:exports:backup-project",
+  "exportsRestoreProject": "sew:exports:restore-project",
   "preferencesRead": "sew:preferences:read",
   "preferencesSave": "sew:preferences:save",
   "modelsConfigure": "sew:models:configure",
@@ -47,6 +48,7 @@ contextBridge.exposeInMainWorld('sewNative', {
 
   pickExportTarget: (defaultName) => ipcRenderer.invoke(channels.exportsPickTarget, defaultName),
   backupProject: () => ipcRenderer.invoke(channels.exportsBackupProject),
+  restoreProject: () => ipcRenderer.invoke(channels.exportsRestoreProject),
 
   readPreferences: () => ipcRenderer.invoke(channels.preferencesRead),
   savePreferences: (value) => ipcRenderer.invoke(channels.preferencesSave, value),

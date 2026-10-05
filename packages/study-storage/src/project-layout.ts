@@ -14,7 +14,7 @@
 
 import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { StudyError } from '@sew/study-contracts';
+import { StudyError, backupProjectManifestSchema } from '@sew/study-contracts';
 
 export const PROJECT_FORMAT_VERSION = 1;
 
@@ -60,13 +60,33 @@ export const ensureProjectLayout = (root: string): ProjectPaths => {
 export const readManifest = (root: string): ProjectManifest | null => {
   const { manifestFile } = projectPaths(root);
   if (!existsSync(/* turbopackIgnore: true */ manifestFile)) return null;
-  const parsed = JSON.parse(readFileSync(/* turbopackIgnore: true */ manifestFile, 'utf8')) as ProjectManifest;
-  return parsed;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(/* turbopackIgnore: true */ manifestFile, 'utf8'));
+  } catch {
+    throw new StudyError(
+      'PROJECT_FORMAT_UNSUPPORTED',
+      { reason: 'project_manifest_unreadable' },
+      '项目清单不可读或已损坏，未打开项目。',
+    );
+  }
+  const result = backupProjectManifestSchema.safeParse(parsed);
+  if (!result.success)
+    throw new StudyError(
+      'PROJECT_FORMAT_UNSUPPORTED',
+      { reason: 'project_manifest_invalid' },
+      '项目清单字段无效，未打开项目。',
+    );
+  return result.data;
 };
 
 export const writeManifest = (root: string, manifest: ProjectManifest): void => {
   const { manifestFile } = projectPaths(root);
-  writeFileSync(/* turbopackIgnore: true */ manifestFile, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  writeFileSync(
+    /* turbopackIgnore: true */ manifestFile,
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    'utf8',
+  );
 };
 
 export const isDirectory = (path: string): boolean => {

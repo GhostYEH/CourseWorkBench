@@ -1,3 +1,4 @@
+import { seedVerifiedKnowledge } from './helpers/verified-knowledge';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -65,11 +66,16 @@ describe('第一阶段闭环', () => {
     expect(segments.map((s) => s.segmentId)).toEqual(['S001', 'S002', 'S003']);
     expect(segments[1]?.text.startsWith('函数的单调性')).toBe(true);
     // 规范化后不再包含 BOM 与 CR
-    expect(store.getSegments(material.materialId, 1).every((s) => !s.text.includes('\r'))).toBe(true);
+    expect(store.getSegments(material.materialId, 1).every((s) => !s.text.includes('\r'))).toBe(
+      true,
+    );
   });
 
   it('无来源候选被拦在待核实，有来源候选可进入人工审核', () => {
-    const project = store.createProject({ projectId: newId<'project'>('proj'), displayName: '数学' });
+    const project = store.createProject({
+      projectId: newId<'project'>('proj'),
+      displayName: '数学',
+    });
     const { material } = store.importMaterial({
       projectId: project.projectId,
       displayName: '第三章.md',
@@ -115,7 +121,9 @@ describe('第一阶段闭环', () => {
       conditions: '在同一区间 D 内取值',
       scopeStatus: 'in_syllabus',
       prerequisites: [],
-      evidence: [{ materialId: material.materialId, revision: 1, segmentId: 'S002', use: 'concept_basis' }],
+      evidence: [
+        { materialId: material.materialId, revision: 1, segmentId: 'S002', use: 'concept_basis' },
+      ],
       acceptance: '能判断给定函数在区间上的单调性',
       priority: 'high',
       proposedBy: 'ai',
@@ -153,7 +161,10 @@ describe('第一阶段闭环', () => {
   });
 
   it('生成准入：已核实放行，待核实与无来源被阻断且不调用模型', () => {
-    const project = store.createProject({ projectId: newId<'project'>('proj'), displayName: '数学' });
+    const project = store.createProject({
+      projectId: newId<'project'>('proj'),
+      displayName: '数学',
+    });
     const { material } = store.importMaterial({
       projectId: project.projectId,
       displayName: '第三章.md',
@@ -161,25 +172,16 @@ describe('第一阶段闭环', () => {
       rawText: MATERIAL,
     });
 
-    const valid = store.createProposal({
+    const {
+      knowledge: { knowledgeId },
+    } = seedVerifiedKnowledge(store, {
       projectId: project.projectId,
       name: '增函数的定义',
       concept: 'x1 < x2 时 f(x1) < f(x2)',
-      conditions: '',
-      scopeStatus: 'in_syllabus',
-      prerequisites: [],
-      evidence: [{ materialId: material.materialId, revision: 1, segmentId: 'S002', use: 'concept_basis' }],
-      acceptance: '',
-      priority: 'medium',
-      proposedBy: 'ai',
+      evidence: [
+        { materialId: material.materialId, revision: 1, segmentId: 'S002', use: 'concept_basis' },
+      ],
     });
-    const approved = store.applyReview({
-      proposalId: valid.proposalId,
-      decision: 'approved',
-      expectedRevision: valid.revision,
-      semanticReviewed: true,
-    });
-    const knowledgeId = approved.knowledgePoint!.knowledgeId;
 
     const ok = store.checkAdmission([knowledgeId]);
     expect(ok.allowed).toBe(true);
@@ -190,32 +192,31 @@ describe('第一阶段闭环', () => {
   });
 
   it('材料重新导入后旧引用失效，关联知识点转为已失效', () => {
-    const project = store.createProject({ projectId: newId<'project'>('proj'), displayName: '数学' });
+    const project = store.createProject({
+      projectId: newId<'project'>('proj'),
+      displayName: '数学',
+    });
     const first = store.importMaterial({
       projectId: project.projectId,
       displayName: '第三章.md',
       materialType: 'md',
       rawText: MATERIAL,
     });
-    const proposal = store.createProposal({
+    const {
+      knowledge: { knowledgeId },
+    } = seedVerifiedKnowledge(store, {
       projectId: project.projectId,
       name: '增函数的定义',
       concept: 'x1 < x2 时 f(x1) < f(x2)',
-      conditions: '',
-      scopeStatus: 'in_syllabus',
-      prerequisites: [],
-      evidence: [{ materialId: first.material.materialId, revision: 1, segmentId: 'S002', use: 'concept_basis' }],
-      acceptance: '',
-      priority: 'medium',
-      proposedBy: 'ai',
+      evidence: [
+        {
+          materialId: first.material.materialId,
+          revision: 1,
+          segmentId: 'S002',
+          use: 'concept_basis',
+        },
+      ],
     });
-    const approved = store.applyReview({
-      proposalId: proposal.proposalId,
-      decision: 'approved',
-      expectedRevision: proposal.revision,
-      semanticReviewed: true,
-    });
-    const knowledgeId = approved.knowledgePoint!.knowledgeId;
 
     const second = store.importMaterial({
       projectId: project.projectId,
@@ -232,31 +233,26 @@ describe('第一阶段闭环', () => {
   });
 
   it('题目身份由可信记录裁定，AI 自报真题不生效', () => {
-    const project = store.createProject({ projectId: newId<'project'>('proj'), displayName: '数学' });
+    const project = store.createProject({
+      projectId: newId<'project'>('proj'),
+      displayName: '数学',
+    });
     const { material } = store.importMaterial({
       projectId: project.projectId,
       displayName: '第三章.md',
       materialType: 'md',
       rawText: MATERIAL,
     });
-    const proposal = store.createProposal({
+    const {
+      knowledge: { knowledgeId },
+    } = seedVerifiedKnowledge(store, {
       projectId: project.projectId,
       name: '增函数的定义',
       concept: 'x1 < x2 时 f(x1) < f(x2)',
-      conditions: '',
-      scopeStatus: 'in_syllabus',
-      prerequisites: [],
-      evidence: [{ materialId: material.materialId, revision: 1, segmentId: 'S002', use: 'concept_basis' }],
-      acceptance: '',
-      priority: 'medium',
-      proposedBy: 'ai',
+      evidence: [
+        { materialId: material.materialId, revision: 1, segmentId: 'S002', use: 'concept_basis' },
+      ],
     });
-    const knowledgeId = store.applyReview({
-      proposalId: proposal.proposalId,
-      decision: 'approved',
-      expectedRevision: proposal.revision,
-      semanticReviewed: true,
-    }).knowledgePoint!.knowledgeId;
 
     const forged = store.createQuestion({
       stem: '判断 f(x)=x 在 R 上的单调性',
@@ -284,31 +280,26 @@ describe('第一阶段闭环', () => {
   });
 
   it('本人提交去重，AI 同学作答只能写入 simulation', () => {
-    const project = store.createProject({ projectId: newId<'project'>('proj'), displayName: '数学' });
+    const project = store.createProject({
+      projectId: newId<'project'>('proj'),
+      displayName: '数学',
+    });
     const { material } = store.importMaterial({
       projectId: project.projectId,
       displayName: '第三章.md',
       materialType: 'md',
       rawText: MATERIAL,
     });
-    const proposal = store.createProposal({
+    const {
+      knowledge: { knowledgeId },
+    } = seedVerifiedKnowledge(store, {
       projectId: project.projectId,
       name: '增函数的定义',
       concept: 'x1 < x2 时 f(x1) < f(x2)',
-      conditions: '',
-      scopeStatus: 'in_syllabus',
-      prerequisites: [],
-      evidence: [{ materialId: material.materialId, revision: 1, segmentId: 'S002', use: 'concept_basis' }],
-      acceptance: '',
-      priority: 'medium',
-      proposedBy: 'ai',
+      evidence: [
+        { materialId: material.materialId, revision: 1, segmentId: 'S002', use: 'concept_basis' },
+      ],
     });
-    const knowledgeId = store.applyReview({
-      proposalId: proposal.proposalId,
-      decision: 'approved',
-      expectedRevision: proposal.revision,
-      semanticReviewed: true,
-    }).knowledgePoint!.knowledgeId;
 
     const question = store.createQuestion({
       stem: '判断 f(x)=x 在 R 上的单调性',
@@ -379,23 +370,13 @@ describe('第一阶段闭环', () => {
       materialType: 'md',
       rawText: MATERIAL,
     });
-    const proposal = store.createProposal({
+    seedVerifiedKnowledge(store, {
       projectId: project.projectId,
       name: '增函数的定义',
       concept: 'x1 < x2 时 f(x1) < f(x2)',
-      conditions: '',
-      scopeStatus: 'in_syllabus',
-      prerequisites: [],
-      evidence: [{ materialId: material.materialId, revision: 1, segmentId: 'S002', use: 'concept_basis' }],
-      acceptance: '',
-      priority: 'medium',
-      proposedBy: 'ai',
-    });
-    store.applyReview({
-      proposalId: proposal.proposalId,
-      decision: 'approved',
-      expectedRevision: proposal.revision,
-      semanticReviewed: true,
+      evidence: [
+        { materialId: material.materialId, revision: 1, segmentId: 'S002', use: 'concept_basis' },
+      ],
     });
 
     const backupFile = join(root, 'backup.db');

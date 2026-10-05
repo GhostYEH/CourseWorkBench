@@ -64,3 +64,4 @@ export { gradeQuestionAssessment } from './assessment';
 export { gradeReviewedAnswer } from './attempt-grading';
 
 export { consumptionOf, summarizeModelUsage } from './model-usage';
+export { evaluationDigest, recomputeEvaluation, freezeEvaluation, verifyFrozenEvaluation, assertEvaluationComparable } from './evaluation';

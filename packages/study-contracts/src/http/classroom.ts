@@ -23,35 +23,50 @@ export const interactionDirectionSchema = z.enum(['increasing', 'decreasing', 'c
 const interactionFields = {
   stageId: z.string().min(1).max(200),
   sceneId: z.string().min(1).max(200),
-  a: z.number().min(-3).max(3).refine((value) => Math.abs(value * 10 - Math.round(value * 10)) < 1e-9, '参数须为 0.1 的整数倍'),
+  a: z
+    .number()
+    .min(-3)
+    .max(3)
+    .refine(
+      (value) => Math.abs(value * 10 - Math.round(value * 10)) < 1e-9,
+      '参数须为 0.1 的整数倍',
+    ),
   prediction: interactionDirectionSchema,
   explanation: z.string().max(2000),
 };
-export const interactionSubmitSchema = z.object({
-  scope: projectScopeSchema.strict(),
-  ...interactionFields,
-}).strict();
+export const interactionSubmitSchema = z
+  .object({
+    scope: projectScopeSchema.strict(),
+    ...interactionFields,
+  })
+  .strict();
 export type InteractionSubmitInput = z.infer<typeof interactionSubmitSchema>;
-export const interactionPayloadSchema = z.object({
-  payloadVersion: z.literal(1),
-  projectId: z.string().min(1),
-  documentDigest: z.string().min(1),
-  actorType: z.literal('human_learner'),
-  recordScope: z.literal('demo'),
-  ...interactionFields,
-  direction: interactionDirectionSchema,
-}).strict();
-export const interactionSubmissionSchema = z.object({
-  id: z.string().min(1),
-  createdAt: z.string().datetime({ offset: true }),
-  payload: interactionPayloadSchema,
-}).strict();
+export const interactionPayloadSchema = z
+  .object({
+    payloadVersion: z.literal(1),
+    projectId: z.string().min(1),
+    documentDigest: z.string().min(1),
+    actorType: z.literal('human_learner'),
+    recordScope: z.literal('demo'),
+    ...interactionFields,
+    direction: interactionDirectionSchema,
+  })
+  .strict();
+export const interactionSubmissionSchema = z
+  .object({
+    id: z.string().min(1),
+    createdAt: z.string().datetime({ offset: true }),
+    payload: interactionPayloadSchema,
+  })
+  .strict();
 export type InteractionSubmissionDto = z.infer<typeof interactionSubmissionSchema>;
-export const interactionStateSchema = z.object({
-  lastSubmission: interactionSubmissionSchema.nullable(),
-  count: z.number().int().nonnegative(),
-  deduplicated: z.boolean(),
-}).strict();
+export const interactionStateSchema = z
+  .object({
+    lastSubmission: interactionSubmissionSchema.nullable(),
+    count: z.number().int().nonnegative(),
+    deduplicated: z.boolean(),
+  })
+  .strict();
 export type InteractionStateDto = z.infer<typeof interactionStateSchema>;
 
 /** 资源回收报告里的一条未绑定资源：只暴露身份与占用，不含字节与元数据。 */

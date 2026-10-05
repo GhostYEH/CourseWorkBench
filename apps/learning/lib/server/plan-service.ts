@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { PLAN_PAYLOAD_VERSION, StudyError, planPayloadSchema, projectScopeSchema, type PlanPayloadDto } from '@sew/study-contracts';
+import {
+  PLAN_PAYLOAD_VERSION,
+  StudyError,
+  planPayloadSchema,
+  projectScopeSchema,
+  type PlanPayloadDto,
+} from '@sew/study-contracts';
 import { assertScope } from './service';
 import { buildKnowledgeView } from './views';
 
@@ -33,9 +39,15 @@ export const executePlanCommand = (body: z.infer<typeof planCommandSchema>) => {
         tasks.push({
           knowledgeId: point.knowledgeId,
           name: point.name,
-          minutes: Math.max(20, Math.round((project.dailyMinutes || 60) / Math.max(1, knowledge.length))),
+          minutes: Math.max(
+            20,
+            Math.round((project.dailyMinutes || 60) / Math.max(1, knowledge.length)),
+          ),
           acceptance: point.acceptance || '完成一节课程与独立练习',
-          evidence: point.evidence.map((item) => ({ materialId: item.materialId, segmentId: item.segmentId })),
+          evidence: point.evidence.map((item) => ({
+            materialId: item.materialId,
+            segmentId: item.segmentId,
+          })),
         });
       } else {
         const blocked = view.blockedById.get(point.knowledgeId);
@@ -72,14 +84,18 @@ export const executePlanCommand = (body: z.infer<typeof planCommandSchema>) => {
 
   if (body.action === 'confirm-task') {
     if (draft.status !== 'draft') {
-      throw new StudyError('VERSION_CONFLICT', { reason: 'plan_already_confirmed', version: draft.version });
+      throw new StudyError('VERSION_CONFLICT', {
+        reason: 'plan_already_confirmed',
+        version: draft.version,
+      });
     }
     const task = draft.payload.tasks.find((item) => item.knowledgeId === body.knowledgeId);
     if (!task) throw new StudyError('NOT_FOUND', { knowledgeId: body.knowledgeId });
     const without = draft.payload.confirmedTaskKnowledgeIds.filter((id) => id !== body.knowledgeId);
     const payload = {
       ...draft.payload,
-      confirmedTaskKnowledgeIds: body.decision === 'accept' ? [...without, body.knowledgeId] : without,
+      confirmedTaskKnowledgeIds:
+        body.decision === 'accept' ? [...without, body.knowledgeId] : without,
     };
     store.savePlanVersion(projectId, draft.version, 'draft', payload);
     return { version: draft.version, status: 'draft', plan: payload };
@@ -111,5 +127,4 @@ export const executePlanCommand = (body: z.infer<typeof planCommandSchema>) => {
   };
   store.savePlanVersion(projectId, draft.version, 'confirmed', payload);
   return { version: draft.version, status: 'confirmed', plan: payload };
-
 };

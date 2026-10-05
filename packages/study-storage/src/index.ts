@@ -36,6 +36,8 @@ export {
 } from './project-layout';
 export type { ProjectManifest, ProjectPaths } from './project-layout';
 export { decodeJson, encodeJson } from './json-codec';
+export { createProjectBackup, restoreProjectBackup, ProjectBackupError } from './project-backup';
+export type { CreateProjectBackupOptions, RestoreProjectBackupOptions } from './project-backup';
 export type { DecodeResult } from './json-codec';
 export { ClassroomBoardRepository } from './repositories/classroom-board';
 export type { CreateClassroomBoardInput, ReviewClassroomBoardInput, PlayClassroomBoardInput } from './repositories/classroom-board';

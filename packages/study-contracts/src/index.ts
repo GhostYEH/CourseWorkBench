@@ -1,4 +1,6 @@
 /** Stable public contracts; internal additions must be exported explicitly. */
+export { MAX_EVALUATION_IMPORT_BYTES, evaluationTaskSchema, evaluationValueSchema, evaluationDatasetSchema, evaluationConfigSchema, evaluationGoldSchema, evaluationPredictionsSchema, evaluationRateSchema, evaluationReportSchema, frozenEvaluationSchema } from './evaluation';
+export type { EvaluationDataset, EvaluationConfig, EvaluationGold, EvaluationPredictions, EvaluationReport, EvaluationValue, FrozenEvaluation } from './evaluation';
 export {
   asId, newId, GENERATED_ID_PATTERN, SEGMENT_ID_PATTERN, SYLLABUS_REQUIREMENT_KEY_PATTERN,
 } from './ids';
@@ -167,3 +169,5 @@ export {
 export type {
   RecoveryCheckpointDto, RecoveryLayerResultDto, RecoveryQueryInput, RecoveryLayer, RecoveryStatus,
 } from './recovery';
+export { PROJECT_BACKUP_VERSION, backupProjectManifestSchema, projectBackupFileSchema, projectBackupManifestSchema } from './project-backup';
+export type { ProjectBackupManifest, ProjectBackupFile, ProjectBackupResult } from './project-backup';

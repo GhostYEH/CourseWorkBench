@@ -4,8 +4,8 @@
  *   node scripts/run-electron-boundary-smoke.cjs
  *
  * This harness uses the real sandboxed preload and production learning server.
- * The two project IPC handlers use a controlled temporary directory in place
- * of native dialogs, so they exercise the preload IPC path without showing UI.
+ * Native selectors use controlled temporary directories; production native
+ * handlers and preload IPC run without showing system dialogs.
  */
 const { app, BrowserWindow, ipcMain } = require('electron');
 const { spawn } = require('node:child_process');
@@ -13,6 +13,8 @@ const { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } = require('n
 const { tmpdir } = require('node:os');
 const { join, resolve, sep } = require('node:path');
 const { rendererRequestHeaders } = require('../apps/desktop/src/http-boundary.cjs');
+const { registerNativeHandlers } = require('../apps/desktop/src/native-handlers.cjs');
+const { createProjectCoordinator } = require('../apps/desktop/src/project-coordinator.cjs');
 const channels = require('../packages/study-contracts/ipc-channels.json');
 
 const projectRoot = resolve(__dirname, '..');
@@ -35,10 +37,14 @@ let failure = null;
 let lastStep = 'module-loaded';
 let finishing = false;
 let cleanupPromise = null;
+let nativeProjects;
+let backupWorkspace;
 const rendererRequests = [];
 /** 已覆盖的边界断言，写进结果文件便于外部复核（stdio 被隐藏窗口丢弃）。 */
 const coveredChecks = [];
-const cover = (label) => { coveredChecks.push(label); };
+const cover = (label) => {
+  coveredChecks.push(label);
+};
 
 const writeResult = (result) => {
   if (!resultFile) return;
@@ -56,53 +62,69 @@ const markStep = (step, extra = {}) => {
 };
 markStep('module-loaded');
 process.on('exit', (code) => {
-  if (!finishing) writeResult({ state: 'process-exited', code, step: lastStep, servicePid: serviceChild?.pid ?? null });
+  if (!finishing)
+    writeResult({
+      state: 'process-exited',
+      code,
+      step: lastStep,
+      servicePid: serviceChild?.pid ?? null,
+    });
 });
 
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 
-const startService = () => new Promise((resolveReady, reject) => {
-  serviceChild = spawn(nodeBinary, [serverEntry, '--project-root', '', '--user-data', app.getPath('userData')], {
-    cwd: join(projectRoot, 'apps', 'learning'),
-    env: { ...process.env, NODE_ENV: 'production', SEW_DEV: '0', SEW_PROJECT_ROOT: '' },
-    windowsHide: true,
-    stdio: ['ignore', 'pipe', 'ignore'],
-  });
-  markStep('service-spawned', { servicePid: serviceChild.pid ?? null });
-  let buffer = '';
-  const timer = setTimeout(() => reject(new Error('production service startup timed out')), 45000);
-  serviceChild.stdout.setEncoding('utf8');
-  serviceChild.stdout.on('data', (chunk) => {
-    buffer += chunk;
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-    for (const line of lines) {
-      try {
-        const payload = JSON.parse(line);
-        if (payload.type === 'ready') {
-          clearTimeout(timer);
-          markStep('service-ready', { servicePid: serviceChild.pid ?? null });
-          resolveReady(payload);
-        } else if (payload.type === 'error') {
-          clearTimeout(timer);
-          reject(new Error('production service failed to start'));
+const startService = () =>
+  new Promise((resolveReady, reject) => {
+    serviceChild = spawn(
+      nodeBinary,
+      [serverEntry, '--project-root', '', '--user-data', app.getPath('userData')],
+      {
+        cwd: join(projectRoot, 'apps', 'learning'),
+        env: { ...process.env, NODE_ENV: 'production', SEW_DEV: '0', SEW_PROJECT_ROOT: '' },
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      },
+    );
+    markStep('service-spawned', { servicePid: serviceChild.pid ?? null });
+    let buffer = '';
+    const timer = setTimeout(
+      () => reject(new Error('production service startup timed out')),
+      45000,
+    );
+    serviceChild.stdout.setEncoding('utf8');
+    serviceChild.stdout.on('data', (chunk) => {
+      buffer += chunk;
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        try {
+          const payload = JSON.parse(line);
+          if (payload.type === 'ready') {
+            clearTimeout(timer);
+            markStep('service-ready', { servicePid: serviceChild.pid ?? null });
+            resolveReady(payload);
+          } else if (payload.type === 'error') {
+            clearTimeout(timer);
+            reject(new Error('production service failed to start'));
+          }
+        } catch {
+          /* Ignore non-protocol startup output without printing it. */
         }
-      } catch { /* Ignore non-protocol startup output without printing it. */ }
-    }
-  });
-  serviceChild.once('error', () => {
-    clearTimeout(timer);
-    reject(new Error('could not launch production service'));
-  });
-  serviceChild.once('exit', (code) => {
-    if (!ready) {
+      }
+    });
+    serviceChild.once('error', () => {
       clearTimeout(timer);
-      reject(new Error(`production service exited before ready (${code})`));
-    }
+      reject(new Error('could not launch production service'));
+    });
+    serviceChild.once('exit', (code) => {
+      if (!ready) {
+        clearTimeout(timer);
+        reject(new Error(`production service exited before ready (${code})`));
+      }
+    });
   });
-});
 
 const serviceRequest = async (method, path, body, extraHeaders = {}) => {
   const response = await fetch(`${ready.origin}${path}`, {
@@ -123,24 +145,47 @@ const serviceRequest = async (method, path, body, extraHeaders = {}) => {
   return payload.data;
 };
 
-const assertNativeCaller = (event) => {
-  const frame = event.senderFrame;
-  assert(window && event.sender === window.webContents, 'IPC caller was not the smoke window');
-  assert(frame && frame.parent === null, 'IPC caller was not the main frame');
-  assert(new URL(frame.url).origin === ready.origin, 'IPC caller origin was not the service origin');
-};
-
 const registerMockProjectIpc = () => {
-  ipcMain.handle('sew:project:open', async (event) => {
-    assertNativeCaller(event);
-    const data = await serviceRequest('POST', '/internal/project', { action: 'open', path: tempRoot });
-    window.webContents.send(channels.projectOpen, data.session);
-    return data.session;
+  const service = {
+    request: serviceRequest,
+    getReady: () => ready,
+    getKnownOrigin: () => ready.origin,
+    getStatus: () => ({
+      state: 'ready',
+      message: '本地服务已就绪。',
+      port: ready.port,
+      revision: 1,
+    }),
+  };
+  nativeProjects = createProjectCoordinator({
+    service,
+    onProjectChanged: (project) => window.webContents.send(channels.projectOpen, project),
   });
-  ipcMain.handle('sew:project:close', async (event) => {
-    assertNativeCaller(event);
-    await serviceRequest('POST', '/internal/project', { action: 'close' });
-    window.webContents.send(channels.projectOpen, null);
+  registerNativeHandlers({
+    ipcMain,
+    channels,
+    getWindow: () => window,
+    service,
+    projects: nativeProjects,
+    // Only selectors are replaced. Production IPC handlers, grants and control HTTP are exercised.
+    dialog: {
+      showOpenDialog: async (_window, options) => ({
+        canceled: false,
+        filePaths: [
+          options.title.includes('backup.json') ? join(backupWorkspace, 'backup') : tempRoot,
+        ],
+      }),
+      showSaveDialog: async (_window, options) => ({
+        canceled: false,
+        filePath: join(
+          backupWorkspace,
+          options.title.startsWith('恢复项目') ? 'restored' : 'backup',
+        ),
+      }),
+    },
+    // The fixture deliberately simulates unavailable encryption to verify the explicit warning.
+    settings: { readRecentProjects: () => [], saveModelCredentials: () => ({ persisted: false }) },
+    shell: { openPath: async () => '' },
   });
 };
 
@@ -165,7 +210,8 @@ const waitForText = async (needle, message) => {
   throw new Error(message);
 };
 
-const readClassroomPersistence = async () => window.webContents.executeJavaScript(`(async () => {
+const readClassroomPersistence = async () =>
+  window.webContents.executeJavaScript(`(async () => {
   const stateResponse = await fetch('/api/study/state');
   if (!stateResponse.ok) throw new Error('classroom state request failed while checking reload persistence');
   const state = await stateResponse.json();
@@ -194,10 +240,13 @@ const readClassroomPersistence = async () => window.webContents.executeJavaScrip
 const run = async () => {
   assert(existsSync(serverEntry), 'learning server entry is missing');
   assert(existsSync(preloadPath), 'sandboxed preload is missing');
-  assert(existsSync(join(projectRoot, 'apps', 'learning', '.next', 'BUILD_ID')),
-    'production Next build is missing; run pnpm build:learning first');
+  assert(
+    existsSync(join(projectRoot, 'apps', 'learning', '.next', 'BUILD_ID')),
+    'production Next build is missing; run pnpm build:learning first',
+  );
 
   tempRoot = mkdtempSync(join(tmpdir(), 'sew-electron-boundary-'));
+  backupWorkspace = mkdtempSync(join(tmpdir(), 'sew-electron-backup-'));
   mkdirSync(tempRoot, { recursive: true });
   ready = await startService();
 
@@ -233,7 +282,9 @@ const run = async () => {
         resourceType: details.resourceType,
         url: details.url,
         sessionInjected: nextHeaders['x-sew-session'] === ready.sessionToken,
-        controlInjected: Object.keys(nextHeaders).some((name) => name.toLowerCase() === 'x-sew-control'),
+        controlInjected: Object.keys(nextHeaders).some(
+          (name) => name.toLowerCase() === 'x-sew-control',
+        ),
       });
       callback({ requestHeaders: nextHeaders });
     },
@@ -245,7 +296,10 @@ const run = async () => {
   markStep('anonymous-ssr-rejected', { servicePid: serviceChild.pid ?? null });
 
   await window.loadURL(`${ready.origin}/workbench`);
-  await waitForUrl((url) => url.endsWith('/no-project'), 'initial no-project redirect did not finish');
+  await waitForUrl(
+    (url) => url.endsWith('/no-project'),
+    'initial no-project redirect did not finish',
+  );
   await waitForText('还没有打开项目', 'no-project page content did not load');
   markStep('no-project-rendered', { servicePid: serviceChild.pid ?? null });
   const bridgeCheck = await window.webContents.executeJavaScript(`(() => {
@@ -257,8 +311,10 @@ const run = async () => {
       methods: ['projectOpen', 'projectClose', 'onServiceReady'].every((key) => typeof window.sewNative[key] === 'function')
     };
   })()`);
-  assert(bridgeCheck.bridge === 'object' && bridgeCheck.isolated && bridgeCheck.methods,
-    'sandboxed preload bridge was not exposed as expected');
+  assert(
+    bridgeCheck.bridge === 'object' && bridgeCheck.isolated && bridgeCheck.methods,
+    'sandboxed preload bridge was not exposed as expected',
+  );
   cover('sandboxed preload bridge, no Node globals in main frame');
 
   const rendererReady = (({ controlToken, ...payload }) => payload)(ready);
@@ -269,8 +325,14 @@ const run = async () => {
     await new Promise((resolveWait) => setTimeout(resolveWait, 50));
   }
   const projection = await window.webContents.executeJavaScript('window.__smokeReady');
-  assert(projection && projection.sessionToken === ready.sessionToken, 'serviceReady did not deliver the session token');
-  assert(!Object.prototype.hasOwnProperty.call(projection, 'controlToken'), 'serviceReady projection exposed controlToken');
+  assert(
+    projection && projection.sessionToken === ready.sessionToken,
+    'serviceReady did not deliver the session token',
+  );
+  assert(
+    !Object.prototype.hasOwnProperty.call(projection, 'controlToken'),
+    'serviceReady projection exposed controlToken',
+  );
 
   const openButton = await window.webContents.executeJavaScript(`(() => {
     const button = [...document.querySelectorAll('button')].find((item) => item.textContent.includes('打开项目'));
@@ -279,24 +341,50 @@ const run = async () => {
     return true;
   })()`);
   assert(openButton, 'no-project page did not expose the native project-open action');
-  await waitForUrl((url) => url.endsWith('/workbench'), 'native project-open action did not navigate to the workbench');
+  await waitForUrl(
+    (url) => url.endsWith('/workbench'),
+    'native project-open action did not navigate to the workbench',
+  );
   await waitForText('关闭项目', 'opened workbench page did not finish rendering');
   const workbenchText = await window.webContents.executeJavaScript('document.body.innerText');
-  assert(workbenchText.includes('sew-electron-boundary-'), 'opened project was not rendered in the workbench');
+  assert(
+    workbenchText.includes('sew-electron-boundary-'),
+    'opened project was not rendered in the workbench',
+  );
 
-  const apiResult = await window.webContents.executeJavaScript(`fetch('/api/study/state').then(async (response) => ({ status: response.status, body: await response.json() }))`);
-  assert(apiResult.status === 200 && apiResult.body.ok === true, 'main-frame API request did not receive session authentication');
+  const apiResult = await window.webContents.executeJavaScript(
+    `fetch('/api/study/state').then(async (response) => ({ status: response.status, body: await response.json() }))`,
+  );
+  assert(
+    apiResult.status === 200 && apiResult.body.ok === true,
+    'main-frame API request did not receive session authentication',
+  );
   cover('main-frame API received session authentication');
 
   // ——— 真实课堂：OpenMAIC SlideCanvas 渲染 + 互动 iframe 隔离 ———
   await window.loadURL(`${ready.origin}/classroom/lesson-demo-monotonicity-1`);
   await waitForText('确认将演示材料', 'classroom page did not ask for explicit demo import');
-  const beforeDemo = await window.webContents.executeJavaScript(`fetch('/api/study/state').then((response) => response.json())`);
-  assert(beforeDemo.ok === true && beforeDemo.data.counts.knowledgeVerified === 0 && beforeDemo.data.counts.materials === 0,
-    'opening the classroom silently wrote authoritative demo knowledge');
-  await window.webContents.executeJavaScript(`document.querySelector('[data-demo-import]').click()`);
+  const beforeDemo = await window.webContents.executeJavaScript(
+    `fetch('/api/study/state').then((response) => response.json())`,
+  );
+  assert(
+    beforeDemo.ok === true &&
+      beforeDemo.data.counts.knowledgeVerified === 0 &&
+      beforeDemo.data.counts.materials === 0,
+    'opening the classroom silently wrote authoritative demo knowledge',
+  );
+  await window.webContents.executeJavaScript(
+    `document.querySelector('[data-demo-import]').click()`,
+  );
   cover('demo material import requires an explicit user action; classroom GET is read-only');
-  let classroom = { rendered: false, hasTab: false, imageNaturalWidth: 0, imageSrc: '', fontLoaded: false, formulaFontFamily: '' };
+  let classroom = {
+    rendered: false,
+    hasTab: false,
+    imageNaturalWidth: 0,
+    imageSrc: '',
+    fontLoaded: false,
+    formulaFontFamily: '',
+  };
   const classroomDeadline = Date.now() + 20000;
   while (Date.now() < classroomDeadline) {
     classroom = await window.webContents.executeJavaScript(`(() => {
@@ -319,17 +407,38 @@ const run = async () => {
         bodyText: document.body.innerText.slice(0, 200)
       };
     })()`);
-    if (classroom.rendered && classroom.hasTab && classroom.imageNaturalWidth === 240 && classroom.fontLoaded && classroom.formulaFontFamily) break;
+    if (
+      classroom.rendered &&
+      classroom.hasTab &&
+      classroom.imageNaturalWidth === 240 &&
+      classroom.fontLoaded &&
+      classroom.formulaFontFamily
+    )
+      break;
     await new Promise((resolveWait) => setTimeout(resolveWait, 200));
   }
-  assert(classroom.rendered,
-    `真实课堂没有由 @openmaic/renderer 画出审核课件元素：${classroom.bodyText}`);
-  assert(String(classroom.paintedText).includes('增函数的定义'), 'painted slide element text did not match the audited lesson');
+  assert(
+    classroom.rendered,
+    `真实课堂没有由 @openmaic/renderer 画出审核课件元素：${classroom.bodyText}`,
+  );
+  assert(
+    String(classroom.paintedText).includes('增函数的定义'),
+    'painted slide element text did not match the audited lesson',
+  );
   cover('OpenMAIC SlideCanvas painted the audited slide element');
-  assert(classroom.imageNaturalWidth === 240, `reviewed demo image did not load at its checked-in width: ${classroom.imageNaturalWidth}`);
-  assert(String(classroom.imageSrc).startsWith('blob:'), 'demo image was not resolved to the HttpAssetStore object URL');
+  assert(
+    classroom.imageNaturalWidth === 240,
+    `reviewed demo image did not load at its checked-in width: ${classroom.imageNaturalWidth}`,
+  );
+  assert(
+    String(classroom.imageSrc).startsWith('blob:'),
+    'demo image was not resolved to the HttpAssetStore object URL',
+  );
   assert(classroom.fontLoaded, 'reviewed KaTeX FontFace was not registered with loaded status');
-  assert(classroom.formulaFontFamily.includes('SEW KaTeX Main'), `formula element did not use the reviewed font: ${classroom.formulaFontFamily}`);
+  assert(
+    classroom.formulaFontFamily.includes('SEW KaTeX Main'),
+    `formula element did not use the reviewed font: ${classroom.formulaFontFamily}`,
+  );
   cover('project-scoped HttpAssetStore loaded and integrity-checked image bytes and KaTeX font');
   markStep('classroom-slide-rendered', { servicePid: serviceChild.pid ?? null });
 
@@ -359,17 +468,30 @@ const run = async () => {
         formulaFontFamily
       };
     })()`);
-    if (reloadedAssets.imageNaturalWidth === 240 && reloadedAssets.fontLoaded && reloadedAssets.formulaFontFamily) break;
+    if (
+      reloadedAssets.imageNaturalWidth === 240 &&
+      reloadedAssets.fontLoaded &&
+      reloadedAssets.formulaFontFamily
+    )
+      break;
     await new Promise((resolveWait) => setTimeout(resolveWait, 200));
   }
-  assert(reloadedAssets.imageNaturalWidth === 240 && reloadedAssets.fontLoaded,
-    'persisted demo image and registered KaTeX FontFace did not render after reloading the classroom');
-  assert(reloadedAssets.formulaFontFamily.includes('SEW KaTeX Main'),
-    `formula did not use the reviewed font after classroom reload: ${reloadedAssets.formulaFontFamily}`);
+  assert(
+    reloadedAssets.imageNaturalWidth === 240 && reloadedAssets.fontLoaded,
+    'persisted demo image and registered KaTeX FontFace did not render after reloading the classroom',
+  );
+  assert(
+    reloadedAssets.formulaFontFamily.includes('SEW KaTeX Main'),
+    `formula did not use the reviewed font after classroom reload: ${reloadedAssets.formulaFontFamily}`,
+  );
   const persistenceAfterReload = await readClassroomPersistence();
-  assert(JSON.stringify(persistenceAfterReload) === JSON.stringify(persistenceBeforeReload),
-    'reloading the classroom changed authoritative records or demo asset bindings');
-  cover('classroom reload reused the same image/font assets and left authoritative records unchanged');
+  assert(
+    JSON.stringify(persistenceAfterReload) === JSON.stringify(persistenceBeforeReload),
+    'reloading the classroom changed authoritative records or demo asset bindings',
+  );
+  cover(
+    'classroom reload reused the same image/font assets and left authoritative records unchanged',
+  );
 
   await window.webContents.executeJavaScript(`(() => {
     const tab = [...document.querySelectorAll('button.tab')].find((item) => item.textContent.includes('参数实验'));
@@ -392,19 +514,34 @@ const run = async () => {
         srcdocProtocol: (frame.getAttribute('srcdoc') || '').includes('__maicErrorReplayRequest')
       };
     })()`);
-    if (widget.present && widget.ready.includes('已加载') && widget.isolationReport.includes('nativeBridge=')) break;
+    if (
+      widget.present &&
+      widget.ready.includes('已加载') &&
+      widget.isolationReport.includes('nativeBridge=')
+    )
+      break;
     await new Promise((resolveWait) => setTimeout(resolveWait, 200));
   }
-  assert(widget.present && widget.sandbox === 'allow-scripts',
-    '课堂互动 iframe 不是仅 allow-scripts 的沙箱');
-  assert(widget.usesSrcdoc && !widget.parentCanReadFrameDom,
-    '课堂互动 iframe 与主框架同源可达，隔离边界失效');
+  assert(
+    widget.present && widget.sandbox === 'allow-scripts',
+    '课堂互动 iframe 不是仅 allow-scripts 的沙箱',
+  );
+  assert(
+    widget.usesSrcdoc && !widget.parentCanReadFrameDom,
+    '课堂互动 iframe 与主框架同源可达，隔离边界失效',
+  );
   assert(widget.srcdocProtocol, '互动 iframe 未包含上游 runtime-error replay 请求协议');
-  assert(widget.isolationReport.includes('nativeBridge=undefined'),
-    `互动 iframe 内可见原生桥：${widget.isolationReport}`);
-  assert(widget.isolationReport.includes('nodeRequire=undefined'),
-    `互动 iframe 内可见 Node require：${widget.isolationReport}`);
-  cover('classroom widget iframe: sandbox=allow-scripts only, opaque srcdoc, no sewNative/require inside, DOM unreadable from parent');
+  assert(
+    widget.isolationReport.includes('nativeBridge=undefined'),
+    `互动 iframe 内可见原生桥：${widget.isolationReport}`,
+  );
+  assert(
+    widget.isolationReport.includes('nodeRequire=undefined'),
+    `互动 iframe 内可见 Node require：${widget.isolationReport}`,
+  );
+  cover(
+    'classroom widget iframe: sandbox=allow-scripts only, opaque srcdoc, no sewNative/require inside, DOM unreadable from parent',
+  );
   markStep('classroom-widget-isolated', { servicePid: serviceChild.pid ?? null });
 
   await window.loadURL(`${ready.origin}/workbench`);
@@ -418,15 +555,26 @@ const run = async () => {
     frame.src = '/workbench?boundary-iframe=1';
     document.body.append(frame);
   })`);
-  assert(String(iframeResult).includes('SESSION_REQUIRED'), 'same-origin iframe unexpectedly received session authentication');
-  const iframeDecision = rendererRequests.find((entry) => entry.resourceType === 'subFrame' && entry.url.includes('boundary-iframe=1'));
-  assert(iframeDecision && !iframeDecision.sessionInjected && !iframeDecision.controlInjected,
-    'iframe request received a renderer credential');
-  assert(rendererRequests.every((entry) => !entry.controlInjected), 'a renderer request received the control credential');
+  assert(
+    String(iframeResult).includes('SESSION_REQUIRED'),
+    'same-origin iframe unexpectedly received session authentication',
+  );
+  const iframeDecision = rendererRequests.find(
+    (entry) => entry.resourceType === 'subFrame' && entry.url.includes('boundary-iframe=1'),
+  );
+  assert(
+    iframeDecision && !iframeDecision.sessionInjected && !iframeDecision.controlInjected,
+    'iframe request received a renderer credential',
+  );
+  assert(
+    rendererRequests.every((entry) => !entry.controlInjected),
+    'a renderer request received the control credential',
+  );
   cover('same-origin iframe got no renderer credential; no control credential anywhere');
 
   // ——— 工作台项目树：层级结构、ARIA 语义与键盘导航 ———
-  const readFocusedNode = () => window.webContents.executeJavaScript(`(() => {
+  const readFocusedNode = () =>
+    window.webContents.executeJavaScript(`(() => {
     const active = document.activeElement;
     const item = active instanceof Element ? active.closest('[role="treeitem"]') : null;
     if (!item) return { onTreeItem: false };
@@ -472,41 +620,68 @@ const run = async () => {
     };
   })()`);
   assert(treeStructure.found, '工作台没有渲染出 role=tree 的项目树');
-  assert(String(treeStructure.levels) === '1,2,3', `项目树缺少三层层级：${JSON.stringify(treeStructure.levels)}`);
+  assert(
+    String(treeStructure.levels) === '1,2,3',
+    `项目树缺少三层层级：${JSON.stringify(treeStructure.levels)}`,
+  );
   assert(treeStructure.groupCount >= 1, '项目树缺少 role=group 嵌套');
-  assert(treeStructure.rovingTabStops === 1, `项目树里可被 Tab 直接到达的节点应为 1 个，实际 ${treeStructure.rovingTabStops}`);
+  assert(
+    treeStructure.rovingTabStops === 1,
+    `项目树里可被 Tab 直接到达的节点应为 1 个，实际 ${treeStructure.rovingTabStops}`,
+  );
   assert(treeStructure.selectedCount === 1, '项目树的 aria-selected 不唯一');
   assert(treeStructure.expandedCount >= 1, '项目树默认没有展开任何分支');
   assert(treeStructure.multiSelect === 'false', '项目树错误地声明了多选语义');
   assert(treeStructure.leafTabIndex, '项目树叶子的链接与树节点形成双重 Tab 序');
-  assert(treeStructure.leafHrefs.length > 0 && treeStructure.leafHrefs.every((href) => href.startsWith('/workbench/')),
-    `项目树条目没有指向真实页面：${JSON.stringify(treeStructure.leafHrefs.slice(0, 3))}`);
+  assert(
+    treeStructure.leafHrefs.length > 0 &&
+      treeStructure.leafHrefs.every((href) => href.startsWith('/workbench/')),
+    `项目树条目没有指向真实页面：${JSON.stringify(treeStructure.leafHrefs.slice(0, 3))}`,
+  );
   assert(!treeStructure.answerLeak, '项目树把答案文本当作标签暴露');
-  cover('workbench project tree: 3 levels, role=tree/treeitem/group, single roving tab stop, no answer text');
+  cover(
+    'workbench project tree: 3 levels, role=tree/treeitem/group, single roving tab stop, no answer text',
+  );
 
-  await window.webContents.executeJavaScript(`document.querySelector('ul[role="tree"] [role="treeitem"]').focus()`);
+  await window.webContents.executeJavaScript(
+    `document.querySelector('ul[role="tree"] [role="treeitem"]').focus()`,
+  );
   const rootFocus = await readFocusedNode();
   assert(rootFocus.onTreeItem && rootFocus.level === 1, '项目树根节点无法获得焦点');
   await pressKey('ArrowDown');
   const afterDown = await readFocusedNode();
-  assert(afterDown.onTreeItem && afterDown.level === 2, `下箭头没有从根进入分组：${JSON.stringify(afterDown)}`);
+  assert(
+    afterDown.onTreeItem && afterDown.level === 2,
+    `下箭头没有从根进入分组：${JSON.stringify(afterDown)}`,
+  );
   await pressKey('ArrowRight');
   const afterRight = await readFocusedNode();
-  assert(afterRight.onTreeItem && afterRight.level === 3, `右箭头没有进入分组子节点：${JSON.stringify(afterRight)}`);
+  assert(
+    afterRight.onTreeItem && afterRight.level === 3,
+    `右箭头没有进入分组子节点：${JSON.stringify(afterRight)}`,
+  );
   await pressKey('ArrowLeft');
   const afterLeft = await readFocusedNode();
-  assert(afterLeft.onTreeItem && afterLeft.level === 2, `左箭头没有回到父分组：${JSON.stringify(afterLeft)}`);
+  assert(
+    afterLeft.onTreeItem && afterLeft.level === 2,
+    `左箭头没有回到父分组：${JSON.stringify(afterLeft)}`,
+  );
   const expandedBefore = afterLeft.expanded;
   await pressKey('Enter');
   const afterEnter = await readFocusedNode();
-  assert(afterEnter.expanded !== expandedBefore, `Enter 没有切换分组展开状态：${expandedBefore} → ${afterEnter.expanded}`);
+  assert(
+    afterEnter.expanded !== expandedBefore,
+    `Enter 没有切换分组展开状态：${expandedBefore} → ${afterEnter.expanded}`,
+  );
   await pressKey('Enter');
   const afterEnterBack = await readFocusedNode();
   assert(afterEnterBack.expanded === expandedBefore, 'Enter 再次切换没有恢复原展开状态');
   await pressKey('End');
   const afterEnd = await readFocusedNode();
   assert(afterEnd.onTreeItem, 'End 键之后焦点离开了树');
-  cover('workbench tree keyboard model: arrows move focus and toggle expansion, Enter toggles branch');
+  cover(
+    'workbench tree keyboard model: arrows move focus and toggle expansion, Enter toggles branch',
+  );
 
   const tabState = await window.webContents.executeJavaScript(`(() => {
     const tabs = [...document.querySelectorAll('nav.tabs a.tab')];
@@ -517,16 +692,36 @@ const run = async () => {
       fakeTablist: Boolean(document.querySelector('[role="tablist"]')),
     };
   })()`);
-  assert(tabState.count >= 2 && tabState.current === 1 && tabState.ariaCurrent === 1,
-    `分区导航没有恰好一个当前项：${JSON.stringify(tabState)}`);
+  assert(
+    tabState.count >= 2 && tabState.current === 1 && tabState.ariaCurrent === 1,
+    `分区导航没有恰好一个当前项：${JSON.stringify(tabState)}`,
+  );
   assert(!tabState.fakeTablist, '分区导航仍声明为 tablist，但它并不控制面板');
   cover('workbench section navigation marks exactly one current page without a fake tablist');
 
   await require('./smoke-formal-quiz.cjs')({
-    window, origin: ready.origin, projectDirectory: tempRoot, serviceRequest, waitForText, cover,
+    window,
+    origin: ready.origin,
+    projectDirectory: tempRoot,
+    serviceRequest,
+    waitForText,
+    cover,
+  });
+  nativeProjects.adopt(await serviceRequest('GET', '/internal/project'));
+  await require('./smoke-project-backup.cjs')({
+    window,
+    origin: ready.origin,
+    backupWorkspace,
+    serviceRequest,
+    waitForText,
+    cover,
   });
   await require('./smoke-learner-profile.cjs')({
-    window, origin: ready.origin, projectDirectory: tempRoot, serviceRequest, cover,
+    window,
+    origin: ready.origin,
+    projectDirectory: tempRoot,
+    serviceRequest,
+    cover,
   });
 
   const closeButton = await window.webContents.executeJavaScript(`(() => {
@@ -536,10 +731,15 @@ const run = async () => {
     return true;
   })()`);
   assert(closeButton, 'workbench page did not expose the native project-close action');
-  await waitForUrl((url) => url.endsWith('/no-project'), 'native project-close action did not navigate to no-project');
+  await waitForUrl(
+    (url) => url.endsWith('/no-project'),
+    'native project-close action did not navigate to no-project',
+  );
   await waitForText('还没有打开项目', 'closed-project page did not finish rendering');
 
-  console.log('PASS hidden Electron smoke: sandboxed preload, SSR/API auth, OpenMAIC slide render, sandboxed classroom widget, iframe isolation, ready projection, project open/close');
+  console.log(
+    'PASS hidden Electron smoke: sandboxed preload, SSR/API auth, OpenMAIC slide render, sandboxed classroom widget, iframe isolation, ready projection, project open/close',
+  );
 };
 
 const cleanup = async () => {
@@ -566,9 +766,20 @@ const cleanup = async () => {
     if (tempRoot) {
       const absoluteTemp = resolve(tempRoot);
       const absoluteBase = resolve(tmpdir()) + sep;
-      if (absoluteTemp.startsWith(absoluteBase) && absoluteTemp.includes('sew-electron-boundary-')) {
+      if (
+        absoluteTemp.startsWith(absoluteBase) &&
+        absoluteTemp.includes('sew-electron-boundary-')
+      ) {
         rmSync(absoluteTemp, { recursive: true, force: true });
       }
+    }
+    if (backupWorkspace) {
+      const absoluteBackup = resolve(backupWorkspace);
+      if (
+        absoluteBackup.startsWith(resolve(tmpdir()) + sep) &&
+        absoluteBackup.includes('sew-electron-backup-')
+      )
+        rmSync(absoluteBackup, { recursive: true, force: true });
     }
   })();
   return cleanupPromise;
@@ -583,7 +794,9 @@ const finish = async (error = null) => {
     state: failure ? 'failed' : 'passed',
     step: lastStep,
     message: failure
-      ? (failure instanceof Error ? failure.message : 'unknown error')
+      ? failure instanceof Error
+        ? failure.message
+        : 'unknown error'
       : `hidden Electron smoke completed: ${coveredChecks.join(' | ')}`,
   });
   app.exit(failure ? 1 : 0);
@@ -599,9 +812,18 @@ const beginSmoke = async () => {
   }
 };
 
-process.on('uncaughtException', (error) => { void finish(error); });
-process.on('unhandledRejection', (error) => { void finish(error); });
+process.on('uncaughtException', (error) => {
+  void finish(error);
+});
+process.on('unhandledRejection', (error) => {
+  void finish(error);
+});
 // Finish asynchronous cleanup before explicitly exiting the hidden Electron app.
 app.on('window-all-closed', () => {});
-app.on('ready', () => { void beginSmoke(); });
-if (app.isReady()) setImmediate(() => { void beginSmoke(); });
+app.on('ready', () => {
+  void beginSmoke();
+});
+if (app.isReady())
+  setImmediate(() => {
+    void beginSmoke();
+  });

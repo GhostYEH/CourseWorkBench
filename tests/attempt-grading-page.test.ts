@@ -6,7 +6,11 @@ import { candidateApprovalBlocked, effectiveGradeLabel } from '../apps/learning/
 import MistakesPage from '../apps/learning/app/workbench/mistakes/page';
 
 const service = vi.hoisted(() => ({ session: null as unknown }));
-vi.mock('../apps/learning/lib/server/service', () => ({ getSession: () => service.session, bootstrapFromEnvironment: () => service.session }));
+vi.mock('../apps/learning/lib/server/service', () => ({
+  getSession: () => service.session,
+  requireSession: () => service.session,
+  bootstrapFromEnvironment: () => service.session,
+}));
 const require = createRequire(new URL('../apps/learning/package.json', import.meta.url));
 const { createElement } = require('react') as { createElement: (type: unknown, props: unknown, ...children: unknown[]) => unknown };
 const { renderToStaticMarkup } = require('react-dom/server') as { renderToStaticMarkup: (node: unknown) => string };

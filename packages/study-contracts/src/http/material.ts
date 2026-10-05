@@ -82,9 +82,7 @@ export const materialSchema = z.object({
   /** 原始文件字节的归档状态；未归档时不能宣称可打开原文。 */
   rawArchive: materialRawArchiveSchema,
   /** 人工核实「该版本可作为考试真题来源」的记录；题目身份据此派生，请求方不能自报。 */
-  examVerification: z
-    .object({ verifiedAt: z.string(), note: z.string() })
-    .nullable(),
+  examVerification: z.object({ verifiedAt: z.string(), note: z.string() }).nullable(),
 });
 export type MaterialDto = z.infer<typeof materialSchema>;
 
@@ -143,7 +141,6 @@ export const materialOriginalOpenSchema = z.object({
   segmentId: z.string().regex(SEGMENT_ID_PATTERN).optional(),
 });
 export type MaterialOriginalOpenInput = z.infer<typeof materialOriginalOpenSchema>;
-
 
 // —— 权威事实：材料是否为「考试真题」来源 ——
 /**

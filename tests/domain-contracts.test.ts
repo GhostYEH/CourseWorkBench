@@ -373,11 +373,12 @@ describe('题目身份', () => {
     expect(forgedExam.origin).toBe('ai_new');
     expect(forgedExam.forgedExamClaim).toBe(true);
 
-    // 登记后同一记录可合法授予材料原题 / 材料改写身份。
-    const grantedOriginal = resolveQuestionOrigin('material_original', record, {
-      materialRegistered: true,
-      materialVerifiedAsExam: false,
-    });
+    // 登记后：未绑定改写原题的记录才授予材料原题；绑定了原题的按记录派生为材料改写。
+    const grantedOriginal = resolveQuestionOrigin(
+      'material_original',
+      { ...record, rewrittenFrom: null },
+      { materialRegistered: true, materialVerifiedAsExam: false },
+    );
     expect(grantedOriginal.origin).toBe('material_original');
     expect(grantedOriginal.downgraded).toBe(false);
 
@@ -387,6 +388,25 @@ describe('题目身份', () => {
     });
     expect(grantedRewrite.origin).toBe('material_rewrite');
     expect(grantedRewrite.downgraded).toBe(false);
+
+    // 自报「材料原题」但权威记录已绑定原题：不授予原题身份，只保留材料改写。
+    const claimOriginal = resolveQuestionOrigin('material_original', record, {
+      materialRegistered: true,
+      materialVerifiedAsExam: false,
+    });
+    expect(claimOriginal.origin).toBe('material_rewrite');
+    expect(claimOriginal.downgraded).toBe(true);
+    expect(claimOriginal.forgedExamClaim).toBe(false);
+
+    // 自报「真题原题」同样按记录降为材料改写，并记为伪装尝试。
+    const claimExam = resolveQuestionOrigin('exam_original', record, {
+      materialRegistered: true,
+      materialVerifiedAsExam: false,
+    });
+    expect(claimExam.origin).toBe('material_rewrite');
+    expect(claimExam.downgraded).toBe(true);
+    expect(claimExam.forgedExamClaim).toBe(true);
+    expect(claimExam.originDetail).toContain('主要变化：换数');
   });
 });
 

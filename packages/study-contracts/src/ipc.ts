@@ -84,9 +84,13 @@ export interface IpcContract {
   projectClose: { args: []; result: void };
   projectRecent: { args: []; result: RecentProjectDto[] };
   materialsPickFiles: { args: []; result: PickedFilesPayload };
-  materialsOpenOriginal: { args: [request: OpenMaterialOriginalRequest]; result: OpenMaterialOriginalResult };
+  materialsOpenOriginal: {
+    args: [request: OpenMaterialOriginalRequest];
+    result: OpenMaterialOriginalResult;
+  };
   exportsPickTarget: { args: [defaultName: string]; result: string | null };
   exportsBackupProject: { args: []; result: string | null };
+  exportsRestoreProject: { args: []; result: string | null };
   preferencesRead: { args: []; result: unknown };
   preferencesSave: { args: [value: unknown]; result: unknown };
   modelsConfigure: { args: [value: unknown]; result: void };
@@ -101,7 +105,9 @@ export type IpcMethod = keyof IpcContract;
 
 /** 主进程 handler 注册表：每个方法必须实现，返回值类型受 IpcContract 约束。 */
 export type IpcHandlerMap = {
-  [M in IpcMethod]: (...args: IpcContract[M]['args']) => IpcContract[M]['result'] | Promise<IpcContract[M]['result']>;
+  [M in IpcMethod]: (
+    ...args: IpcContract[M]['args']
+  ) => IpcContract[M]['result'] | Promise<IpcContract[M]['result']>;
 };
 
 /** 通道名 → 方法名 的映射，供实现与合同一致性检查使用。 */
@@ -114,6 +120,7 @@ export const IPC_METHOD_CHANNEL: Record<IpcMethod, IpcChannel> = {
   materialsOpenOriginal: channels.materialsOpenOriginal,
   exportsPickTarget: channels.exportsPickTarget,
   exportsBackupProject: channels.exportsBackupProject,
+  exportsRestoreProject: channels.exportsRestoreProject,
   preferencesRead: channels.preferencesRead,
   preferencesSave: channels.preferencesSave,
   modelsConfigure: channels.modelsConfigure,
@@ -143,6 +150,8 @@ export interface NativeBridge {
 
   pickExportTarget(defaultName: string): Promise<string | null>;
   backupProject(): Promise<string | null>;
+  /** Restore a validated backup into a new directory; does not replace or open the current project. */
+  restoreProject(): Promise<string | null>;
 
   readPreferences(): Promise<unknown>;
   savePreferences(value: unknown): Promise<unknown>;

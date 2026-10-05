@@ -36,7 +36,8 @@ export const syllabusItemCreateSchema = z
     }),
   })
   .refine(
-    (value) => new Set(value.requirements.map((item) => item.key)).size === value.requirements.length,
+    (value) =>
+      new Set(value.requirements.map((item) => item.key)).size === value.requirements.length,
     { message: '必要要素编号不能重复' },
   );
 export type SyllabusItemCreateInput = z.infer<typeof syllabusItemCreateSchema>;

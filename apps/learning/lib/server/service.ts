@@ -6,9 +6,22 @@
  * - 本地服务是唯一数据库写入者，写操作串行执行。
  */
 
-import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { GENERATED_ID_PATTERN, MAX_MATERIAL_BYTES, StudyError, newId, type ProjectScope } from '@sew/study-contracts';
+import {
+  GENERATED_ID_PATTERN,
+  MAX_MATERIAL_BYTES,
+  StudyError,
+  newId,
+  type ProjectScope,
+} from '@sew/study-contracts';
 import {
   PROJECT_FORMAT_VERSION,
   StudyStore,
@@ -27,6 +40,7 @@ export interface Session {
   displayName: string;
   displayPath: string;
   generation: number;
+  formatVersion: number;
   store: StudyStore;
   openedAt: string;
   learnerUid: string;
@@ -67,7 +81,6 @@ const openProject = (root: string): Session => {
   }
 
   const canonicalRoot = realpathSync(/* turbopackIgnore: true */ resolve(root));
-  const paths = ensureProjectLayout(canonicalRoot);
   let manifest = readManifest(canonicalRoot);
   if (!manifest) {
     manifest = {
@@ -79,6 +92,7 @@ const openProject = (root: string): Session => {
     writeManifest(canonicalRoot, manifest);
   }
   assertManifestCompatible(manifest);
+  const paths = ensureProjectLayout(canonicalRoot);
 
   // Prepare the replacement fully before closing the currently usable project.
   const store = StudyStore.open({ file: paths.databaseFile });
@@ -112,6 +126,7 @@ const openProject = (root: string): Session => {
     displayName: manifest.displayName,
     displayPath: canonicalRoot,
     generation: holder.generationCounter,
+    formatVersion: manifest.formatVersion,
     store,
     openedAt: new Date().toISOString(),
     learnerUid,
@@ -141,7 +156,12 @@ export const closeProject = (): void => {
 
 export const getSession = (): Session | null => {
   const session = holder.current;
-  if (session && session.learnerUid !== getLearnerProfile().uid) throw new StudyError('PROJECT_NOT_AUTHORIZED', { reason: 'active_project_learner_uid_mismatch' }, '当前个人档案与项目身份不一致，请关闭项目后重新打开。');
+  if (session && session.learnerUid !== getLearnerProfile().uid)
+    throw new StudyError(
+      'PROJECT_NOT_AUTHORIZED',
+      { reason: 'active_project_learner_uid_mismatch' },
+      '当前个人档案与项目身份不一致，请关闭项目后重新打开。',
+    );
   return session;
 };
 
@@ -194,7 +214,8 @@ export const bootstrapFromEnvironment = (): Session | null => {
   const root = process.env.SEW_PROJECT_ROOT;
   if (!root) return null;
   const canonicalRoot = canonicalPath(root);
-  if (holder.current && canonicalRoot && holder.current.displayPath === canonicalRoot) return getSession();
+  if (holder.current && canonicalRoot && holder.current.displayPath === canonicalRoot)
+    return getSession();
   return openProject(root);
 };
 
@@ -288,7 +309,11 @@ export const readAuthorizedFile = (
       originalName: basename(canonical),
     };
   } catch {
-    throw new StudyError('MATERIAL_TYPE_UNSUPPORTED', { reason: 'invalid_utf8' }, '材料不是有效的 UTF-8 文本，请转换编码后重新导入');
+    throw new StudyError(
+      'MATERIAL_TYPE_UNSUPPORTED',
+      { reason: 'invalid_utf8' },
+      '材料不是有效的 UTF-8 文本，请转换编码后重新导入',
+    );
   }
 };
 
@@ -314,7 +339,10 @@ export const materializeOriginalCopy = (
   const extension = archive.mediaType === 'text/markdown' ? 'md' : 'txt';
   const dir = originalCopyDir(session);
   mkdirSync(/* turbopackIgnore: true */ dir, { recursive: true });
-  const target = join(dir, `原文-${materialId}-r${revision}-${archive.sha256.slice(0, 12)}.${extension}`);
+  const target = join(
+    dir,
+    `原文-${materialId}-r${revision}-${archive.sha256.slice(0, 12)}.${extension}`,
+  );
   try {
     writeFileSync(/* turbopackIgnore: true */ target, bytes, { flag: 'wx' });
   } catch (error) {

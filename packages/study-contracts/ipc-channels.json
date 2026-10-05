@@ -9,6 +9,7 @@
   "materialsOpenOriginal": "sew:materials:open-original",
   "exportsPickTarget": "sew:exports:pick-target",
   "exportsBackupProject": "sew:exports:backup-project",
+  "exportsRestoreProject": "sew:exports:restore-project",
   "preferencesRead": "sew:preferences:read",
   "preferencesSave": "sew:preferences:save",
   "modelsConfigure": "sew:models:configure",

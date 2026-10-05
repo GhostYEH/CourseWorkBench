@@ -5,6 +5,7 @@ import { AssetReclaim } from '../../../components/asset-reclaim';
 import { ModelConnectionSettings } from '../../../components/model-connection-settings';
 import { ModelUsagePanel } from '../../../components/model-usage-panel';
 import { ProjectSettingsForm } from '../../../components/project-settings-form';
+import { ProjectBackupActions } from '../../../components/project-backup-actions';
 import { RoleProfiles } from '../../../components/role-profiles';
 import { toRoleProfileDto } from '../../../lib/server/dto';
 import { DEFAULT_MODEL_CALL_LIMITS } from '../../../lib/server/model-call';
@@ -42,17 +43,42 @@ export default function SettingsPage(): ReactNode {
           learningMode: project.learningMode,
         }}
       />
-      <div className="card"><h2>个人档案</h2><p>个人 UID 和昵称跨科目保留。</p><Link className="btn" href="/profile">查看个人档案与 UID</Link></div>
+      <div className="card">
+        <h2>个人档案</h2>
+        <p>个人 UID 和昵称跨科目保留。</p>
+        <Link className="btn" href="/profile">
+          查看个人档案与 UID
+        </Link>
+      </div>
 
-      <TeachingSettings initial={teaching} projectId={session.projectId} generation={session.generation} />
+      <ProjectBackupActions
+        key={`${session.projectId}:${session.generation}`}
+        scopeKey={`${session.projectId}:${session.generation}`}
+        canBackup
+      />
+
+      <TeachingSettings
+        initial={teaching}
+        projectId={session.projectId}
+        generation={session.generation}
+      />
 
       <ModelConnectionSettings />
       <ModelUsagePanel
         calls={session.store.listModelUsageCalls(session.projectId)}
-        usage={session.store.getLatestRun() ? session.store.modelCallUsage(session.store.getLatestRun()!.runId) : { calls: 0, tokens: 0 }}
-        report={session.store.getLatestRun()
-          ? session.store.modelUsageReport(session.store.getLatestRun()!.runId, DEFAULT_MODEL_CALL_LIMITS)
-          : null}
+        usage={
+          session.store.getLatestRun()
+            ? session.store.modelCallUsage(session.store.getLatestRun()!.runId)
+            : { calls: 0, tokens: 0 }
+        }
+        report={
+          session.store.getLatestRun()
+            ? session.store.modelUsageReport(
+                session.store.getLatestRun()!.runId,
+                DEFAULT_MODEL_CALL_LIMITS,
+              )
+            : null
+        }
       />
 
       <RoleProfiles
