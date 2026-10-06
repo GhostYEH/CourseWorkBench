@@ -6,6 +6,7 @@ const { join, resolve, sep } = require('node:path');
 
 const root = resolve(__dirname, '..');
 const suites = ['boundary', 'lesson-plan'];
+const optionalSuites = ['collab-panel', 'learner-profile'];
 const args = process.argv.slice(2);
 let suite;
 if (args.length === 0) {
@@ -21,11 +22,15 @@ if (args.length === 0) {
   }
   console.log('PASS hidden Electron smoke: both boundary and lesson-plan suites completed');
   process.exit(0);
-} else if (args.length === 2 && args[0] === '--suite' && suites.includes(args[1])) {
+} else if (
+  args.length === 2 &&
+  args[0] === '--suite' &&
+  [...suites, ...optionalSuites].includes(args[1])
+) {
   suite = args[1];
 } else {
   console.error(
-    'FAIL usage: node scripts/run-electron-boundary-smoke.cjs [--suite boundary|lesson-plan]',
+    'FAIL usage: node scripts/run-electron-boundary-smoke.cjs [--suite boundary|lesson-plan|collab-panel|learner-profile]',
   );
   process.exit(1);
 }

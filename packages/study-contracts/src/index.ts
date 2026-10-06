@@ -47,12 +47,16 @@ export {
   scenePlanSaveSchema, coursewareProposeSchema, coursewareSceneOutputSchema, coursewareOutputSchema,
   COURSEWARE_CANDIDATE_STATUS, coursewareCandidateSchema, coursewareApplySchema,
   SCENE_PLAN_RECEIPT_STATES, scenePlanReceiptSchema,
+  scenePlanMergeSchema, scenePlanDiffEntrySchema, scenePlanDiffSchema,
+  scenePlanMergeConflictSchema, scenePlanMergePreviewSchema,
 } from './scene-plan';
 export type {
   PlanSceneKind, PlanElementKind, PlanElementStyleDto, PlanElementDto, PlanSceneDto,
   ScenePlanDto, ScenePlanSaveInput, CoursewareProposeInput, CoursewareSceneOutput,
   CoursewareOutput, CoursewareCandidateStatus, CoursewareCandidateDto, CoursewareApplyInput,
   ScenePlanReceiptState, ScenePlanReceiptDto,
+  ScenePlanMergeInput, ScenePlanDiffEntryDto, ScenePlanDiffDto,
+  ScenePlanMergeConflictDto, ScenePlanMergePreviewDto,
 } from './scene-plan';
 export {
   EXPLANATION_KIND, EXPLANATION_ORIGIN, EXPLANATION_STATUS, EXPLANATION_TEXT_MAX_LENGTH,
@@ -61,7 +65,7 @@ export {
   PEER_ENGAGEMENT, PEER_ENGAGEMENT_LABEL,
   explanationCardSchema, explanationCreateSchema, explanationEditSchema, explanationReviewSchema,
   classroomSessionSchema, classroomActionSchema, classroomActionPayloadSchema, classroomStateSchema,
-  classroomPeerTurnSchema, classroomPeersSchema, classroomPeerTurnSchemaInput,
+  classroomPeerTurnSchema, classroomPeersSchema, classroomPeerTurnSchemaInput, classroomPeerScheduleSchema,
   classroomOpenSchema, classroomPlaySchema, classroomHandbackSchema, classroomAnsweredSchema,
   classroomAdvanceSchema, classroomCloseSchema, classroomCommandSchema,
 } from './teaching';
@@ -69,7 +73,7 @@ export type {
   ExplanationKind, ExplanationOrigin, ExplanationStatus, ClassroomSessionStatus, ClassroomActionKind,
   ExplanationCardDto, ExplanationCreateInput, ExplanationEditInput, ExplanationReviewInput,
   ClassroomSessionDto, ClassroomActionDto, ClassroomActionPayloadDto, ClassroomStateDto,
-  PeerEngagement, ClassroomPeerTurnDto, ClassroomPeersInput, ClassroomPeerTurnInput,
+  PeerEngagement, ClassroomPeerTurnDto, ClassroomPeerScheduleDto, ClassroomPeersInput, ClassroomPeerTurnInput,
   ClassroomOpenInput, ClassroomPlayInput, ClassroomHandbackInput, ClassroomAnsweredInput,
   ClassroomAdvanceInput, ClassroomCloseInput, ClassroomCommand,
 } from './teaching';
@@ -116,7 +120,8 @@ export type {
   ModelConnectionInput, ModelTestResult, ModelConnectionStatus,
   ModelChatMessage, ModelGenerationInput, ModelGenerationUsageDto, ModelGenerationResultDto,
 } from './model-connection';
-export { apiErrorPayloadSchema, apiEnvelopeSchema, runtimeApiFailureSchema, apiResponses } from './responses';
+export { apiErrorPayloadSchema, apiEnvelopeSchema, runtimeApiFailureSchema, apiResponses, collabOnlineViewSchema, collabOnlineWriteSchema } from './responses';
+export type { CollabOnlineViewDto, CollabOnlineWriteDto } from './responses';
 export {
   THEME_IDS, ACCENT_PRESETS, STATUS_TOKEN_KEYS,
 } from './tokens';
@@ -167,8 +172,53 @@ export { classroomRoomCourseSchema, classroomSharedSceneSchema, classroomSharedA
 export type { ClassroomSharedCourseDto, ClassroomRoomDto, ClassroomInvitationDto, ClassroomTeacherLeaseDto } from './classroom-room';
 export { classroomBoardContentSchema, classroomBoardBindingSchema, classroomBoardItemSchema, classroomBoardEffectSchema, classroomBoardStateSchema, classroomBoardItemResultSchema, classroomBoardPlayResultSchema, classroomBoardCommandSchema } from './classroom-board';
 export type { ClassroomBoardBindingDto, ClassroomBoardContentDto, ClassroomBoardItemDto, ClassroomBoardEffectDto, ClassroomBoardStateDto, ClassroomBoardCommand } from './classroom-board';
-export { formalInteractionDefinitionSchema, formalInteractionPublicDefinitionSchema, formalInteractionFrozenSchema, formalInteractionValuesSchema, formalInteractionBindingSchema, formalInteractionRecordSchema, formalInteractionReceiptSchema, formalInteractionStateSchema, formalInteractionCommandSchema } from './formal-interaction';
-export type { FormalInteractionDefinitionDto, FormalInteractionFrozenDto, FormalInteractionCommand, FormalInteractionStateDto, FormalInteractionBindingDto, FormalInteractionValuesDto, FormalInteractionRecordDto } from './formal-interaction';
+export { formalInteractionDefinitionSchema, formalInteractionPublicDefinitionSchema, formalInteractionFrozenSchema, formalInteractionValuesSchema, formalInteractionBindingSchema, formalInteractionRecordSchema, formalInteractionReceiptSchema, formalInteractionStateSchema, formalInteractionCommandSchema, PARAMETER_FORMULAS } from './formal-interaction';
+export type { FormalInteractionDefinitionDto, FormalInteractionFrozenDto, FormalInteractionCommand, FormalInteractionStateDto, FormalInteractionBindingDto, FormalInteractionValuesDto, FormalInteractionRecordDto, ParameterFormula } from './formal-interaction';
+export {
+  COLLAB_INVITATION_TTL_MS, COLLAB_MESSAGE_MAX_LENGTH, COLLAB_EVENT_KINDS, COLLAB_READINESS, collabText,
+  collabRegistrationSchema, collabRegistrationCommandSchema,
+  collabRoomMemberSchema, collabRoomSchema, collabRoomCreateCommandSchema, collabMemberReadinessCommandSchema,
+  collabRoomStartCommandSchema,
+  collabInvitationCreateSchema, collabInvitationDecisionSchema, collabInvitationRevokeSchema, collabInvitationCommandSchema,
+  collabMessageSchema, collabMessageAppendSchema, collabEventSchema, collabEventAppendSchema,
+} from './classroom-collaboration';
+export type {
+  CollabEventKind, CollabReadinessValue,
+  CollabRegistrationDto, CollabRegistrationCommandInput,
+  CollabRoomMemberDto, CollabRoomDto, CollabRoomCreateCommandInput, CollabMemberReadinessCommandInput,
+  CollabRoomStartCommandInput,
+  CollabInvitationCreateInput, CollabInvitationDecisionInput, CollabInvitationRevokeInput, CollabInvitationCommand,
+  CollabMessageDto, CollabMessageAppendInput, CollabEventDto, CollabEventAppendInput,
+} from './classroom-collaboration';
+export {
+  COLLAB_PROTOCOL_VERSION,
+  collabHealthSchema,
+  collabOnlineRegistrationSchema,
+  collabCredentialSchema,
+  collabOnlineRegisterCommandSchema,
+  collabSessionCommandSchema,
+  collabSessionSchema,
+  collabCredentialRevokeCommandSchema,
+  collabSceneSyncCommandSchema,
+  collabSceneSyncResultSchema,
+  collabSnapshotUploadSchema,
+  collabSnapshotViewSchema,
+  collabOnlineCommandSchema,
+} from './collaboration-service';
+export type {
+  CollabHealthDto,
+  CollabOnlineRegistrationDto,
+  CollabCredentialDto,
+  CollabOnlineRegisterCommandInput,
+  CollabSessionCommandInput,
+  CollabSessionDto,
+  CollabCredentialRevokeCommandInput,
+  CollabSceneSyncCommandInput,
+  CollabSceneSyncResultDto,
+  CollabSnapshotUploadInput,
+  CollabSnapshotViewDto,
+  CollabOnlineCommand,
+} from './collaboration-service';
 export { errorTagSchema, processEvidenceSchema, errorConclusionSchema, feedbackEntrySchema, feedbackSnapshotSchema, feedbackContextSchema, reviewTaskSchema, feedbackReviewCommandSchema, feedbackResultSchema, personalAttemptSubmitResultSchema, feedbackModelInputSchema, feedbackModelResultSchema, reviewSuggestionOutputSchema } from './feedback-review';
 export type { FeedbackReviewCommand, FeedbackContextDto, ReviewTaskDto, FeedbackModelInput, FeedbackModelResultDto } from './feedback-review';
 export {
@@ -188,3 +238,12 @@ export type {
 } from './recovery';
 export { PROJECT_BACKUP_VERSION, backupProjectManifestSchema, projectBackupFileSchema, projectBackupManifestSchema } from './project-backup';
 export type { ProjectBackupManifest, ProjectBackupFile, ProjectBackupResult } from './project-backup';
+export {
+  LESSON_EXPORT_VERSION, LESSON_EXPORT_FORMATS,
+  OFFLINE_RESOURCE_STATUS, OFFLINE_RESOURCE_KINDS,
+  lessonExportResourceSchema, lessonExportManifestSchema, lessonExportSchema, lessonExportResultSchema,
+} from './lesson-export';
+export type {
+  LessonExportFormat, OfflineResourceStatus, OfflineResourceKind,
+  LessonExportResourceDto, LessonExportManifest, LessonExportInput, LessonExportResultDto,
+} from './lesson-export';

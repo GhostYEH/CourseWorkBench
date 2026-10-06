@@ -489,6 +489,90 @@ describe('场景计划与完整课件候选（存储层）', () => {
     );
   });
 
+  it('互动/PBL 场景必须绑定本版本已审核的正式互动定义，缺失即漏装配并如实报告', () => {
+    const plan = store.saveScenePlan({
+      projectId,
+      lessonId,
+      lessonVersion,
+      bundleId,
+      baseRevision: 0,
+      origin: 'deterministic',
+      scenes: [
+        scenes()[0]!,
+        {
+          sceneId: 'scene_formal_interaction_parameter',
+          kind: 'interactive',
+          title: '参数实验',
+          statementId: null,
+          questionId: null,
+          knowledgeIds: [],
+          elements: [],
+          note: '',
+        },
+        {
+          sceneId: 'scene_formal_interaction_pbl',
+          kind: 'pbl',
+          title: '项目式学习',
+          statementId: null,
+          questionId: null,
+          knowledgeIds: [],
+          elements: [],
+          note: '',
+        },
+      ],
+    });
+    const bundle = store.getEvidenceBundle(projectId, bundleId)!;
+    const build = (
+      interactions: Parameters<typeof buildPlannedLessonDocument>[0]['interactions'],
+    ) =>
+      buildPlannedLessonDocument({
+        bundle: bundle.bundle,
+        bundleDigest: bundle.digest,
+        plan,
+        lessonId,
+        lessonVersion,
+        title: '互动课件',
+        frozenAt: bundle.frozenAt,
+        ...(interactions ? { interactions } : {}),
+      });
+
+    // 没有已审核定义：互动场景列为未生成（漏装配），而不是塞占位内容冒充；
+    // PBL 骨架是用户在计划里显式新增的，仍按其身份装配。
+    const without = build(undefined);
+    expect(without.scenes.map((scene) => scene.sceneId)).toEqual([
+      'scene_slide_a',
+      'scene_formal_interaction_pbl',
+    ]);
+    expect(without.skipped.map((item) => item.id)).toEqual(['scene_formal_interaction_parameter']);
+    expect(without.skipped.every((item) => item.reason.includes('缺少本版本已审核'))).toBe(true);
+
+    // 有定义才生成对应的 interactive 场景，知识点由定义绑定的陈述沿用。
+    const withDefinitions = build([
+      {
+        id: 'parameter',
+        kind: 'parameter',
+        title: '参数实验',
+        statementIds: [statementId],
+        formula: 'linear',
+        min: -3,
+        max: 3,
+        step: 0.1,
+        intercept: 2,
+        predictionRequired: false,
+      },
+    ]);
+    expect(withDefinitions.skipped).toEqual([]);
+    expect(withDefinitions.document.scenes.map((scene) => scene.type)).toEqual([
+      'slide',
+      'interactive',
+      'pbl',
+    ]);
+    const interactive = withDefinitions.scenes.find(
+      (scene) => scene.sceneId === 'scene_formal_interaction_parameter',
+    )!;
+    expect(interactive.knowledgeIds).toEqual([bundle.bundle.statements[0]!.knowledgeId]);
+  });
+
   it('完整课件候选只落待核区，通过才写入计划', () => {
     const candidate = store.createCoursewareCandidate({
       candidateId: newId<'cw'>('cw'),

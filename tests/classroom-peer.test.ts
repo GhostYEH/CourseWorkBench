@@ -6,6 +6,7 @@ import { StudyError, newId, classroomStateSchema, type PlanPayloadDto } from '@s
 import {
   assertPeerTurnAllowed,
   peerTurnCeiling,
+  peerSchedule,
   shouldPeerSpeak,
   peerAttemptPartition,
   peerCapabilities,
@@ -742,5 +743,51 @@ describe('AI 同学课堂运行', () => {
         roundPeerTurns: 1,
       }),
     ).toBe(true);
+  });
+
+  it('peerSchedule 与命令侧判定同源：结论与原因码都可展示，且和 assertPeerTurnAllowed 一致', () => {
+    const facts = (over: Partial<Parameters<typeof peerSchedule>[0]> = {}) => ({
+      sessionStatus: 'in_class' as const,
+      peersEnabled: true,
+      engagement: 'balanced' as const,
+      roundPeerTurns: 0,
+      ...over,
+    });
+    // 允许发言：原因码为 null，上限与实际条数如实给出。
+    expect(peerSchedule(facts())).toEqual({
+      canSpeak: true,
+      reason: null,
+      turnCeiling: 1,
+      turnsThisRound: 0,
+    });
+    // 等待本人 / 已结束 / 关闭同学 / 达上限：四种原因各自可辨。
+    expect(peerSchedule(facts({ sessionStatus: 'awaiting_learner' })).reason).toBe(
+      'awaiting_learner',
+    );
+    expect(peerSchedule(facts({ sessionStatus: 'completed' })).reason).toBe('session_not_in_class');
+    expect(peerSchedule(facts({ peersEnabled: false })).reason).toBe('peers_disabled');
+    expect(peerSchedule(facts({ roundPeerTurns: 1 })).reason).toBe('round_ceiling');
+    // 与命令处理器一致：canSpeak=false 时 assertPeerTurnAllowed 必然抛错，canSpeak=true 时放行。
+    for (const over of [
+      { sessionStatus: 'awaiting_learner' as const },
+      { sessionStatus: 'completed' as const },
+      { peersEnabled: false },
+      { roundPeerTurns: 1 },
+      {},
+    ]) {
+      const schedule = peerSchedule(facts(over));
+      const attempt = (): void =>
+        assertPeerTurnAllowed({
+          sessionStatus: schedule.canSpeak ? 'in_class' : (over.sessionStatus ?? 'in_class'),
+          peersEnabled: over.peersEnabled ?? true,
+          engagement: 'balanced',
+          roundPeerTurns: over.roundPeerTurns ?? 0,
+          roleKind: 'peer',
+          actorType: 'peer_ai',
+          partition: 'simulation',
+        });
+      if (schedule.canSpeak) expect(attempt).not.toThrow();
+      else expect(attempt).toThrow();
+    }
   });
 });

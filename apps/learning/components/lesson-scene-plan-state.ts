@@ -11,7 +11,7 @@
 import type { PlanElementDto, PlanElementStyleDto, PlanSceneDto } from '@sew/study-contracts';
 import type { EvidenceBundleDto, LessonVersionDto } from '@sew/study-contracts';
 
-/** Initializing an editor must preserve both selected statements and selected quizzes. */
+/** Initializing an editor must preserve both selected statements, selected quizzes and reviewed interactions. */
 export const initialLessonPlanScenes = (
   bundle: {
     statements: ReadonlyArray<
@@ -22,6 +22,13 @@ export const initialLessonPlanScenes = (
     >;
   },
   lesson: Pick<LessonVersionDto, 'statementIds' | 'questionIds'>,
+  /**
+   * 本版本已审核的正式互动定义（场景编号由 `formalInteractionSceneId` 派生）。
+   *
+   * 默认计划与冻结定义一一对应：于是「计划里少了某互动场景」要么是用户在计划里显式删除
+   * （计划即权威，不会被自动加回），要么是定义在计划之后才冻结（漏装配，装配时会明确报告）。
+   */
+  interactions: ReadonlyArray<{ sceneId: string; title: string }> = [],
 ): PlanSceneDto[] => [
   ...bundle.statements
     .filter((item) => lesson.statementIds.includes(item.statementId))
@@ -47,6 +54,16 @@ export const initialLessonPlanScenes = (
       elements: [],
       note: '',
     })),
+  ...interactions.map((interaction): PlanSceneDto => ({
+    sceneId: interaction.sceneId.slice(0, 60),
+    kind: 'interactive',
+    title: interaction.title,
+    statementId: null,
+    questionId: null,
+    knowledgeIds: [],
+    elements: [],
+    note: '',
+  })),
 ];
 
 export interface ScenePlanEditorState {

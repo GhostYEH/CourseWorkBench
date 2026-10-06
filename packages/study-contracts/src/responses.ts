@@ -11,7 +11,25 @@ import {
   classroomBoardItemResultSchema,
   classroomBoardPlayResultSchema,
 } from './classroom-board';
-import { classroomRoomSchema, classroomSharedCourseSchema } from './classroom-room';
+import {
+  classroomInvitationSchema,
+  classroomRoomSchema,
+  classroomSharedCourseSchema,
+} from './classroom-room';
+import {
+  collabEventSchema,
+  collabMessageSchema,
+  collabRegistrationSchema,
+  collabRoomMemberSchema,
+  collabRoomSchema,
+} from './classroom-collaboration';
+import {
+  collabCredentialSchema,
+  collabOnlineRegistrationSchema,
+  collabSceneSyncResultSchema,
+  collabSessionSchema,
+  collabSnapshotViewSchema,
+} from './collaboration-service';
 import {
   admissionResultSchema,
   assetReclaimReportSchema,
@@ -41,15 +59,22 @@ import {
   formalLessonDocumentSchema,
   statementRevisionCandidateSchema,
 } from './lesson';
-import { scenePlanSchema, scenePlanReceiptSchema, coursewareCandidateSchema } from './scene-plan';
+import {
+  scenePlanSchema,
+  scenePlanReceiptSchema,
+  scenePlanMergePreviewSchema,
+  coursewareCandidateSchema,
+} from './scene-plan';
 import {
   PEER_ENGAGEMENT,
+  classroomPeerScheduleSchema,
   classroomPeerTurnSchema,
   classroomSessionSchema,
   classroomStateSchema,
   explanationCardSchema,
 } from './teaching';
 import { recoveryCheckpointSchema } from './recovery';
+import { lessonExportResultSchema } from './lesson-export';
 
 export const apiErrorPayloadSchema = z
   .object({
@@ -112,6 +137,50 @@ const reviewedQuizPayloadSchema = z
   })
   .strict();
 
+/**
+ * 本地服务到在线协作服务的受控客户端视图（ADR-0005）。
+ *
+ * `online` 说明真实连接与本人认证是否都成功：只有 `connected && authenticated`
+ * 才开放在线能力；离线或未配置时给出原因，界面据此继续显示「不能联网邀请」。
+ * `registration` 只含公开句柄，**不含** secret。
+ */
+export const collabOnlineViewSchema = z
+  .object({
+    online: z
+      .object({
+        configured: z.boolean(),
+        connected: z.boolean(),
+        authenticated: z.boolean(),
+        protocolVersion: z.number().int().positive().nullable(),
+        registration: collabOnlineRegistrationSchema.nullable(),
+        error: z.string().nullable(),
+      })
+      .strict(),
+    invitations: z.array(classroomInvitationSchema),
+    room: collabRoomSchema.nullable(),
+    members: z.array(collabRoomMemberSchema),
+    messages: z
+      .object({ messages: z.array(collabMessageSchema), tailSeq: z.number().int().nonnegative() })
+      .strict(),
+    events: z
+      .object({ events: z.array(collabEventSchema), tailSeq: z.number().int().nonnegative() })
+      .strict(),
+    snapshot: collabSnapshotViewSchema.nullable(),
+  })
+  .strict();
+export type CollabOnlineViewDto = z.infer<typeof collabOnlineViewSchema>;
+
+/** 在线命令写入后的视图回执：命令结论与刷新后的在线视图一起返回。 */
+export const collabOnlineWriteSchema = z
+  .object({
+    commandRequestId: z.string().min(1).max(200),
+    view: collabOnlineViewSchema,
+    deduplicated: z.boolean(),
+    notice: z.string(),
+  })
+  .strict();
+export type CollabOnlineWriteDto = z.infer<typeof collabOnlineWriteSchema>;
+
 export const apiResponses = {
   learnerProfile: learnerProfileSchema,
   classroomBoardContext: z
@@ -130,6 +199,77 @@ export const apiResponses = {
     })
     .strict(),
   classroomRoomWrite: z.object({ room: classroomRoomSchema, deduplicated: z.boolean() }).strict(),
+  /** UID 登记（本地链路占位）。 */
+  collabRegistration: z
+    .object({ registration: collabRegistrationSchema.nullable(), deduplicated: z.boolean() })
+    .strict(),
+  /** 邀请生命周期：列表与单条写入共用同一形状。 */
+  collabInvitations: z
+    .object({
+      invitations: z.array(classroomInvitationSchema),
+      /** 接受邀请时一并返回建立的成员记录；其余情况为 null。 */
+      member: collabRoomMemberSchema.nullable().default(null),
+    })
+    .strict(),
+  collabInvitationWrite: z
+    .object({
+      invitation: classroomInvitationSchema,
+      member: collabRoomMemberSchema.nullable().default(null),
+      deduplicated: z.boolean(),
+    })
+    .strict(),
+  collabRoom: z.object({ room: collabRoomSchema, deduplicated: z.boolean() }).strict(),
+  /** 房间读取：房间本身可能尚未建立（仅邀请阶段），因此为 nullable。 */
+  collabRoomView: z
+    .object({
+      room: collabRoomSchema.nullable(),
+      members: z.array(collabRoomMemberSchema),
+    })
+    .strict(),
+  collabMemberWrite: z
+    .object({ member: collabRoomMemberSchema, deduplicated: z.boolean() })
+    .strict(),
+  /** 按游标读取：`tailSeq` 供客户端下次增量使用。 */
+  collabMessages: z
+    .object({ messages: z.array(collabMessageSchema), tailSeq: z.number().int().nonnegative() })
+    .strict(),
+  collabMessageWrite: z
+    .object({ message: collabMessageSchema, deduplicated: z.boolean() })
+    .strict(),
+  collabEvents: z
+    .object({ events: z.array(collabEventSchema), tailSeq: z.number().int().nonnegative() })
+    .strict(),
+  collabEventWrite: z.object({ event: collabEventSchema, deduplicated: z.boolean() }).strict(),
+  /** 在线登记（UID-01 在线部分）：公开句柄与状态，绝不含 secret。 */
+  collabOnlineRegistration: z
+    .object({
+      registration: collabOnlineRegistrationSchema,
+      credential: collabCredentialSchema,
+      deduplicated: z.boolean(),
+    })
+    .strict(),
+  /** 在线认证：换取会话令牌；令牌只在受控边界使用，不在界面展示。 */
+  collabSession: z.object({ session: collabSessionSchema }).strict(),
+  /** 凭据吊销：返回吊销后的凭据状态。 */
+  collabCredentialRevoke: z
+    .object({ credential: collabCredentialSchema, deduplicated: z.boolean() })
+    .strict(),
+  /** 结构化场景同步（SYNC-01 在线部分）：推进后的房间与事务内事件。 */
+  collabSceneSync: collabSceneSyncResultSchema,
+  /** 共享快照上传/下载（ROOM-01 双端消费者）：房间冻结的公共投影。 */
+  collabSnapshot: collabSnapshotViewSchema,
+  collabSnapshotUpload: z
+    .object({
+      roomId: z.string().min(1).max(200),
+      snapshotDigest: z.string().regex(/^[a-f0-9]{64}$/),
+      deduplicated: z.boolean(),
+    })
+    .strict(),
+  /** 本地服务到在线协作服务的受控客户端视图（ADR-0005）。 */
+  collabOnlineView: z.object({ view: collabOnlineViewSchema }).strict(),
+  /** 在线命令写入后的视图回执：命令结论与刷新后的在线视图一起返回。 */
+  collabOnlineWrite: collabOnlineWriteSchema,
+  collabOnlineConfirmation: z.object({ confirmed: z.literal(true) }).strict(),
   attemptGradingContext: attemptGradingContextSchema,
   attemptGradeReview: z
     .object({
@@ -236,6 +376,12 @@ export const apiResponses = {
       deduplicated: z.boolean().default(false),
     })
     .strict(),
+  /** 跨版本计划差异与合并预览（OMA-005、OMA-022）：只读，不写入计划。 */
+  lessonScenePlanMerge: z
+    .object({
+      merge: scenePlanMergePreviewSchema,
+    })
+    .strict(),
   /** 完整课件候选生成（OMA-006）：失败时 candidate 为 null，原因在 generation.message。 */
   lessonCoursewarePropose: z
     .object({
@@ -291,11 +437,15 @@ export const apiResponses = {
           turnsThisRound: z.number().int().nonnegative(),
         })
         .strict(),
+      /** 服务端判定的同学调度结论：界面据此刷新按钮可用性，不自行重算用户优先。 */
+      schedule: classroomPeerScheduleSchema,
       turn: classroomPeerTurnSchema.nullable().default(null),
     })
     .strict(),
   /** 四层恢复核对结论（RESUME-01）。只读，不含任何 provider 调用。 */
   recovery: z.object({ checkpoint: recoveryCheckpointSchema }).strict(),
+  /** 课件自包含导出（OMA-068/069/070/072）：产物落项目 exports/，逐项给出摘要与缺口。 */
+  lessonExport: z.object({ export: lessonExportResultSchema }).strict(),
   classroomPlay: z
     .object({
       card: explanationCardSchema.nullable(),

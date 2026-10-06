@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedOn": "2026-10-05",
+  "recordedOn": "2026-10-06",
   "baseline": {
     "root": "F:/file/OpenMAIC-main",
     "version": "1.1.1",
@@ -22,15 +22,13 @@
       "category": "library",
       "name": "课程库与搜索/筛选",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "F",
-      "upstreamPaths": [
-        "app/api/stages",
-        "app/api/folders",
-        "lib/persistence/library.ts"
-      ],
+      "upstreamPaths": ["app/api/stages", "app/api/folders", "lib/persistence/library.ts"],
       "acceptance": "可列出并打开项目课程，显示真实场景和资源状态",
-      "evidence": []
+      "evidence": [
+        "课程库浏览已落地（OMA-001）：apps/learning/app/workbench/library/page.tsx 读取项目分区权威存储（store.listClassroomDocuments + listClassroomSceneSources + listClassroomAssetBindings），列出文档名称/编号、正式或演示范围、场景数与来源/资源绑定数，并可从文档进入已发布课堂；搜索/筛选按名称/描述/编号缩小列表（apps/learning/lib/document-library.ts 的 groupLibraryDocuments/filterLibraryGroups 为纯函数）。tests/lesson-library-page.test.ts 覆盖分组/筛选与页面呈现；页面读取不产生组织写入。仍缺跨项目/全局课程库与发布访问状态（OMA-003），故为 partial。"
+      ]
     },
     {
       "id": "OMA-002",
@@ -39,14 +37,11 @@
       "required": true,
       "status": "partial",
       "phase": "F",
-      "upstreamPaths": [
-        "app/api/stages",
-        "app/api/folders",
-        "lib/persistence/library.ts"
-      ],
+      "upstreamPaths": ["app/api/stages", "app/api/folders", "lib/persistence/library.ts"],
       "acceptance": "文件夹创建重命名删除、课程归档和空文件夹可重启读回",
       "evidence": [
-        "SQLite schema v8 和 /api/folders 支持项目分区创建、重命名、成员归组/取消分组与 ungroup 删除，tests/classroom-document-organization.test.ts 回归通过；remove 级联删除明确拒绝，课程库组织 UI 尚未接入。"
+        "SQLite schema v8 和 /api/folders 支持项目分区创建、重命名、成员归组/取消分组与 ungroup 删除，tests/classroom-document-organization.test.ts 回归通过；remove 级联删除明确拒绝。",
+        "课程库组织 UI 已接入（OMA-002）：apps/learning/components/lesson-library.tsx 提供新建/重命名文件夹、文档归组下拉与「删除文件夹（仅取消分组）」入口，写入走 /api/folders 与 /api/maic/documents 的上游**原始合同**（非 { ok, data } 信封），空文件夹保留可读回；组织操作只改归属关系，不改写文档内容、来源绑定、审核摘要或课堂状态。tests/lesson-library-page.test.ts 覆盖文件夹归属可见、空文件夹保留与读取不写库。"
       ]
     },
     {
@@ -56,11 +51,7 @@
       "required": true,
       "status": "planned",
       "phase": "F",
-      "upstreamPaths": [
-        "app/api/stages",
-        "app/api/folders",
-        "lib/persistence/library.ts"
-      ],
+      "upstreamPaths": ["app/api/stages", "app/api/folders", "lib/persistence/library.ts"],
       "acceptance": "发布版本冻结，撤回后访问规则生效且保留历史",
       "evidence": []
     },
@@ -96,7 +87,8 @@
         "人工调整已落地为「逐场景派生新草案」：apps/learning/components/lesson-scene-revision.tsx 以版本冻结的证据包陈述为候选，按稳定 statementId（不是场景序号）勾选组成，提交既有 draft 命令追加 lessonId 的新版本；旧已发布版本保持不变，新版本必须重新审核才能发布（store.publishLesson + domain.assertLessonPublishable 的 lesson_version_not_approved）。tests/lesson-review.test.ts 覆盖缩减场景的派生与重新审核，tests/lesson-review-page.test.ts 断言生产 SSR 页面出现该入口。",
         "陈述正文级改写闭环已落地（LESSON-02）：模型候选经 apps/learning/lib/server/lesson-revision-model.ts 复用来源/run/预算/取消守卫生成，只落待核区（lesson_statement_revisions）；人工通过后 store.applyStatementRevision 在事务内按知识点已批准证据重新冻结证据包并追加新草案版本，来源与知识点沿用原陈述、正文变化得到新 statementId，且只替换目标场景、不回加基线已排除的场景；旧版本与旧证据包保持不变（tests/lesson-statement-revision.test.ts、tests/lesson-revision-http.test.ts、tests/lesson-review-page.test.ts）。候选生成与课程派生都按 requestId 幂等。",
         "模型完整课件计划生成已落地（LESSON-02 / OMA-006）：apps/learning/lib/server/lesson-courseware-model.ts 复用来源/run/预算/取消守卫生成整份场景计划，只落待核区（lesson_courseware_candidates）；人工通过才写成该草案版本的场景计划（lesson_scene_plans），场景编号、知识点与来源由服务端从冻结证据包沿用并复验（tests/lesson-courseware-model.test.ts、tests/lesson-scene-plan-http.test.ts）。",
-        "仍待做的是更完整的课件编辑（元素属性/样式/富文本的完整可视化编辑器与局部模型重生成）与资产生成，故为 partial 而不是完成（OMA-021/022）。"
+        "仍待做的是更完整的课件编辑（元素属性/样式/富文本的完整可视化编辑器与局部模型重生成）与资产生成，故为 partial 而不是完成（OMA-021/022）。",
+        "跨版本计划差异与合并预览已落地（LESSON-02 / OMA-005、OMA-022）：packages/study-domain/src/scene-plan.ts 的 diffScenePlans 按稳定 sceneId 分类增/删/改/序，mergeScenePlans 做三向合并（只安全应用「来源改了、目标没动」的改动，两侧都改/换种类/删改冲突一律保留目标内容并如实报告），outlineOrderedScenes 按整课大纲对齐并报告缺口。apps/learning/lib/server/lesson-service.ts 的 merge-scene-plans 是**只读**预览（不写入计划、天然幂等），写回仍走 save-scene-plan（乐观并发 + 事务内回执），界面入口 apps/learning/components/lesson-scene-plan-merge.tsx。tests/lesson-scene-plan-merge.test.ts 10 项覆盖纯函数分类、冲突保留目标、预览不写库与写回重放。"
       ]
     },
     {
@@ -115,7 +107,7 @@
       "evidence": [
         "ANSWER-01 子包已从课程版本选中的冻结证据装配幻灯片及单选/多选/简答测验，真实 DSL 校验、24 场景上限及来源绑定由 tests/formal-quiz-submission.test.ts 覆盖。",
         "模型完整课件计划生成已落地（LESSON-02 / OMA-006）：apps/learning/lib/server/lesson-courseware-model.ts 复用来源/run/预算/取消守卫，模型只决定讲哪些已选陈述/题目、按什么顺序、每个场景怎么写；场景编号、知识点与来源由服务端从冻结证据包沿用并在落库前用 assertPlanGrounded 复验，产物只落待核区（lesson_courseware_candidates），人工通过才写成场景计划（lesson_scene_plans）。apps/learning/lib/classroom/planned-lesson-document.ts 按计划装配幻灯片/测验/互动/PBL 四类场景并通过真实 DSL 校验，同一份（证据包+计划）得到同一指纹（tests/lesson-courseware-model.test.ts、tests/lesson-scene-plan.test.ts、tests/lesson-scene-plan-http.test.ts）。",
-        "仍缺资产生成（图片/媒体由模型产出并落库）与互动/PBL 的完整内容生成，故为 partial 而不是完成。"
+        "仍缺资产生成（图片/媒体由模型产出并落库）与互动/PBL 的完整内容生成，故为 partial 而不是完成（PBL 执行另由 OMA-046…049 跟踪）。"
       ]
     },
     {
@@ -385,7 +377,7 @@
       "acceptance": "场景稳定ID，发布历史不被原地改写",
       "evidence": [
         "场景增删、排序、复制与局部重生成已落地（LESSON-02 / OMA-022）：场景用稳定 sceneId（不靠序号映射），增删/排序/复制/局部重生成都不改已有场景身份；计划只挂在草案版本上，发布后不再改写（store.saveScenePlan 的 plan_base_not_draft），乐观并发按 revision 拒绝旧提交。apps/learning/components/lesson-scene-plan-state.ts 提供 move/duplicate/remove/replace 与撤销恢复；apps/learning/lib/classroom/planned-lesson-document.ts 按计划装配文档。tests/lesson-scene-plan.test.ts（含「场景编号稳定」「局部重生成只替换目标场景」「已发布版本计划不可改写」）与 tests/lesson-scene-plan-http.test.ts 覆盖。",
-        "仍缺「按整课大纲批量重生成」与跨版本计划的差异合并，故为 partial。"
+        "已补跨版本计划的差异/合并预览与按整课大纲对齐（diffScenePlans/mergeScenePlans/outlineOrderedScenes，见 OMA-005 证据）；仍缺「按整课大纲批量重生成」与完整可视化画布编辑，故为 partial。"
       ]
     },
     {
@@ -573,7 +565,7 @@
       "acceptance": "目标存在且动作可播放/撤销或恢复",
       "evidence": [
         "聚焦分支已接通真实画布：白板 focus 动作经服务端核对元素必须存在于该冻结课件（store.assertClassroomBoardBinding），审核播放后由 apps/learning/lib/classroom/board-focus.ts 取「本场景 seq 最大的效果」，SceneRenderer 用上游 SlideCanvas 的 effects 画高亮框、线型元素退化为聚光，文档中不存在的 id 一律不高亮；切场景即收回。scripts/smoke-classroom-stage.cjs 断言 [data-canvas-focus]、slide-element 存在与 .highlight-overlay 出现，纯函数分支由 tests/classroom-board-focus.test.ts 覆盖。",
-        "激光笔、按动作撤销/重放的聚焦控制仍未实现，故为 partial 而不是完成。"
+        "激光笔与按动作撤销/重放的聚焦控制已落地（OMA-032）：packages/study-contracts/src/classroom-board.ts 增 laser 内容类型（与 focus 同指向真实元素），apps/learning/lib/classroom/board-focus.ts 的 resolveActiveBoardLaser 单独解析激光笔、boardFocusState/previousBoardFocusSeq 给出历史与生效位，resolveActiveBoardFocus 支持 atSeq 指针（null=收回）；课堂面板提供「回到此条/收回」且不删除已提交效果，画布按生效 seq 高亮并在收回时清空。scripts/smoke-classroom-stage.cjs 新增 board laser 断言（原生冒烟 37 组），tests/classroom-board-focus.test.ts 8 项覆盖。"
       ]
     },
     {
@@ -625,7 +617,8 @@
       ],
       "acceptance": "判分依据冻结答案，本人提交前不抢答",
       "evidence": [
-        "客观题按冻结答案集精确判分，多选全有全对；简答提交待判分，已提交正式本人作答可追加人工评分或审核带依据/不确定性的模型候选，课堂读取最新评分。原提交与 Runtime review 保持不变，审核历史独立保存。公开文档不含判分依据；tests/attempt-grading-{storage,model,http,page}.test.ts 与 scripts/smoke-formal-quiz.cjs 覆盖。真实科目/真实 provider 语义评分、完整答案展示规则及安装态验收仍保留，继续 partial。"
+        "客观题按冻结答案集精确判分，多选全有全对；简答提交待判分，已提交正式本人作答可追加人工评分或审核带依据/不确定性的模型候选，课堂读取最新评分。原提交与 Runtime review 保持不变，审核历史独立保存。公开文档不含判分依据；tests/attempt-grading-{storage,model,http,page}.test.ts 与 scripts/smoke-formal-quiz.cjs 覆盖。真实科目/真实 provider 语义评分、完整答案展示规则及安装态验收仍保留，继续 partial。",
+        "答案展示规则已由服务端裁定（ANSWER-01）：packages/study-domain/src/attempt.ts 的 answerDisplayPolicy 要求存在本人已提交作答且题目/答案版本一致，提交前/版本不一致一律不展示答案与解析，简答待判分不展示评分依据；packages/study-storage/src/repositories/attempt-grading.ts 的上下文携带 answerDisplay，apps/learning/components/openmaic-adaptation/QuizSceneView.tsx 按它决定是否渲染参考答案。tests/domain-contracts.test.ts 覆盖四种拒绝原因与待判分分支。"
       ]
     },
     {
@@ -677,7 +670,8 @@
       "evidence": [
         "互动内容为 DSL InteractiveContent.html，经 srcDoc 注入 sandbox=\"allow-scripts\" 的 iframe",
         "scripts/smoke-electron-boundary.cjs：父框架读不到该 frame 的 DOM，帧内 typeof sewNative 与 typeof require 均为 undefined；上游 InteractiveIframeHost 消息协议与保活尚未接入",
-        "InteractiveSceneView 在首段 widget 脚本前装入错误诊断；观察消息不隐式提交。父页明确提交参数/预测/解释，服务绑定本人/demo 身份、核验参数并以不可变 SQLite 收据去重，重启可读；tests/classroom-interaction.test.ts 7 项通过。生成式互动及通用组件恢复仍未完成。"
+        "InteractiveSceneView 在首段 widget 脚本前装入错误诊断；观察消息不隐式提交。父页明确提交参数/预测/解释，服务绑定本人/demo 身份、核验参数并以不可变 SQLite 收据去重，重启可读；tests/classroom-interaction.test.ts 7 项通过。生成式互动及通用组件恢复仍未完成。",
+        "排序互动已落地（VIS-02）：packages/study-contracts/src/formal-interaction.ts 增 ordering 定义（items + correctOrder），packages/study-domain/src/formal-interaction.ts 的 publicFormalInteractionDefinition 去掉 correctOrder、orderingMatches 机械核验本人排序；服务端在冻结时校验正确顺序是全部条目的一次排列，公开投影与 ROOM 共享快照都不含 correctOrder。apps/learning/components/formal-interaction-author.tsx 与 FormalInteractiveSceneView.tsx 提供编写与本人排序界面。tests/formal-interaction.test.ts 覆盖公开投影隐藏正确顺序、服务核验一致/不一致与共享快照不含 correctOrder。"
       ]
     },
     {
@@ -701,7 +695,7 @@
       "category": "interactive",
       "name": "模拟实验与参数预测/观察",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "C",
       "upstreamPaths": [
         "components/scene-renderers/interactive-renderer.tsx",
@@ -710,7 +704,9 @@
         "skills/agent-runtime/deep-interactive"
       ],
       "acceptance": "改变参数并记录本人预测、观察与解释",
-      "evidence": []
+      "evidence": [
+        "参数实验组件已支持两种公式（VIS-01 / OMA-040）：packages/study-contracts/src/formal-interaction.ts 的 PARAMETER_FORMULAS 定义 linear/quadratic，结果由服务端按冻结定义里的 formula 计算（packages/study-domain/src/formal-interaction.ts 的 parameterResult，未知公式直接拒绝）；apps/learning/components/formal-interaction-author.tsx 可选公式，apps/learning/components/openmaic-adaptation/FormalInteractiveSceneView.tsx 按公式渲染线性/抛物线；公开投影与 ROOM 共享快照保留 formula 种类。本人预测、观察与解释仍分别保存、服务端核验，且不更新掌握（tests/formal-interaction.test.ts 二次公式核验一致用例）。"
+      ]
     },
     {
       "id": "OMA-041",
@@ -1191,7 +1187,7 @@
       "category": "export",
       "name": "自包含互动HTML导出",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "E",
       "upstreamPaths": [
         "lib/export",
@@ -1202,14 +1198,16 @@
         "render-service"
       ],
       "acceptance": "HTML实际可运行，离线外链缺口有报告",
-      "evidence": []
+      "evidence": [
+        "自包含 HTML 导出已落地：packages/study-storage/src/zip.ts 提供无第三方依赖的确定性 ZIP 写入（stored，条目按路径排序）与读取（CRC32/deflate/路径可移植/压缩比上限校验）；packages/study-storage/src/lesson-export.ts 的 buildLessonExport 从权威文档装配可离线打开的 index.html（幻灯片/测验/互动/PBL 四类场景 + 各场景来源审核行）并写入 manifest.json（身份、逐条 sha256 与字节数）。apps/learning/lib/server/lesson-export-service.ts 只导出通过 assertLessonClassroomReady 统一复核的已发布版本，产物落项目 exports/，路由 apps/learning/app/api/study/lessons/export/route.ts，界面 apps/learning/components/lesson-export-panel.tsx。tests/lesson-export.test.ts、tests/lesson-export-http.test.ts、tests/zip-archive.test.ts 覆盖。KaTeX/Three.js 等客户端依赖尚未随包内联，导出清单逐项登记为缺口（离线外链缺口有报告），故为 partial。"
+      ]
     },
     {
       "id": "OMA-069",
       "category": "export",
       "name": "完整课堂ZIP导出/导入",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "E",
       "upstreamPaths": [
         "lib/export",
@@ -1220,14 +1218,16 @@
         "render-service"
       ],
       "acceptance": "结构和媒体可移植，新实例导入后无需旧浏览器缓存",
-      "evidence": []
+      "evidence": [
+        "静态课堂 ZIP 导出已落地：buildLessonExport 产出含 manifest.json/index.html/assets 的确定性 ZIP，当前正式场景绑定的图片复验摘要后内联，未绑定或歧义引用列为缺口。清单逐条记录 sha256 与字节数，可解压离线打开静态课件。tests/lesson-export.test.ts 断言归档可读、清单自洽、正式绑定不被同名演示资源覆盖与资源内联。正式互动的离线运行和提交及 ZIP 导入侧尚未实现，故为 partial。"
+      ]
     },
     {
       "id": "OMA-070",
       "category": "export",
       "name": "离线资源内联与重导出",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "E",
       "upstreamPaths": [
         "lib/export",
@@ -1238,7 +1238,9 @@
         "render-service"
       ],
       "acceptance": "KaTeX/Three.js/addons/字体/脚本资源逐一核对",
-      "evidence": []
+      "evidence": [
+        "离线资源清单逐项登记：buildLessonExport 在 manifest.resources 里区分已内联的正式绑定图片（含 sha256）与未内联的 katex、three.js 和 formal-interaction 宿主依赖（status=missing 并附缺口说明）。图片只消费实际打包映射，不接受 assets/ 前缀伪引用。重复导出为可重建派生视图。KaTeX/Three.js/addons/字体的实际内联与通用互动外部依赖核对尚未完成，故为 partial。"
+      ]
     },
     {
       "id": "OMA-071",
@@ -1263,7 +1265,7 @@
       "category": "export",
       "name": "资源打包和媒体可移植引用",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "E",
       "upstreamPaths": [
         "lib/export",
@@ -1274,7 +1276,9 @@
         "render-service"
       ],
       "acceptance": "不保存失效URL或开发绝对路径，未打包资源可见",
-      "evidence": []
+      "evidence": [
+        "媒体可移植引用已落地：包内路径用可移植相对 POSIX 路径（zip.ts 的 isPortableZipPath 拒绝盘符/反斜杠/`..`/控制字符/Windows 保留名），产物只写项目内 exports/ 相对路径，不保存失效 URL 或开发期绝对路径（tests/lesson-export.test.ts 断言清单不含盘符与 http(s) URL）；文档引用但库中缺失的资源逐条列入 unresolvedAssets 并写入清单。仍缺外部媒体重定位与更广格式支持，故为 partial。"
+      ]
     },
     {
       "id": "OMA-073",
@@ -1507,10 +1511,7 @@
       "required": true,
       "status": "planned",
       "phase": "C",
-      "upstreamPaths": [
-        "lib/types/widgets.ts",
-        "skills/agent-runtime/vocational"
-      ],
+      "upstreamPaths": ["lib/types/widgets.ts", "skills/agent-runtime/vocational"],
       "acceptance": "技能步骤、工具和成功条件可操作并保存真实本人记录",
       "evidence": []
     }
@@ -1640,27 +1641,12 @@
     },
     "search": {
       "source": "lib/web-search/types.ts",
-      "ids": [
-        "tavily",
-        "exa",
-        "bocha",
-        "brave",
-        "baidu",
-        "claude",
-        "minimax",
-        "doubao",
-        "searxng"
-      ],
+      "ids": ["tavily", "exa", "bocha", "brave", "baidu", "claude", "minimax", "doubao", "searxng"],
       "customExtension": false
     },
     "pdf": {
       "source": "lib/pdf/types.ts",
-      "ids": [
-        "unpdf",
-        "mineru",
-        "mineru-cloud",
-        "alidocmind"
-      ],
+      "ids": ["unpdf", "mineru", "mineru-cloud", "alidocmind"],
       "customExtension": false
     }
   }

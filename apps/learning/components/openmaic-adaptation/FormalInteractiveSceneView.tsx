@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { formalInteractionStateSchema, type FormalInteractionStateDto } from '@sew/study-contracts';
 import { apiFetch, describeApiError } from '../../lib/client';
+import { restoreOrderingOrder } from '../../lib/formal-ordering';
 
 function FormalInteractiveSceneContent({
   stageId,
@@ -19,6 +20,8 @@ function FormalInteractiveSceneContent({
   const [prediction, setPrediction] = useState('');
   const [edgeId, setEdgeId] = useState('');
   const [to, setTo] = useState('');
+  /** 本人给出的排序（`ordering` 定义）；服务端核验是否与冻结的正确顺序一致。 */
+  const [order, setOrder] = useState<string[]>([]);
   const [explanation, setExplanation] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -69,7 +72,7 @@ function FormalInteractiveSceneContent({
           setX(String(values?.kind === 'parameter' ? values.x : 1));
           const saved = values?.kind === 'parameter' ? values.prediction : null;
           setPrediction(saved === null || saved === undefined ? '' : String(saved));
-        } else {
+        } else if (loaded.definition.kind === 'concept_relation') {
           setEdgeId(
             values?.kind === 'concept_relation'
               ? values.edgeId
@@ -80,6 +83,10 @@ function FormalInteractiveSceneContent({
               ? values.to
               : (loaded.definition.nodes[0]?.id ?? ''),
           );
+        } else {
+          // 只恢复本人已给出的排列，候选呈现顺序不自动成为本人答案。
+          const saved = values?.kind === 'ordering' ? values.order : null;
+          setOrder(restoreOrderingOrder(saved));
         }
       } catch (caught) {
         if (
@@ -128,7 +135,15 @@ function FormalInteractiveSceneContent({
               prediction: prediction.trim() === '' ? null : Number(prediction),
               explanation,
             }
-          : { kind: 'concept_relation' as const, edgeId, to, explanation };
+          : current.kind === 'concept_relation'
+            ? { kind: 'concept_relation' as const, edgeId, to, explanation }
+            : { kind: 'ordering' as const, order, explanation };
+      if (
+        current.kind === 'ordering' &&
+        values.kind === 'ordering' &&
+        values.order.length !== current.items.length
+      )
+        throw new Error('请先逐项选择全部候选，给出本人的完整排序。');
       if (
         values.kind === 'parameter' &&
         (!a.trim() || !x.trim() || !Number.isFinite(values.a) || !Number.isFinite(values.x))
@@ -187,21 +202,38 @@ function FormalInteractiveSceneContent({
       {definition?.kind === 'parameter' ? (
         <>
           <p>
-            实验函数 f(x)=ax+{definition.intercept}。来源陈述：{definition.statementIds.join('、')}
+            实验函数 {definition.formula === 'quadratic' ? 'f(x)=ax²+' : 'f(x)=ax+'}
+            {definition.intercept}（{definition.formula === 'quadratic' ? '二次' : '线性'}
+            ）。来源陈述：
+            {definition.statementIds.join('、')}
           </p>
           <svg
             viewBox="0 0 400 220"
             role="img"
-            aria-label="线性函数参数图"
+            aria-label={definition.formula === 'quadratic' ? '二次函数参数图' : '线性函数参数图'}
             style={{ width: '100%', height: 220 }}
           >
             <path d="M0 110H400M200 0V220" stroke="currentColor" fill="none" />
-            <path
-              d={`M0 ${110 - (-5 * numericA + intercept) * 15}L400 ${110 - (5 * numericA + intercept) * 15}`}
-              stroke="#0f766e"
-              strokeWidth="3"
-              fill="none"
-            />
+            {definition.formula === 'quadratic' ? (
+              // 采样绘制抛物线：结果只用于可视化，判定仍由服务端按定义公式完成。
+              <path
+                d={Array.from({ length: 41 }, (_, index) => {
+                  const x = -5 + (index * 10) / 40;
+                  const y = 110 - (numericA * x * x + intercept) * 4;
+                  return `${index === 0 ? 'M' : 'L'}${(x + 5) * 40} ${y}`;
+                }).join('')}
+                stroke="#0f766e"
+                strokeWidth="3"
+                fill="none"
+              />
+            ) : (
+              <path
+                d={`M0 ${110 - (-5 * numericA + intercept) * 15}L400 ${110 - (5 * numericA + intercept) * 15}`}
+                stroke="#0f766e"
+                strokeWidth="3"
+                fill="none"
+              />
+            )}
           </svg>
           <label>
             参数 a
@@ -298,6 +330,77 @@ function FormalInteractiveSceneContent({
             </text>
           </svg>
         </>
+      ) : definition?.kind === 'ordering' ? (
+        <>
+          <p>
+            请把下列概念排成正确顺序（上→下）。候选条目：{definition.items.length} 个；来源陈述：
+            {definition.statementIds.join('、')}
+          </p>
+          <div data-formal-order-candidates>
+            {definition.items
+              .filter((item) => !order.includes(item.id))
+              .map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="btn"
+                  disabled={busy}
+                  onClick={() =>
+                    setOrder((current) =>
+                      current.includes(item.id) ? current : [...current, item.id],
+                    )
+                  }
+                >
+                  添加：{item.label}
+                </button>
+              ))}
+          </div>
+          <ol className="check-list" data-formal-order>
+            {order.map((itemId, index) => (
+              <li key={itemId}>
+                <span>
+                  {index + 1}. {definition.items.find((item) => item.id === itemId)?.label}
+                </span>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={busy || index === 0}
+                  onClick={() =>
+                    setOrder((current) => {
+                      const next = [...current];
+                      [next[index - 1], next[index]] = [next[index]!, next[index - 1]!];
+                      return next;
+                    })
+                  }
+                >
+                  上移
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={busy || index === order.length - 1}
+                  onClick={() =>
+                    setOrder((current) => {
+                      const next = [...current];
+                      [next[index], next[index + 1]] = [next[index + 1]!, next[index]!];
+                      return next;
+                    })
+                  }
+                >
+                  下移
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={busy}
+                  onClick={() => setOrder((current) => current.filter((id) => id !== itemId))}
+                >
+                  移回候选
+                </button>
+              </li>
+            ))}
+          </ol>
+        </>
       ) : null}
       <label>
         本人解释
@@ -327,11 +430,13 @@ function FormalInteractiveSceneContent({
       {state?.lastSubmission ? (
         <p role="status" data-formal-result>
           本人提交已保存，共 {state.count} 条。服务核验：{state.lastSubmission.payload.result}。
-          {state.lastSubmission.payload.predictionMatched === null
-            ? '本次未填写预测。'
-            : state.lastSubmission.payload.predictionMatched
-              ? '本人预测与实测一致。'
-              : '本人预测与实测不一致，可对照来源重做实验。'}
+          {definition?.kind !== 'parameter'
+            ? ''
+            : state.lastSubmission.payload.predictionMatched === null
+              ? '本次未填写预测。'
+              : state.lastSubmission.payload.predictionMatched
+                ? '本人预测与实测一致。'
+                : '本人预测与实测不一致，可对照来源重做实验。'}
           {state.deduplicated ? '重复请求已复用。' : ''}
         </p>
       ) : null}

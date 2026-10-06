@@ -24,7 +24,7 @@ import { HttpDocumentStore } from '@openmaic/storage/document/http';
 import type { Action, InteractiveContent, QuizContent, Scene, SlideContent } from '@openmaic/dsl';
 import type { ClassroomSceneBinding, ClassroomBoardEffectDto } from '@sew/study-contracts';
 import { apiFetch, getSessionToken, waitForSessionToken } from '../lib/client';
-import { resolveActiveBoardFocus } from '../lib/classroom/board-focus';
+import { resolveActiveBoardFocus, resolveActiveBoardLaser } from '../lib/classroom/board-focus';
 import { Stage } from './openmaic-adaptation/Stage';
 import { SceneRenderer } from './openmaic-adaptation/SceneRenderer';
 import { runClassroomLoad } from './openmaic-adaptation/classroom-load-lifecycle';
@@ -105,6 +105,8 @@ export const ClassroomSurface = ({
   const [sceneId, setSceneId] = useState(initialSceneId);
   // 白板效果由教师面板的白板卡上报；画布只按当前场景挑选生效的那一条。
   const [boardEffects, setBoardEffects] = useState<ClassroomBoardEffectDto[]>([]);
+  /** 生效聚焦/激光笔的 seq：`undefined` = 跟随最新一条；`null` = 教师显式收回；数字 = 回到某条。 */
+  const [focusSeq, setFocusSeq] = useState<number | null | undefined>(undefined);
   const releaseLoadRef = useRef<(() => void) | null>(null);
   const lifecycleRef = useRef(createClassroomLifecycle());
   const activeLeaseRef = useRef<ClassroomLifecycleLease | null>(null);
@@ -299,7 +301,12 @@ export const ClassroomSurface = ({
   const loadError = host.error ?? (host.notFound ? '课堂文档不存在：课件未落到当前项目。' : null);
 
   const current = scenes?.find((scene) => scene.id === sceneId) ?? scenes?.[0] ?? null;
-  const activeFocus = current ? resolveActiveBoardFocus(boardEffects, current.id) : null;
+  /**
+   * 生效聚焦由「生效 seq」决定，而不是永远取最新一条：教师可以「回到此条 / 收回」，
+   * 撤销/重放只移动这个指针，不删除已提交效果。`null` 表示收回，画布不高亮任何元素。
+   */
+  const activeFocus = current ? resolveActiveBoardFocus(boardEffects, current.id, focusSeq) : null;
+  const activeLaser = current ? resolveActiveBoardLaser(boardEffects, current.id, focusSeq) : null;
   const currentBinding = bindings.find((binding) => binding.sceneId === current?.id) ?? null;
 
   const persistPosition = useCallback(
@@ -449,6 +456,12 @@ export const ClassroomSurface = ({
                   {`教师已聚焦本页元素（第 ${activeFocus.seq} 步）。高亮只表示注意力，不改变内容或判分。`}
                 </p>
               ) : null}
+              {activeLaser ? (
+                <p className="muted" role="status" data-canvas-laser={activeLaser.elementId}>
+                  <span aria-hidden>⌖</span>
+                  {`激光笔指向本页元素（第 ${activeLaser.seq} 步）。临时指引，不改变内容或判分。`}
+                </p>
+              ) : null}
             </>
           ) : null}
         </div>
@@ -502,6 +515,7 @@ export const ClassroomSurface = ({
                 compact
                 onSceneChange={(nextSceneId: string) => void selectScene(nextSceneId)}
                 onBoardEffects={setBoardEffects}
+                onFocusSeqChange={setFocusSeq}
               />
             ) : (
               <p className="role-say">

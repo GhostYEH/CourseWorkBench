@@ -64,6 +64,7 @@ const ScenePlanEditor = ({
   lesson,
   bundle,
   plan,
+  interactions = [],
   busy,
   onSaved,
 }: {
@@ -72,6 +73,8 @@ const ScenePlanEditor = ({
   lesson: LessonVersionDto;
   bundle: EvidenceBundleDto;
   plan: ScenePlanDto | null;
+  /** 本版本已审核的正式互动定义（场景编号由服务端按 `formalInteractionSceneId` 派生）。 */
+  interactions?: Array<{ sceneId: string; title: string }>;
   busy: boolean;
   onSaved: (message: string) => void;
 }): ReactNode => {
@@ -79,8 +82,8 @@ const ScenePlanEditor = ({
   const editable = lesson.status === 'draft';
   const initial = useMemo<PlanSceneDto[]>(() => {
     if (plan) return plan.scenes;
-    return initialLessonPlanScenes(bundle, lesson);
-  }, [plan, bundle, lesson]);
+    return initialLessonPlanScenes(bundle, lesson, interactions);
+  }, [plan, bundle, lesson, interactions]);
 
   /**
    * 编辑器保存必须绑定**实际加载的那一版计划 revision**。

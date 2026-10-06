@@ -13,6 +13,7 @@ import type { ReactNode } from 'react';
 import {
   apiResponses,
   PEER_ENGAGEMENT_LABEL,
+  type ClassroomPeerScheduleDto,
   type ClassroomPeerTurnDto,
   type ClassroomSessionDto,
   type PeerEngagement,
@@ -37,6 +38,7 @@ export const ClassroomPeersPanel = ({
   session,
   peers,
   peerTurns,
+  schedule,
   onChange,
   onStateRefresh = null,
   disabled = false,
@@ -46,7 +48,21 @@ export const ClassroomPeersPanel = ({
   session: ClassroomSessionDto;
   peers: Array<{ profileId: string; name: string; engagement: PeerEngagement }>;
   peerTurns: ClassroomPeerTurnDto[];
-  onChange: (session: ClassroomSessionDto, turn: ClassroomPeerTurnDto | null) => void;
+  /**
+   * 服务端判定的同学调度结论（TEACH-01）：`canSpeak` 同时反映用户优先、开关与轮内上限。
+   * 界面直接消费它，不再自己拼「开关 && 状态 && 上限」——两处各写一遍会漂移成「按钮亮着但服务端拒绝」。
+   */
+  schedule: {
+    canSpeak: boolean;
+    reason: string | null;
+    turnCeiling: number;
+    turnsThisRound: number;
+  };
+  onChange: (
+    session: ClassroomSessionDto,
+    turn: ClassroomPeerTurnDto | null,
+    schedule: ClassroomPeerScheduleDto,
+  ) => void;
   /** 服务端权威状态的重读入口；中断后以它为准，而不是沿用面板里已隔离的结果。 */
   onStateRefresh?: (() => void | Promise<void>) | null;
   disabled?: boolean;
@@ -94,7 +110,7 @@ export const ClassroomPeersPanel = ({
         });
         if (!command.isCurrent()) return;
         if (turnKey) pendingTurns.current.delete(turnKey);
-        onChange(result.session, result.turn);
+        onChange(result.session, result.turn, result.schedule);
         setMessage(success);
       },
       {
@@ -120,7 +136,17 @@ export const ClassroomPeersPanel = ({
     );
   }
 
-  const canSpeak = session.peersEnabled && session.status === 'in_class' && !disabled;
+  const canSpeak = schedule.canSpeak && !disabled;
+  const scheduleNote =
+    schedule.reason === 'awaiting_learner'
+      ? '正在等待本人作答：同学不插话。'
+      : schedule.reason === 'session_not_in_class'
+        ? '课堂未在进行中：同学不发言。'
+        : schedule.reason === 'peers_disabled'
+          ? '同学已关闭：开启后才会发言。'
+          : schedule.reason === 'round_ceiling'
+            ? `本轮同学发言已达上限（${schedule.turnsThisRound}/${schedule.turnCeiling}）：下一轮再开口。`
+            : null;
 
   return (
     <div className="card card-nested" data-classroom-peers>
@@ -133,8 +159,15 @@ export const ClassroomPeersPanel = ({
         <span className="pill" data-tone={session.peersEnabled ? 'verified' : 'info'}>
           {session.peersEnabled ? '● 同学已开启' : '○ 同学已关闭'}
         </span>
-        <span className="muted mono">本轮同学发言 {session.roundPeerTurns} 次</span>
+        <span className="muted mono">
+          本轮同学发言 {schedule.turnsThisRound}/{schedule.turnCeiling} 次
+        </span>
       </div>
+      {scheduleNote ? (
+        <p className="hint" data-peer-schedule-note={schedule.reason ?? 'ok'}>
+          {scheduleNote}
+        </p>
+      ) : null}
       <div className="field" style={{ marginTop: 'var(--sew-space-2)' }}>
         <label htmlFor="peer-engagement">参与度（只影响开口频率，不改变权限）</label>
         <select

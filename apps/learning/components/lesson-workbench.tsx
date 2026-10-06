@@ -28,6 +28,7 @@ import { apiFetch, describeApiError } from '../lib/client';
 import { FormalInteractionAuthor } from './formal-interaction-author';
 import { LessonCoursewareGeneration } from './lesson-courseware-generation';
 import { LessonScenePlanEditor } from './lesson-scene-plan-editor';
+import { LessonScenePlanMerge } from './lesson-scene-plan-merge';
 import { LessonSceneRevision } from './lesson-scene-revision';
 import { LessonStatementRevision } from './lesson-statement-revision';
 
@@ -76,6 +77,7 @@ export const LessonWorkbench = ({
   statementRevisions = [],
   scenePlans = [],
   coursewareCandidates = [],
+  reviewedInteractions = new Map(),
   modelConfigured = false,
 }: {
   projectId: string;
@@ -100,6 +102,8 @@ export const LessonWorkbench = ({
   scenePlans?: ScenePlanDto[];
   /** 完整课件生成候选（OMA-006）：待核的才可处置。 */
   coursewareCandidates?: CoursewareCandidateDto[];
+  /** 每个课程版本已审核互动定义派生出的场景编号与标题；默认计划据此与冻结定义一一对应。 */
+  reviewedInteractions?: Map<string, Array<{ sceneId: string; title: string }>>;
   /** 是否已配置模型连接；未配置时改写生成按钮不可用。 */
   modelConfigured?: boolean;
 }): ReactNode => {
@@ -572,6 +576,39 @@ export const LessonWorkbench = ({
                                 item.lessonVersion === lesson.version,
                             ) ?? null
                           }
+                          interactions={
+                            reviewedInteractions.get(`${lesson.lessonId}:${lesson.version}`) ?? []
+                          }
+                          busy={busy}
+                          onSaved={setNote}
+                        />
+                      ) : null}
+                      {versionBundle(lesson) && lesson.status === 'draft' ? (
+                        <LessonScenePlanMerge
+                          key={`${lesson.lessonId}-v${lesson.version}-scene-plan-merge`}
+                          projectId={projectId}
+                          generation={generation}
+                          lessonId={lesson.lessonId}
+                          lessonVersion={lesson.version}
+                          planRevision={
+                            scenePlans.find(
+                              (item) =>
+                                item.lessonId === lesson.lessonId &&
+                                item.lessonVersion === lesson.version,
+                            )?.revision ?? 0
+                          }
+                          sourceVersions={versions
+                            .filter(
+                              (item) =>
+                                item.lessonId === lesson.lessonId &&
+                                item.version !== lesson.version &&
+                                scenePlans.some(
+                                  (plan) =>
+                                    plan.lessonId === item.lessonId &&
+                                    plan.lessonVersion === item.version,
+                                ),
+                            )
+                            .map((item) => item.version)}
                           busy={busy}
                           onSaved={setNote}
                         />

@@ -12,15 +12,22 @@ const run = (command, args) => {
 };
 run(process.execPath, ['scripts/generate-preload.mjs', '--check']);
 
-const [desktop, scripts, packages, learning] = await Promise.all([
+const [desktop, scripts, packages, learning, collabService] = await Promise.all([
   collectSources(path.join(root, 'apps/desktop/src'), ['.cjs', '.mjs']),
   collectSources(path.join(root, 'scripts'), ['.cjs', '.mjs']),
   collectSources(path.join(root, 'packages'), ['.ts']),
   collectSources(path.join(root, 'apps/learning'), ['.ts', '.tsx']),
+  collectSources(path.join(root, 'apps/collab-service'), ['.ts']),
 ]);
-for (const file of [...desktop, ...scripts, path.join(root, 'apps/learning/server.mjs')]) {
+for (const file of [
+  ...desktop,
+  ...scripts,
+  path.join(root, 'apps/learning/server.mjs'),
+  path.join(root, 'apps/collab-service/server.mjs'),
+  path.join(root, 'apps/collab-service/provision.mjs'),
+]) {
   run(process.execPath, ['--check', file]);
 }
 const methods = await checkPreload(root);
-await checkSourceBoundaries(root, [...packages, ...learning, ...desktop]);
+await checkSourceBoundaries(root, [...packages, ...learning, ...collabService, ...desktop]);
 console.log('Code quality checks passed (' + methods + ' whitelisted preload methods).');

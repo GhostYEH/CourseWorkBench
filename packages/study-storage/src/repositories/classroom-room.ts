@@ -126,22 +126,33 @@ export const freezePublishedRoomCourse = (input: {
         '这个互动场景缺少已审核的公开定义，暂不支持安全共享。');
     }
     const shared = publicFormalInteractionDefinition(definition);
-    return shared.kind === 'parameter'
-      ? {
+    if (shared.kind === 'parameter') {
+      return {
         sceneId: scene.id, type: 'interactive' as const, title: scene.title, order: scene.order,
         interaction: {
           interactionId: shared.id, kind: 'parameter' as const, title: shared.title, statementIds: shared.statementIds,
           formula: shared.formula, min: shared.min, max: shared.max, step: shared.step, intercept: shared.intercept,
           predictionRequired: shared.predictionRequired,
         },
-      }
-      : {
+      };
+    }
+    if (shared.kind === 'concept_relation') {
+      return {
         sceneId: scene.id, type: 'interactive' as const, title: scene.title, order: scene.order,
         interaction: {
           interactionId: shared.id, kind: 'concept_relation' as const, title: shared.title, statementIds: shared.statementIds,
           nodes: shared.nodes, edges: shared.edges,
         },
       };
+    }
+    // 排序互动：公开投影只给候选条目，正确顺序 `correctOrder` 不进共享快照。
+    return {
+      sceneId: scene.id, type: 'interactive' as const, title: scene.title, order: scene.order,
+      interaction: {
+        interactionId: shared.id, kind: 'ordering' as const, title: shared.title, statementIds: shared.statementIds,
+        items: shared.items,
+      },
+    };
   });
   const sceneIds = new Set(scenes.map(scene => scene.sceneId));
   const sources = input.sceneSources.filter(source => sceneIds.has(source.sceneId));
@@ -292,8 +303,34 @@ export class ClassroomRoomRepository {
     return { assetId, mediaType: manifest.mediaType, sha256: manifest.sha256, bytes };
   }
 
-  create(raw: CreateLocalClassroomRoomInput, trustedUid: string, options?: FreezeRoomCourseOptions): ClassroomRoomWriteResult {
-    const input = validate(createSchema, raw);
+  /**
+   * 只读冻结某已发布课程版本的公共投影（不建房、不落库）。
+   *
+   * 供在线客户端在「发布共享快照」时复用与建房完全相同的冻结路径：共享出去的
+   * 投影必须来自与本地课堂相同的校验，而不是另写一条更弱的读取路径。
+   */
+  freezeCourse(
+    input: { projectId: string; lessonId: string; lessonVersion: number },
+    trustedUid: string,
+    options?: FreezeRoomCourseOptions,
+  ): ClassroomSharedCourseDto {
+    this.principal(input.projectId, trustedUid);
+    const frozen = this.facts.freeze(
+      { ...input, requestId: 'freeze-only' },
+      options,
+    );
+    const snapshot = validate(classroomSharedCourseSchema, frozen.snapshot);
+    this.verifySnapshot(snapshot);
+    if (
+      snapshot.course.lessonId !== input.lessonId ||
+      snapshot.course.lessonVersion !== input.lessonVersion
+    ) {
+      throw integrityError('room_frozen_course_mismatch');
+    }
+    return snapshot;
+  }
+
+  create(raw: CreateLocalClassroomRoomInput, trustedUid: string, options?: FreezeRoomCourseOptions): ClassroomRoomWriteResult {    const input = validate(createSchema, raw);
     this.principal(input.projectId, trustedUid);
     return this.db.transaction(() => {
       const prior = this.retry(input.projectId, input.requestId, trustedUid, 'create', input);

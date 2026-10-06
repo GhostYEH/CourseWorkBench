@@ -70,7 +70,9 @@ export const assertPeerTurnAllowed = (facts: {
     throw new StudyError('ROLE_PERMISSION_DENIED', { reason: 'not_a_peer_role' });
   }
   if (facts.partition !== 'simulation') {
-    throw new StudyError('ROLE_PERMISSION_DENIED', { reason: 'peer_must_use_simulation_partition' });
+    throw new StudyError('ROLE_PERMISSION_DENIED', {
+      reason: 'peer_must_use_simulation_partition',
+    });
   }
   if (facts.sessionStatus === 'awaiting_learner') {
     throw new StudyError('CLASSROOM_AWAITING_LEARNER', { reason: 'awaiting_learner' });
@@ -84,9 +86,44 @@ export const assertPeerTurnAllowed = (facts: {
   const ceiling = peerTurnCeiling(facts.engagement);
   if (facts.roundPeerTurns >= ceiling) {
     throw new StudyError('BUDGET_EXCEEDED', {
-      reason: 'round_peer_turns', used: facts.roundPeerTurns, limit: ceiling,
+      reason: 'round_peer_turns',
+      used: facts.roundPeerTurns,
+      limit: ceiling,
     });
   }
+};
+
+/**
+ * 同学调度结论（TEACH-01）。
+ *
+ * 与 `shouldPeerSpeak` 同源、与 `assertPeerTurnAllowed` 同判定，但**返回可展示的原因码**：
+ * 界面拿到的不是布尔值，而是「此刻能不能发言 + 为什么不能」。这样界面不需要自己再算一遍
+ * 「开关 && 状态 && 上限」，避免两处规则漂移成「按钮亮着但服务端拒绝」。
+ */
+export type PeerScheduleReason =
+  'peers_disabled' | 'awaiting_learner' | 'session_not_in_class' | 'round_ceiling';
+
+export const peerSchedule = (facts: {
+  sessionStatus: 'in_class' | 'awaiting_learner' | 'completed' | 'cancelled';
+  peersEnabled: boolean;
+  engagement: PeerEngagement;
+  roundPeerTurns: number;
+}): {
+  canSpeak: boolean;
+  reason: PeerScheduleReason | null;
+  turnCeiling: number;
+  turnsThisRound: number;
+} => {
+  const turnCeiling = peerTurnCeiling(facts.engagement);
+  const base = { turnCeiling, turnsThisRound: facts.roundPeerTurns };
+  if (!facts.peersEnabled) return { ...base, canSpeak: false, reason: 'peers_disabled' };
+  if (facts.sessionStatus === 'awaiting_learner')
+    return { ...base, canSpeak: false, reason: 'awaiting_learner' };
+  if (facts.sessionStatus !== 'in_class')
+    return { ...base, canSpeak: false, reason: 'session_not_in_class' };
+  if (facts.roundPeerTurns >= turnCeiling)
+    return { ...base, canSpeak: false, reason: 'round_ceiling' };
+  return { ...base, canSpeak: true, reason: null };
 };
 
 /**
@@ -127,9 +164,14 @@ export const assertPeerTurnGrounded = (facts: {
 }): void => {
   if (facts.kind !== 'example') {
     // 提问与讨论不声称来源，但如果引用了陈述，引用的必须真实存在于冻结证据包里。
-    const unknown = facts.statementIds.filter((statementId) => !facts.knownStatementIds.has(statementId));
+    const unknown = facts.statementIds.filter(
+      (statementId) => !facts.knownStatementIds.has(statementId),
+    );
     if (unknown.length > 0) {
-      throw new StudyError('INVALID_ARGUMENT', { reason: 'peer_statement_outside_bundle', unknown });
+      throw new StudyError('INVALID_ARGUMENT', {
+        reason: 'peer_statement_outside_bundle',
+        unknown,
+      });
     }
     return;
   }
@@ -139,7 +181,9 @@ export const assertPeerTurnGrounded = (facts: {
   if (facts.statementIds.length === 0) {
     throw new StudyError('SOURCE_MISSING', { reason: 'peer_example_has_no_statements' });
   }
-  const unknown = facts.statementIds.filter((statementId) => !facts.knownStatementIds.has(statementId));
+  const unknown = facts.statementIds.filter(
+    (statementId) => !facts.knownStatementIds.has(statementId),
+  );
   if (unknown.length > 0) {
     throw new StudyError('INVALID_ARGUMENT', { reason: 'peer_statement_outside_bundle', unknown });
   }

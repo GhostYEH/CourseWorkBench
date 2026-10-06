@@ -199,6 +199,21 @@ export const classroomPeerTurnSchema = z
   .strict();
 export type ClassroomPeerTurnDto = z.infer<typeof classroomPeerTurnSchema>;
 
+/** 服务端判定的同学调度结论（TEACH-01 的「本人优先与同学调度整合」）。 */
+export const classroomPeerScheduleSchema = z
+  .object({
+    /** 本轮此刻是否允许同学发言（与 `assertPeerTurnAllowed` 同源）。 */
+    canSpeak: z.boolean(),
+    /** 不允许时的原因码；允许时为 null。 */
+    reason: z
+      .enum(['peers_disabled', 'awaiting_learner', 'session_not_in_class', 'round_ceiling'])
+      .nullable(),
+    turnCeiling: z.number().int().nonnegative(),
+    turnsThisRound: z.number().int().nonnegative(),
+  })
+  .strict();
+export type ClassroomPeerScheduleDto = z.infer<typeof classroomPeerScheduleSchema>;
+
 /** 课堂现场快照：会话、可播放队列、已播放编号、待核数量与 AI 同学发言。 */
 export const classroomStateSchema = z
   .object({
@@ -212,6 +227,14 @@ export const classroomStateSchema = z
     }).strict()),
     /** 本轮已发生的同学发言，按顺序排列；跨轮历史不进实时快照。 */
     peerTurns: z.array(classroomPeerTurnSchema),
+    /**
+     * 服务端判定的同学调度结论（TEACH-01 的「本人优先与同学调度整合」）。
+     *
+     * 界面必须消费这里的 `canSpeak`，而不是自己再算一遍「开关 && 状态 && 上限」——
+     * 两处各写一遍就会漂移：`canSpeak` 同时反映用户优先（等待本人/已结束时不发言）、
+     * 参与度上限与轮内硬上限，和命令处理器用的是同一份判定。
+     */
+    peerSchedule: classroomPeerScheduleSchema,
   })
   .strict();
 export type ClassroomStateDto = z.infer<typeof classroomStateSchema>;

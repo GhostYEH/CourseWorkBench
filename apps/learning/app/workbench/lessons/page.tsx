@@ -6,6 +6,8 @@ import { LessonWorkbench } from '../../../components/lesson-workbench';
 import { QuestionAuthoring } from '../../../components/question-authoring';
 import { TeachingClassroom } from '../../../components/teaching-classroom';
 import { toClassroomSessionDto,toExplanationDto,toKnowledgePointDto,toLessonReviewDto,toLessonVersionDto } from '../../../lib/server/dto';
+import { readFormalInteractionDefinitions } from '../../../lib/server/formal-interaction-definition-store';
+import { formalInteractionSceneId } from '@sew/study-domain';
 import { modelConnection } from '../../../lib/server/model-connection';
 import { requireSession } from '../../../lib/server/service';
 import { readWorkbenchKnowledge,readWorkbenchQuestions } from '../../../lib/server/workbench-data';
@@ -44,6 +46,19 @@ export default function LessonsPage(): ReactNode {
   const statementRevisions = session.store.listProjectStatementRevisions(projectId);
   const scenePlans = session.store.listProjectScenePlans(projectId);
   const coursewareCandidates = session.store.listProjectCoursewareCandidates(projectId);
+
+  /** 每个课程版本已审核的正式互动定义 → 场景编号；默认计划据此与冻结定义一一对应。 */
+  const reviewedInteractions = new Map<string, Array<{ sceneId: string; title: string }>>();
+  for (const version of versions) {
+    const frozen = readFormalInteractionDefinitions(session, version.lessonId, version.version);
+    reviewedInteractions.set(
+      `${version.lessonId}:${version.version}`,
+      (frozen?.frozen.definitions ?? []).map((definition) => ({
+        sceneId: formalInteractionSceneId(definition.id),
+        title: definition.title,
+      })),
+    );
+  }
 
   /** 已发布版本 → 已挂接的课件文档（场景编号取自文档本身，不从讲解卡反推）。 */
   const classroomDocuments = versions
@@ -127,6 +142,7 @@ export default function LessonsPage(): ReactNode {
         statementRevisions={statementRevisions}
         scenePlans={scenePlans}
         coursewareCandidates={coursewareCandidates}
+        reviewedInteractions={reviewedInteractions}
         modelConfigured={modelConnection.status().configured}
       />
 

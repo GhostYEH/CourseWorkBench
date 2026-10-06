@@ -17,8 +17,8 @@ export const runtimePackageMetadata = (source) => {
   return runtime;
 };
 
-const sourceDirectories = ['apps/learning', 'packages/study-contracts', 'packages/study-domain', 'packages/study-storage'];
-const ignoredDirectories = new Set(['.next', '.next-build', '.sew-user-data', 'dist', 'node_modules', 'coverage', 'release']);
+const sourceDirectories = ['apps/learning', 'apps/collab-service', 'packages/study-contracts', 'packages/study-domain', 'packages/study-storage'];
+const ignoredDirectories = new Set(['.next', '.next-build', '.sew-user-data', '.collab-data', '.dev-collab', 'dist', 'node_modules', 'coverage', 'release']);
 const generatedInputFiles = new Set(['next-env.d.ts', 'tsconfig.tsbuildinfo']);
 
 const collectFiles = (root, directory, output, excludedOutputDir) => {

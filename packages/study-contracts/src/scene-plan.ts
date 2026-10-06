@@ -126,17 +126,112 @@ export const scenePlanSaveSchema = z
   .strict();
 export type ScenePlanSaveInput = z.infer<typeof scenePlanSaveSchema>;
 
-/** 请求模型生成完整课件计划（OMA-006）。产物只作为待核候选，不直接写入计划。 */
-export const coursewareProposeSchema = z
+/**
+ * 跨版本计划差异与合并预览（LESSON-02 / OMA-005、OMA-022）。
+ *
+ * 这是一条**只读**命令：它比较「来源版本计划」与「目标草案版本计划」，把增/删/改/序、
+ * 无法自动判定的冲突以及按整课大纲对齐后的缺口如实算出来，**不写入任何计划**。
+ * 真正的写回仍走 `save-scene-plan`：带 `baseRevision` 做乐观并发，内容变了旧审核即失效，
+ * 新版本必须重新人工审核后才能发布。因此「合并」不会绕过版本与审核语义，也不需要新回执表；
+ * 只读命令天然幂等，重发不会推进第二个 revision。
+ */
+export const scenePlanMergeSchema = z
   .object({
     scope: projectScopeSchema,
-    action: z.literal('propose-courseware'),
-    requestId: z.string().trim().min(1).max(200),
+    action: z.literal('merge-scene-plans'),
     lessonId: z.string().min(1),
-    version: z.number().int().positive(),
-    instruction: z.string().trim().min(2).max(600),
+    /**
+     * 三向合并的共同祖先版本计划（可选）。省略时取 `fromVersion`，
+     * 于是退化为「把来源版本独有的场景并入目标版本」，不会静默覆盖目标版本已改的内容。
+     */
+    baseVersion: z.number().int().positive().optional(),
+    /** 来源版本：把这一版相对 base 的改动合并进来。 */
+    fromVersion: z.number().int().positive(),
+    /** 目标草案版本：合并结果将要写入这里。 */
+    toVersion: z.number().int().positive(),
   })
   .strict();
+export type ScenePlanMergeInput = z.infer<typeof scenePlanMergeSchema>;
+
+/** 差异/合并里引用到的单个场景。 */
+export const scenePlanDiffEntrySchema = z
+  .object({
+    sceneId: z.string().min(1),
+    kind: z.enum(PLAN_SCENE_KINDS),
+    title: z.string(),
+    /** 来源版本是否含该场景；false 表示合并后新增。 */
+    inSource: z.boolean(),
+    /** 目标版本当前是否已含该场景。 */
+    inTarget: z.boolean(),
+  })
+  .strict();
+export type ScenePlanDiffEntryDto = z.infer<typeof scenePlanDiffEntrySchema>;
+
+/** 来源版本 → 目标草案版本的场景差异（`planSceneDigest` 判定内容是否变化）。 */
+export const scenePlanDiffSchema = z
+  .object({
+    /** 目标版本有、来源版本没有的场景（合并后会新增）。 */
+    added: z.array(scenePlanDiffEntrySchema),
+    /** 来源版本有、目标版本没有的场景（合并后会消失）。 */
+    removed: z.array(scenePlanDiffEntrySchema),
+    /** 两侧都有、但内容摘要不同的场景。 */
+    modified: z.array(scenePlanDiffEntrySchema),
+    /** 两侧都存在的场景相对顺序是否变化（只看共同场景，避免新增/删除被误报成重排）。 */
+    reordered: z.boolean(),
+  })
+  .strict();
+export type ScenePlanDiffDto = z.infer<typeof scenePlanDiffSchema>;
+
+/** 一条无法自动判定的合并冲突（必须由用户逐条确认，不静默取一侧）。 */
+export const scenePlanMergeConflictSchema = z
+  .object({
+    sceneId: z.string().min(1),
+    reason: z.enum(['both_modified', 'kind_changed', 'removed_and_modified', 'added_duplicate']),
+    /** 冲突两侧的场景摘要，便于界面把「哪一版改成了什么」显示出来。 */
+    incomingDigest: z.string().min(1).nullable(),
+    currentDigest: z.string().min(1).nullable(),
+  })
+  .strict();
+export type ScenePlanMergeConflictDto = z.infer<typeof scenePlanMergeConflictSchema>;
+
+/** 合并预览：把「会怎么合、哪些要人确认」在写入前如实展示出来。 */
+export const scenePlanMergePreviewSchema = z
+  .object({
+    /** 共同祖先版本；与 `fromVersion` 相同表示退化合并。 */
+    baseVersion: z.number().int().positive(),
+    fromVersion: z.number().int().positive(),
+    toVersion: z.number().int().positive(),
+    /** 目标版本相对来源版本的差异（预览的主体）。 */
+    diff: scenePlanDiffSchema,
+    conflicts: z.array(scenePlanMergeConflictSchema),
+    /**
+     * 按整课大纲（本版本已选陈述的顺序）对齐后的缺口：已选陈述里还没有对应幻灯片场景的编号，
+     * 以及计划里有幻灯片场景、但绑定的陈述已不在本版本范围内的编号。缺失场景由用户或模型候选补齐，
+     * 预览只如实报告，不静默补场景。
+     */
+    outlineMissingStatementIds: z.array(z.string().min(1)),
+    outlineUnmatchedStatementIds: z.array(z.string().min(1)),
+    /**
+     * 合并后的计划内容（尚未写入）。已解决冲突的场景取来源版本内容；无法自动判定的冲突原样
+     * 保留目标版本当前内容，并同时列在 `conflicts` 里，绝不静默取一侧。
+     */
+    mergedScenes: z.array(planSceneSchema).min(1).max(48),
+    mergedDigest: z.string().min(1),
+  })
+  .strict();
+export type ScenePlanMergePreviewDto = z.infer<typeof scenePlanMergePreviewSchema>;
+
+/** 请求模型生成完整课件计划（OMA-006）。产物只作为待核候选，不直接写入计划。 */ export const coursewareProposeSchema =
+  z
+    .object({
+      scope: projectScopeSchema,
+      action: z.literal('propose-courseware'),
+      requestId: z.string().trim().min(1).max(200),
+      lessonId: z.string().min(1),
+      version: z.number().int().positive(),
+      instruction: z.string().trim().min(2).max(600),
+    })
+    .strict();
 export type CoursewareProposeInput = z.infer<typeof coursewareProposeSchema>;
 
 /**

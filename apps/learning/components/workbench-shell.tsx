@@ -30,6 +30,8 @@ const NAV = [
   { key: 'review', label: '来源审核', glyph: '✓', href: '/workbench/review' },
   { key: 'plan', label: '计划', glyph: '▦', href: '/workbench/plan' },
   { key: 'lesson', label: '课程', glyph: '▥', href: '/workbench/lessons' },
+  { key: 'library', label: '课程库', glyph: '▩', href: '/workbench/library' },
+  { key: 'export', label: '导出', glyph: '↧', href: '/workbench/exports' },
   { key: 'study', label: '学习', glyph: '✎', href: '/workbench/study' },
   { key: 'mistakes', label: '错题', glyph: '✗', href: '/workbench/mistakes' },
   { key: 'eval', label: '评测', glyph: '◎', href: '/workbench/eval' },
@@ -53,10 +55,15 @@ const SECTION_TABS: Record<string, Array<{ label: string; href: string }>> = {
     { label: '材料与来源', href: '/workbench/materials' },
   ],
   plan: [{ label: '备考计划', href: '/workbench/plan' }],
-  lesson: [{ label: '课程与证据包', href: '/workbench/lessons' }],
+  lesson: [
+    { label: '课程与证据包', href: '/workbench/lessons' },
+    { label: '课程库', href: '/workbench/library' },
+  ],
+  export: [{ label: '导出课件', href: '/workbench/exports' }],
   study: [
     { label: '今日学习', href: '/workbench/study' },
     { label: '课堂与成员', href: '/workbench/rooms' },
+    { label: '双人共同课堂', href: '/workbench/collab' },
     { label: '课堂演示', href: '/classroom/lesson-demo-monotonicity-1' },
   ],
   mistakes: [
@@ -70,8 +77,9 @@ const sectionOf = (pathname: string): string => {
   const segment = pathname.split('/')[2] ?? '';
   if (['materials', 'settings', 'appearance'].includes(segment)) return 'project';
   if (segment === 'syllabus') return 'knowledge';
-  if (segment === 'lessons') return 'lesson';
-  if (segment === 'rooms') return 'study';
+  if (segment === 'lessons' || segment === 'library') return 'lesson';
+  if (segment === 'exports') return 'export';
+  if (segment === 'rooms' || segment === 'collab') return 'study';
   if (['knowledge', 'review', 'plan', 'study', 'mistakes', 'eval'].includes(segment)) return segment;
   return 'project';
 };

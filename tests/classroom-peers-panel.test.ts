@@ -47,7 +47,15 @@ const session = (overrides: Partial<ClassroomSessionDto> = {}): ClassroomSession
   ...overrides,
 });
 
-const renderPanel = (current: ClassroomSessionDto): string =>
+const renderPanel = (
+  current: ClassroomSessionDto,
+  schedule: {
+    canSpeak: boolean;
+    reason: string | null;
+    turnCeiling: number;
+    turnsThisRound: number;
+  } = { canSpeak: true, reason: null, turnCeiling: 1, turnsThisRound: 0 },
+): string =>
   renderToStaticMarkup(
     createElement(ClassroomPeersPanel, {
       projectId: current.projectId,
@@ -55,6 +63,7 @@ const renderPanel = (current: ClassroomSessionDto): string =>
       session: current,
       peers: [{ profileId: 'role-peer-1', name: '小李', engagement: 'active' }],
       peerTurns: [],
+      schedule,
       onChange: () => undefined,
       onStateRefresh: () => undefined,
     }),
@@ -86,6 +95,34 @@ describe('AI 同学面板的过期结果隔离', () => {
     );
     expect(source).toContain('onStale: createPeerStaleCommandHandler');
     expect(source).toContain('const context = peerCommandScope(session, projectId, generation)');
+  });
+
+  it('consumes the server schedule verdict instead of recomputing user priority', () => {
+    // 服务端说不能发言（等待本人）时，即便会话开关是开的，界面也必须按服务端结论禁用。
+    const awaiting = renderPanel(session({ status: 'awaiting_learner', peersEnabled: true }), {
+      canSpeak: false,
+      reason: 'awaiting_learner',
+      turnCeiling: 1,
+      turnsThisRound: 0,
+    });
+    expect(awaiting).toContain('data-peer-schedule-note="awaiting_learner"');
+    expect(awaiting).toContain('正在等待本人作答');
+    // 服务端说已达轮内上限时，界面显示实际上限而不是自己算的数字。
+    const capped = renderPanel(session({ peersEnabled: true, roundPeerTurns: 2 }), {
+      canSpeak: false,
+      reason: 'round_ceiling',
+      turnCeiling: 2,
+      turnsThisRound: 2,
+    });
+    expect(capped).toContain('data-peer-schedule-note="round_ceiling"');
+    expect(capped).toContain('本轮同学发言 2/2 次');
+    // 源码不得再自行拼装用户优先规则。
+    const source = readFileSync(
+      new URL('../apps/learning/components/classroom-peers.tsx', import.meta.url),
+      'utf8',
+    );
+    expect(source).toContain('const canSpeak = schedule.canSpeak && !disabled;');
+    expect(source).not.toContain("session.peersEnabled && session.status === 'in_class'");
   });
 
   it('shows the interruption and rereads authoritative state only while the panel is mounted', () => {

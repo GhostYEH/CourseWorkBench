@@ -123,22 +123,35 @@ export function QuizSceneView({
               ? `${quizResultFeedback(gradingContext.effectiveGrading)}${gradingContext.currentReviewVersion > 0 ? `人工评分 v${gradingContext.currentReviewVersion}。` : ''}`
               : (feedback ?? '已从本地服务读回审核记录。')}
           </p>
-          {gradingContext ? (
+          {gradingContext && gradingContext.answerDisplay.showReference ? (
             <details data-grading-reference>
               <summary>核对参考答案与评分依据</summary>
               <p>参考答案：{gradingContext.referenceAnswer}</p>
               <p>解析：{gradingContext.solution || '未登记解析。'}</p>
-              <p>评分标准：{gradingContext.rubric}</p>
-              {gradingContext.currentReviewVersion > 0 ? (
+              {gradingContext.answerDisplay.showRubric ? (
+                <p>评分标准：{gradingContext.rubric}</p>
+              ) : null}
+              {gradingContext.answerDisplay.showGradingBasis &&
+              gradingContext.currentReviewVersion > 0 ? (
                 <>
                   <p>评分依据：{gradingContext.reviews.at(-1)?.basis}</p>
                   <p>不确定性：{gradingContext.reviews.at(-1)?.uncertainty}</p>
                 </>
               ) : null}
-              <a href={`/workbench/mistakes#attempt-${gradingContext.attemptId}`}>
-                前往错题本核对评分
-              </a>
+              {gradingContext.answerDisplay.showGradingBasis ? (
+                <a href={`/workbench/mistakes#attempt-${gradingContext.attemptId}`}>
+                  前往错题本核对评分
+                </a>
+              ) : null}
             </details>
+          ) : null}
+          {gradingContext && !gradingContext.answerDisplay.showReference ? (
+            <p
+              className="muted"
+              data-answer-display-blocked={gradingContext.answerDisplay.reason ?? 'blocked'}
+            >
+              参考答案与评分规则暂不可见：服务端判定当前不满足展示条件。
+            </p>
           ) : null}
           {gradingReadError ? (
             <p role="alert" className="error-text">

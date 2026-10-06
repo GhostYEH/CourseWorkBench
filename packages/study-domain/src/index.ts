@@ -35,8 +35,10 @@ export {
   SCENE_PLAN_LIMIT, assertRichTextSafe, assertElementSafe, assertPlanGrounded,
   normalizeSceneOrder, planSceneId, planElementId, replaceSceneElements, duplicateScene,
   removeScene, reorderScenes, assertPlanEditable, assertCoursewareDecidable, coursewarePrompt,
-  scenePlanDigest, digestOfScenePlan, assertReviewMatchesPlan, assertPlanPublishable,
+  scenePlanDigest, digestOfScenePlan, planSceneDigest, diffScenePlans, mergeScenePlans,
+  outlineOrderedScenes, assertPlanInteractionsReviewed, assertReviewMatchesPlan, assertPlanPublishable,
 } from './scene-plan';
+export type { PlanSceneChange, ScenePlanDiff, PlanMergeConflict, PlanMergeResult } from './scene-plan';
 export { assertModelCallAdmitted, modelCallQuotaRemaining } from './guard';
 export type { ModelCallGuardFacts } from './guard';
 export {
@@ -46,15 +48,30 @@ export {
 export type { ClassroomBudgetUse } from './teaching';
 export {
   peerTurnCeiling, shouldPeerSpeak, assertPeerTurnAllowed, peerCapabilities,
-  assertPeerTurnGrounded, peerAttemptPartition,
+  assertPeerTurnGrounded, peerAttemptPartition, peerSchedule,
 } from './peer';
+export type { PeerScheduleReason } from './peer';
+export {
+  assertCollabInvitationCreatable, assertCollabInvitationDecidable, assertCollabInvitationRevocable,
+  assertCollabMessageWritable, assertCollabEventAppendable, assertCollabResyncCursor,
+  assertCollabRoomStartable, assertCollabAdmission, assertCollabSnapshotMatch,
+  assertCollabTeacherEventAllowed,
+} from './collaboration';
+export type { CollabInvitationStatus, CollabInvitationFacts, CollabReadiness } from './collaboration';
+export {
+  collabSecretHash, collabSecretMatches, assertCollabRegistrationCreatable, assertCollabCredentialUsable,
+  assertCollabSessionIssuable, assertCollabCredentialRevocable, assertCollabSceneSyncable,
+  assertCollabSnapshotUploadable,
+} from './collaboration-auth';
+export type { CollabCredentialStatus, CollabCredentialFacts } from './collaboration-auth';
 export {
   reserveSharedModelTokens, sharedModelDeadlineMs, assertSharedModelSettlement,
   assertSharedBudget, sharedBudgetRemaining, settlementMeasurement, costMeasurement, resumePolicyForUnsettled,
 } from './budget';
 export {
   formalInteractionHash, formalInteractionSceneId, formalInteractionDefinitionSessionId,
-  formalInteractionObservationSessionId, publicFormalInteractionDefinition,
+  formalInteractionObservationSessionId, publicFormalInteractionDefinition, orderingMatches,
+  parameterResult,
 } from './formal-interaction';
 export type { SharedBudgetLimits, SharedBudgetUsage } from './budget';
 export type {
@@ -63,8 +80,8 @@ export type {
 } from './syllabus';
 export { resolveQuestionOrigin } from './question';
 export type { OriginRecord, TrustedOriginFacts, OriginResolution } from './question';
-export { normalizeAnswer, judgeAnswer, decideAttempt, assertRealWriteAllowed, buildStepKey } from './attempt';
-export type { AttemptRequest, AttemptDecision, AnswerVerdict } from './attempt';
+export { normalizeAnswer, judgeAnswer, decideAttempt, assertRealWriteAllowed, buildStepKey, answerDisplayPolicy } from './attempt';
+export type { AttemptRequest, AttemptDecision, AnswerVerdict, AnswerDisplayPolicy } from './attempt';
 export {
   canonicalJson, classroomDocumentDigest, dslVersionState, stripQuizAnswers, assertSceneSourceBindings,
 } from './classroom';

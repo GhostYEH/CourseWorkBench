@@ -1,0 +1,19 @@
+{
+  "name": "@sew/collab-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "双人共同课堂的独立协作服务：在线唯一登记、本人认证、共享房间与事件分发（ADR-0005）",
+  "scripts": {
+    "dev": "node server.mjs --dev --data-dir ../.dev-collab",
+    "start": "node server.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@sew/study-contracts": "workspace:*",
+    "@sew/study-domain": "workspace:*",
+    "@sew/study-storage": "workspace:*",
+    "tsx": "^4.20.5",
+    "zod": "^3.25.76"
+  }
+}

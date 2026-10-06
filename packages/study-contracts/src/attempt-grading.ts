@@ -4,39 +4,119 @@ import { assessmentGradingSchema } from './assessment';
 
 const text = z.string().trim().min(1).max(8000);
 const version = z.number().int().nonnegative();
-export const attemptGradeCandidateSchema = z.object({
-  candidateId: z.string().min(1), attemptId: z.string().min(1), questionRevision: z.number().int().positive(),
-  answerVersion: z.number().int().positive(), expectedReviewVersion: version,
-  proposedEarned: z.number().nonnegative().nullable(), basis: text, uncertainty: text,
-  status: z.enum(['pending', 'approved', 'rejected']), requestedModel: z.string().nullable(),
-  runId: z.string().min(1), createdAt: z.string(), reviewNote: z.string(),
-}).strict();
-export const attemptGradeReviewSchema = z.object({
-  reviewId: z.string().min(1), attemptId: z.string().min(1), reviewVersion: z.number().int().positive(),
-  questionRevision: z.number().int().positive(), answerVersion: z.number().int().positive(),
-  grading: assessmentGradingSchema, basis: text, uncertainty: text,
-  source: z.enum(['manual', 'model_reviewed']), candidateId: z.string().nullable(),
-  reviewer: z.literal('local_user'), masteryApplied: z.boolean(), createdAt: z.string(),
-  appliedKnowledgeIds: z.array(z.string()).optional(), skippedKnowledgeIds: z.array(z.string()).optional(),
-}).strict().refine(value => {
-  if (value.appliedKnowledgeIds === undefined && value.skippedKnowledgeIds === undefined) return true; // Existing v17 history.
-  if (!value.appliedKnowledgeIds || !value.skippedKnowledgeIds) return false;
-  const all = [...value.appliedKnowledgeIds, ...value.skippedKnowledgeIds];
-  return value.masteryApplied === (value.appliedKnowledgeIds.length > 0) && new Set(all).size === all.length;
-}, 'Invalid mastery application facts');
-export const attemptGradingContextSchema = z.object({
-  attemptId: z.string(), questionId: z.string(), questionRevision: z.number().int().positive(), answerVersion: z.number().int().positive(),
-  stem: z.string(), answerText: z.string(), processText: z.string(), referenceAnswer: z.string(), solution: z.string(), rubric: z.string(),
-  maxScore: z.number().positive(), submissionGrading: assessmentGradingSchema, effectiveGrading: assessmentGradingSchema,
-  currentReviewVersion: version, reviews: z.array(attemptGradeReviewSchema), candidates: z.array(attemptGradeCandidateSchema),
-  knowledgeIds: z.array(z.string()), canReview: z.boolean(), reviewBlockedReason: z.string().nullable(),
-}).strict();
-const base = { scope: projectScopeSchema.strict(), attemptId: z.string().min(1), expectedReviewVersion: version, requestId: z.string().trim().min(1).max(200) };
+export const attemptGradeCandidateSchema = z
+  .object({
+    candidateId: z.string().min(1),
+    attemptId: z.string().min(1),
+    questionRevision: z.number().int().positive(),
+    answerVersion: z.number().int().positive(),
+    expectedReviewVersion: version,
+    proposedEarned: z.number().nonnegative().nullable(),
+    basis: text,
+    uncertainty: text,
+    status: z.enum(['pending', 'approved', 'rejected']),
+    requestedModel: z.string().nullable(),
+    runId: z.string().min(1),
+    createdAt: z.string(),
+    reviewNote: z.string(),
+  })
+  .strict();
+export const attemptGradeReviewSchema = z
+  .object({
+    reviewId: z.string().min(1),
+    attemptId: z.string().min(1),
+    reviewVersion: z.number().int().positive(),
+    questionRevision: z.number().int().positive(),
+    answerVersion: z.number().int().positive(),
+    grading: assessmentGradingSchema,
+    basis: text,
+    uncertainty: text,
+    source: z.enum(['manual', 'model_reviewed']),
+    candidateId: z.string().nullable(),
+    reviewer: z.literal('local_user'),
+    masteryApplied: z.boolean(),
+    createdAt: z.string(),
+    appliedKnowledgeIds: z.array(z.string()).optional(),
+    skippedKnowledgeIds: z.array(z.string()).optional(),
+  })
+  .strict()
+  .refine((value) => {
+    if (value.appliedKnowledgeIds === undefined && value.skippedKnowledgeIds === undefined)
+      return true; // Existing v17 history.
+    if (!value.appliedKnowledgeIds || !value.skippedKnowledgeIds) return false;
+    const all = [...value.appliedKnowledgeIds, ...value.skippedKnowledgeIds];
+    return (
+      value.masteryApplied === value.appliedKnowledgeIds.length > 0 &&
+      new Set(all).size === all.length
+    );
+  }, 'Invalid mastery application facts');
+export const attemptGradingContextSchema = z
+  .object({
+    attemptId: z.string(),
+    questionId: z.string(),
+    questionRevision: z.number().int().positive(),
+    answerVersion: z.number().int().positive(),
+    stem: z.string(),
+    answerText: z.string(),
+    processText: z.string(),
+    referenceAnswer: z.string(),
+    solution: z.string(),
+    rubric: z.string(),
+    maxScore: z.number().positive(),
+    submissionGrading: assessmentGradingSchema,
+    effectiveGrading: assessmentGradingSchema,
+    currentReviewVersion: version,
+    reviews: z.array(attemptGradeReviewSchema),
+    candidates: z.array(attemptGradeCandidateSchema),
+    knowledgeIds: z.array(z.string()),
+    canReview: z.boolean(),
+    reviewBlockedReason: z.string().nullable(),
+    /**
+     * 答案展示规则（ANSWER-01）。
+     *
+     * 服务端裁定「此刻允许展示哪些答案信息」，界面按它渲染而不是自己判断：
+     * 提交前、版本不一致时 `showReference`/`showRubric` 为 false，简答待判分时 `showGradingBasis` 为 false。
+     * 这里的 `referenceAnswer`/`solution`/`rubric` 只有在 `showReference`/`showRubric` 为 true 时才应被界面采用。
+     */
+    answerDisplay: z
+      .object({
+        showReference: z.boolean(),
+        showRubric: z.boolean(),
+        showGradingBasis: z.boolean(),
+        reason: z
+          .enum([
+            'no_personal_submission',
+            'question_version_mismatch',
+            'answer_version_mismatch',
+            'grading_pending',
+          ])
+          .nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+const base = {
+  scope: projectScopeSchema.strict(),
+  attemptId: z.string().min(1),
+  expectedReviewVersion: version,
+  requestId: z.string().trim().min(1).max(200),
+};
 export const attemptGradingCommandSchema = z.discriminatedUnion('action', [
   z.object({ ...base, action: z.literal('generate') }).strict(),
-  z.object({ ...base, action: z.literal('review'), earned: z.number().nonnegative().max(1000), basis: text, uncertainty: text,
-    semanticReviewed: z.literal(true), candidateId: z.string().min(1).nullable() }).strict(),
-  z.object({ ...base, action: z.literal('reject'), candidateId: z.string().min(1), note: text }).strict(),
+  z
+    .object({
+      ...base,
+      action: z.literal('review'),
+      earned: z.number().nonnegative().max(1000),
+      basis: text,
+      uncertainty: text,
+      semanticReviewed: z.literal(true),
+      candidateId: z.string().min(1).nullable(),
+    })
+    .strict(),
+  z
+    .object({ ...base, action: z.literal('reject'), candidateId: z.string().min(1), note: text })
+    .strict(),
 ]);
 export type AttemptGradeCandidateDto = z.infer<typeof attemptGradeCandidateSchema>;
 export type AttemptGradeReviewDto = z.infer<typeof attemptGradeReviewSchema>;

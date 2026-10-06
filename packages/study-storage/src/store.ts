@@ -63,6 +63,7 @@ import {
   gradeQuestionAssessment,
   judgeAnswer,
   lessonReferencedKnowledgeIds,
+  peerSchedule,
   resolveQuestionOrigin,
   revisedStatements,
   type MaterialChangeImpact,
@@ -107,6 +108,18 @@ import {
   type FreezeRoomCourseOptions,
 } from './repositories/classroom-room';
 import { ClassroomRuntimeRepository } from './repositories/classroom-runtime';
+import {
+  CollaborationRepository,
+  type AppendEventInput,
+  type AppendMessageInput,
+  type CreateCollabRoomInput,
+  type InvitationDecisionInput,
+  type InvitationRevokeInput,
+  type InviteInput,
+  type MemberReadinessInput,
+  type RegisterInput,
+  type StartCollabRoomInput,
+} from './repositories/collaboration';
 import {
   DocumentOrganizationRepository,
   type DocumentFolderRow,
@@ -169,7 +182,7 @@ import type {
   SubmitAttemptInput,
   SubmitAttemptOutcome,
 } from './repositories/types';
-import { MIGRATIONS, SCHEMA_VERSION } from './schema';
+import { applyMigrations } from './schema';
 
 export type {
   ClassroomDocumentRow,
@@ -250,6 +263,7 @@ export class StudyStore {
   private readonly feedbackReview: FeedbackReviewRepository;
   private readonly modelUsage: ModelUsageRepository;
   private readonly classroomRooms: ClassroomRoomRepository;
+  private readonly collaboration: CollaborationRepository;
   private readonly attemptGrading: AttemptGradingRepository;
   private readonly runs: RunsRepository;
   private readonly preferences: PreferencesRepository;
@@ -306,6 +320,7 @@ export class StudyStore {
     this.classroomAssets = new ClassroomAssetsRepository(db);
     this.runtime = new ClassroomRuntimeRepository(db);
     this.classroomKV = new ClassroomKVRepository(db);
+    this.collaboration = new CollaborationRepository(db);
     this.classroomRooms = new ClassroomRoomRepository(db, {
       boundUid: (projectId) => this.learnerIdentity.read(projectId)?.uid ?? null,
       freeze: (input, options) => {
@@ -408,37 +423,7 @@ export class StudyStore {
   }
 
   private migrate(): void {
-    this.db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
-      version INTEGER PRIMARY KEY,
-      name TEXT NOT NULL,
-      applied_at TEXT NOT NULL
-    )`);
-    const applied = new Set(
-      this.db
-        .prepare('SELECT version FROM schema_migrations')
-        .all()
-        .map((row) => Number((row as Row)['version'] ?? 0)),
-    );
-    if (
-      [...applied].some(
-        (version) => !Number.isSafeInteger(version) || version < 1 || version > SCHEMA_VERSION,
-      )
-    ) {
-      throw new StudyError('PROJECT_FORMAT_UNSUPPORTED', {
-        reason: 'unsupported_schema_version',
-        supported: SCHEMA_VERSION,
-      });
-    }
-    for (const migration of MIGRATIONS) {
-      if (applied.has(migration.version)) continue;
-      this.db.transaction(() => {
-        this.db.exec(migration.sql);
-        migration.migrate?.(this.db);
-        this.db
-          .prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)')
-          .run(migration.version, migration.name, new Date().toISOString());
-      });
-    }
+    applyMigrations(this.db);
   }
 
   close(): void {
@@ -943,6 +928,13 @@ export class StudyStore {
   ) {
     return this.classroomRooms.create(input, trustedUid, options);
   }
+  freezeLocalClassroomCourse(
+    input: { projectId: string; lessonId: string; lessonVersion: number },
+    trustedUid: string,
+    options?: FreezeRoomCourseOptions,
+  ) {
+    return this.classroomRooms.freezeCourse(input, trustedUid, options);
+  }
   getClassroomRoom(projectId: string, roomId: string, trustedUid: string) {
     return this.classroomRooms.get(projectId, roomId, trustedUid);
   }
@@ -986,6 +978,58 @@ export class StudyStore {
   }
   getClassroomRoomForSession(projectId: string, sessionId: string, trustedUid: string) {
     return this.classroomRooms.forSession(projectId, sessionId, trustedUid);
+  }
+
+  // ————————————————— 双人共同课堂协作（INVITE-01 / SYNC-01 / CHAT-01） —————————————————
+
+  /** UID 登记（本地链路占位，authority 固定 local_link，不等于在线登记）。 */
+  registerCollaborationUid(input: RegisterInput) {
+    return this.collaboration.register(input);
+  }
+  getCollaborationRegistration(uid: string) {
+    return this.collaboration.getRegistration(uid);
+  }
+  inviteCollaborator(input: InviteInput) {
+    return this.collaboration.invite(input);
+  }
+  getCollaborationInvitation(invitationId: string, now?: string) {
+    return this.collaboration.getInvitation(invitationId, now);
+  }
+  listCollaborationInvitations(uid: string, now?: string) {
+    return this.collaboration.listInvitations(uid, now);
+  }
+  decideCollaborationInvitation(input: InvitationDecisionInput) {
+    return this.collaboration.decide(input);
+  }
+  revokeCollaborationInvitation(input: InvitationRevokeInput) {
+    return this.collaboration.revoke(input);
+  }
+  createCollaborationRoom(input: CreateCollabRoomInput) {
+    return this.collaboration.createRoom(input);
+  }
+  startCollaborationRoom(input: StartCollabRoomInput) {
+    return this.collaboration.startRoom(input);
+  }
+  getCollaborationRoom(roomId: string) {
+    return this.collaboration.getRoom(roomId);
+  }
+  listCollaborationMembers(roomId: string) {
+    return this.collaboration.listMembers(roomId);
+  }
+  setCollaborationMemberReadiness(input: MemberReadinessInput) {
+    return this.collaboration.setReadiness(input);
+  }
+  appendCollaborationMessage(input: AppendMessageInput) {
+    return this.collaboration.appendMessage(input);
+  }
+  listCollaborationMessages(roomId: string, afterSeq: number) {
+    return this.collaboration.listMessages(roomId, afterSeq);
+  }
+  appendCollaborationEvent(input: AppendEventInput) {
+    return this.collaboration.appendEvent(input);
+  }
+  listCollaborationEvents(roomId: string, afterSeq: number) {
+    return this.collaboration.listEvents(roomId, afterSeq);
   }
   getAttemptGradeCandidateReceipt(projectId: string, attemptId: string, requestId: string) {
     return this.attemptGrading.getCandidateReceipt(projectId, attemptId, requestId);
@@ -1969,6 +2013,9 @@ export class StudyStore {
     const playedIds = this.teaching.playedCardIds(sessionId, projectId);
     // 同学档案即使被关闭也返回：界面据此提供「重新开启」，而不是让人去设置页找。
     const peerProfiles = this.roles.list('formal').filter((profile) => profile.kind === 'peer');
+    const peerTurns = this.teaching.listPeerTurns(sessionId, projectId, session.roundIndex);
+    // 轮内实际条数才是权威（会话计数列可能因外部改写而偏低），与命令处理器同源。
+    const actualTurns = this.teaching.peerTurnCount(sessionId, projectId, session.roundIndex);
     return {
       session,
       cards: cards.map((card) => this.toCard(card)),
@@ -1979,7 +2026,13 @@ export class StudyStore {
         name: profile.name,
         engagement: session.peersEngagement,
       })),
-      peerTurns: this.teaching.listPeerTurns(sessionId, projectId, session.roundIndex),
+      peerTurns,
+      peerSchedule: peerSchedule({
+        sessionStatus: session.status,
+        peersEnabled: session.peersEnabled,
+        engagement: session.peersEngagement,
+        roundPeerTurns: Math.max(actualTurns, session.roundPeerTurns),
+      }),
     };
   }
 
@@ -2394,8 +2447,8 @@ export class StudyStore {
         )
         .map((statement) => statement.statementId),
     );
-    if (content.kind === 'focus') {
-      // 教师聚焦只能指向**这一版冻结课件里真实存在**的元素：不能凭空指一个不存在的对象，
+    if (content.kind === 'focus' || content.kind === 'laser') {
+      // 教师聚焦与激光笔只能指向**这一版冻结课件里真实存在**的元素：不能凭空指一个不存在的对象，
       // 否则共享投影与课堂画布会指向空白。
       const document = this.classroom.getDocument(binding.projectId, ready.link.stageId);
       const scenes =

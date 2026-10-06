@@ -43,6 +43,19 @@ const LAYER_RULES = [
     forbid: ['electron', 'react', 'react-dom', 'next', 'zustand', '/apps/'],
   },
   {
+    prefix: 'apps/collab-service/',
+    label: '独立协作服务不得依赖 Electron/React/Next、应用层或本地学习服务',
+    forbid: [
+      '@sew/learning',
+      'electron',
+      'react',
+      'react-dom',
+      'next',
+      'zustand',
+      '/apps/learning/',
+    ],
+  },
+  {
     prefix: 'apps/desktop/src/',
     label: 'Electron 主进程不得打开数据库或依赖领域/存储包',
     forbid: ['@sew/study-storage', '@sew/study-domain', 'sqlite', 'better-sqlite3', 'sqlite3'],
@@ -57,6 +70,8 @@ const JSON_PARSE_ALLOWLIST = new Set([
   'apps/learning/lib/attempt-submission.ts',
   // 课堂多选草稿恢复：JSON 解码后校验选项值，拒绝损坏数据。
   'apps/learning/lib/quiz-answer.ts',
+  // 共同课堂未确认命令恢复：验证作用域、完整意图及严格在线命令合同，不接受凭据字段。
+  'apps/learning/lib/classroom/collab-command-state.ts',
   // Model output is decoded at this single boundary and validated as a grading proposal.
   'apps/learning/lib/server/attempt-grading-model.ts',
   // 同一模式：错因/复习候选的模型正文只在这里解码，随后立刻用严格 schema 校验。

@@ -61,6 +61,7 @@ const ClassroomPanelContent = ({
   compact = false,
   onSceneChange = null,
   onBoardEffects = null,
+  onFocusSeqChange = null,
   roomId,
 }: {
   projectId: string;
@@ -75,6 +76,8 @@ const ClassroomPanelContent = ({
   onSceneChange?: ((sceneId: string) => void) | null;
   /** 白板效果上报给画布，教师聚焦才能作用在冻结场景的真实元素上。 */
   onBoardEffects?: ((effects: ClassroomBoardEffectDto[]) => void) | null;
+  /** 生效聚焦/激光笔的 seq（null 表示收回）；画布据此决定高亮哪一条。 */
+  onFocusSeqChange?: ((seq: number | null) => void) | null;
 }): ReactNode => {
   const router = useRouter();
   const [state, setState] = useState<ClassroomStateDto | null>(null);
@@ -443,6 +446,7 @@ const ClassroomPanelContent = ({
           session={session}
           playbackDisabled={teachingDisabled}
           onEffectsChange={onBoardEffects}
+          onFocusSeqChange={onFocusSeqChange}
         />
       ) : null}
       {session && state ? (
@@ -453,9 +457,10 @@ const ClassroomPanelContent = ({
           session={session}
           peers={state.peers}
           peerTurns={state.peerTurns}
+          schedule={state.peerSchedule}
           disabled={teachingDisabled}
           onStateRefresh={refresh}
-          onChange={(updated, turn) =>
+          onChange={(updated, turn, schedule) =>
             setState((current) => {
               if (!current || current.session?.sessionId !== updated.sessionId) return current;
               if (
@@ -466,6 +471,8 @@ const ClassroomPanelContent = ({
               return {
                 ...current,
                 session: updated,
+                // 服务端判定的调度结论随命令响应一起刷新：界面不自己重算用户优先。
+                peerSchedule: schedule,
                 peers: current.peers.map((peer) => ({
                   ...peer,
                   engagement: updated.peersEngagement,

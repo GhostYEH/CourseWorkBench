@@ -294,4 +294,33 @@ describe('场景计划与完整课件 HTTP 边界', () => {
       'scene_slide_second',
     ]);
   });
+
+  it('互动场景必须绑定本版本已审核定义：自造编号被拒', async () => {
+    // 未冻结任何正式互动定义时，自造一个「看起来像互动」的场景会被拒绝。
+    const forged = await post({
+      action: 'save-scene-plan',
+      requestId: 'plan-forged-interactive',
+      lessonId,
+      version: lessonVersion,
+      baseRevision: 0,
+      scenes: [
+        scenes()[0]!,
+        {
+          sceneId: 'scene_formal_interaction_parameter',
+          kind: 'interactive',
+          title: '自造互动',
+          statementId: null,
+          questionId: null,
+          knowledgeIds: [],
+          elements: [],
+          note: '',
+        },
+      ],
+    });
+    expect(forged.status).toBe(409);
+    expect(((await forged.json()) as { error: { code: string } }).error.code).toBe(
+      'CLASSROOM_SCENE_SOURCE_MISSING',
+    );
+    expect(session.store.listProjectScenePlans(session.projectId)).toEqual([]);
+  });
 });

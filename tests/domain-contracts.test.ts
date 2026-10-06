@@ -5,6 +5,7 @@ import {
   type EvidenceRefInput,
 } from '@sew/study-contracts';
 import {
+  answerDisplayPolicy,
   checkAdmission,
   computeInvalidation,
   decideAttempt,
@@ -451,5 +452,46 @@ describe('作答分区与去重', () => {
     );
     expect(decision.masteryAfter).toBeNull();
     expect(decision.masteryUpdateAllowed).toBe(false);
+  });
+
+  it('答案展示规则：提交前与版本不一致一律不展示，简答待判分不给评分依据', () => {
+    const base = {
+      submissionQuestionRevision: 2,
+      submissionAnswerVersion: 1,
+      currentQuestionRevision: 2,
+      currentAnswerVersion: 1,
+      gradingStatus: 'correct' as const,
+    };
+    // 没有本人提交 → 一律不展示。
+    expect(answerDisplayPolicy({ ...base, hasPersonalSubmission: false })).toEqual({
+      showReference: false,
+      showRubric: false,
+      showGradingBasis: false,
+      reason: 'no_personal_submission',
+    });
+    // 题目版本被改写 → 拒绝用新版本答案给旧提交「补结论」。
+    expect(
+      answerDisplayPolicy({ ...base, hasPersonalSubmission: true, currentQuestionRevision: 3 }).reason,
+    ).toBe('question_version_mismatch');
+    // 答案版本变化 → 同样拒绝。
+    expect(
+      answerDisplayPolicy({ ...base, hasPersonalSubmission: true, currentAnswerVersion: 2 }).reason,
+    ).toBe('answer_version_mismatch');
+    // 已判分：三样都可展示。
+    expect(answerDisplayPolicy({ ...base, hasPersonalSubmission: true })).toEqual({
+      showReference: true,
+      showRubric: true,
+      showGradingBasis: true,
+      reason: null,
+    });
+    // 待判分：可看参考答案与评分标准，但**不展示评分依据**（不暗示一个还没作出的结论）。
+    expect(
+      answerDisplayPolicy({ ...base, hasPersonalSubmission: true, gradingStatus: 'pending_review' }),
+    ).toEqual({
+      showReference: true,
+      showRubric: true,
+      showGradingBasis: false,
+      reason: null,
+    });
   });
 });

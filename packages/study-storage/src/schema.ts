@@ -10,6 +10,7 @@
  * - 权威事实只在 `knowledge_points`；派生 Markdown 不是第二套权威。
  */
 
+import { StudyError } from '@sew/study-contracts';
 import type { SqlDatabase } from './driver';
 import { migrateScenePlanJson } from './migrations/scene-plan';
 
@@ -1089,6 +1090,165 @@ CREATE TABLE lesson_scene_plan_receipts (
     sql: '',
     migrate: migrateScenePlanJson,
   },
+  {
+    version: 30,
+    name: 'collaboration_authority',
+    sql: `
+-- 双人共同课堂的协作权威（INVITE-01 / SYNC-01 / CHAT-01，ADR-0004）。
+-- 这一组表由协作服务拥有：邀请生命周期、共享房间、成员准备状态、
+-- 权威序号事件与课内消息。个人草稿/答案/判分/掌握仍在本地学习服务，
+-- 不进入这里；本机链路与在线协作共用同一套合同，区别只在谁持有数据。
+--
+-- 说明：这里刻意**不**存「在线登记」结果。authority 只有 local_link，
+-- 表示本机同进程链路；界面据此仍显示「不能联网邀请」。
+CREATE TABLE collab_registrations (
+  uid           TEXT PRIMARY KEY,
+  display_name  TEXT NOT NULL,
+  authority     TEXT NOT NULL CHECK (authority IN ('local_link')),
+  revision      INTEGER NOT NULL,
+  registered_at TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+
+CREATE TABLE collab_rooms (
+  room_id       TEXT PRIMARY KEY,
+  owner_uid     TEXT NOT NULL,
+  status        TEXT NOT NULL CHECK (status IN ('ready','active','ended')),
+  revision      INTEGER NOT NULL,
+  current_scene_id TEXT NOT NULL,
+  lesson_id     TEXT NOT NULL,
+  lesson_version INTEGER NOT NULL,
+  snapshot_digest TEXT NOT NULL,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+
+CREATE TABLE collab_room_members (
+  room_id    TEXT NOT NULL REFERENCES collab_rooms(room_id),
+  uid        TEXT NOT NULL,
+  role       TEXT NOT NULL CHECK (role IN ('owner','participant')),
+  readiness  TEXT NOT NULL CHECK (readiness IN ('pending','ready','left')),
+  joined_at  TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (room_id, uid)
+);
+
+-- 邀请：状态机 pending/accepted/rejected/revoked/expired。
+-- 只存状态本身；过期由读取时按 expires_at 判定，不改写历史状态。
+CREATE TABLE collab_invitations (
+  invitation_id  TEXT PRIMARY KEY,
+  room_id        TEXT NOT NULL,
+  inviter_uid    TEXT NOT NULL,
+  invitee_uid    TEXT NOT NULL,
+  lesson_id      TEXT NOT NULL,
+  lesson_version INTEGER NOT NULL,
+  snapshot_digest TEXT NOT NULL,
+  status         TEXT NOT NULL CHECK (status IN ('pending','accepted','rejected','revoked','expired')),
+  created_at     TEXT NOT NULL,
+  expires_at     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL
+);
+CREATE INDEX idx_collab_invitations_invitee ON collab_invitations(invitee_uid, status);
+-- 读取侧同时按发起人与受邀人过滤（listInvitations 用 inviter_uid OR invitee_uid），两侧都要索引。
+CREATE INDEX idx_collab_invitations_inviter ON collab_invitations(inviter_uid, status);
+
+-- 房间事件：权威单调序号，重连按 (afterSeq, tailSeq] 补齐。
+CREATE TABLE collab_room_events (
+  room_id    TEXT NOT NULL REFERENCES collab_rooms(room_id),
+  seq        INTEGER NOT NULL,
+  event_id   TEXT NOT NULL,
+  kind       TEXT NOT NULL,
+  actor_uid  TEXT NOT NULL,
+  summary    TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (room_id, seq)
+);
+
+-- 课内消息：权威序号与去重键并存；sender_type 由服务端写死为 human_learner。
+CREATE TABLE collab_room_messages (
+  room_id    TEXT NOT NULL REFERENCES collab_rooms(room_id),
+  seq        INTEGER NOT NULL,
+  message_id TEXT NOT NULL,
+  sender_uid TEXT NOT NULL,
+  sender_type TEXT NOT NULL CHECK (sender_type IN ('human_learner')),
+  body       TEXT NOT NULL,
+  dedup_key  TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (room_id, seq),
+  UNIQUE (room_id, dedup_key)
+);
+
+-- 命令幂等收据：同一 requestId 与意图重试读回既有结果，不重复追加。
+CREATE TABLE collab_command_receipts (
+  request_id  TEXT PRIMARY KEY,
+  action      TEXT NOT NULL,
+  actor_uid   TEXT NOT NULL,
+  intent_json TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  created_at  TEXT NOT NULL
+);
+`,
+  },
+  {
+    version: 31,
+    name: 'online_collaboration_service',
+    sql: `
+-- 独立协作服务的在线权威（UID-01 / ROOM-01 / SYNC-01 的在线部分，ADR-0005）。
+-- 本机链路与在线链路共用同一组房间/邀请/消息/事件表，区别只在 authority 与数据归属：
+-- 本机链路写 local_link，在线服务写 online。下面三张表只服务在线部分。
+
+-- 放宽登记 authority：本机链路仍写 local_link，在线服务写 online。
+-- SQLite 不能直接改 CHECK，用建新表/搬数据/改名的方式重建。
+CREATE TABLE collab_registrations_next (
+  uid           TEXT PRIMARY KEY,
+  display_name  TEXT NOT NULL,
+  authority     TEXT NOT NULL CHECK (authority IN ('local_link','online')),
+  revision      INTEGER NOT NULL,
+  registered_at TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+INSERT INTO collab_registrations_next (uid, display_name, authority, revision, registered_at, updated_at)
+  SELECT uid, display_name, authority, revision, registered_at, updated_at FROM collab_registrations;
+DROP TABLE collab_registrations;
+ALTER TABLE collab_registrations_next RENAME TO collab_registrations;
+
+-- 本人凭据：服务端只存秘密的 SHA-256 哈希，secret 本身永不落库、不进日志/快照/导出。
+-- status=revoked 后一律拒绝认证；同一 credential_id 只能属于一个 uid。
+CREATE TABLE collab_credentials (
+  credential_id TEXT PRIMARY KEY,
+  uid           TEXT NOT NULL,
+  secret_hash   TEXT NOT NULL,
+  status        TEXT NOT NULL CHECK (status IN ('active','revoked')),
+  created_at    TEXT NOT NULL,
+  revoked_at    TEXT
+);
+CREATE INDEX idx_collab_credentials_uid ON collab_credentials(uid, status);
+
+-- 共享房间的公共投影快照：只保存经 classroomSharedCourseSchema 校验的公开内容
+-- （无测验答案、无排序正确顺序、无关系正确目标、无评分依据与私人观察）。
+-- snapshot_digest 与邀请时冻结的课程摘要一致；content_digest 是服务端对投影正文
+-- 复算的规范化哈希，用于拒绝「声明摘要一致、内容被换掉」的重传。
+CREATE TABLE collab_room_snapshots (
+  room_id         TEXT PRIMARY KEY REFERENCES collab_rooms(room_id),
+  snapshot_digest TEXT NOT NULL,
+  content_digest  TEXT NOT NULL,
+  snapshot_json   TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+`,
+  },
+  {
+    version: 32,
+    name: 'collaboration_uid_enrollment',
+    sql: `
+CREATE TABLE collab_registration_claims (
+  uid TEXT PRIMARY KEY,
+  token_hash TEXT NOT NULL,
+  consumed_credential_id TEXT,
+  created_at TEXT NOT NULL
+);
+`,
+  },
 ];
 
 // Registration order is part of the upgrade protocol; reject duplicate, skipped, or reordered versions.
@@ -1097,3 +1257,46 @@ for (let index = 0; index < MIGRATIONS.length; index += 1) {
     throw new Error('Database migrations must be consecutive and ordered');
 }
 export const SCHEMA_VERSION = MIGRATIONS.length;
+
+/**
+ * 打开一个库并按 `MIGRATIONS` 迁移到当前版本。
+ *
+ * 本机学习服务的 `StudyStore` 与独立协作服务的 `CollabServiceStore` 共用同一份
+ * 迁移清单与顺序校验，避免两处各自维护一份迁移、出现「本机升到 v31、协作服务还停在
+ * v30」这类漂移。这里不做业务判断，只按版本推进事务。
+ */
+export const applyMigrations = (db: SqlDatabase): void => {
+  db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    applied_at TEXT NOT NULL
+  )`);
+  const applied = new Set(
+    db
+      .prepare('SELECT version FROM schema_migrations')
+      .all()
+      .map((row) => Number((row as { version?: unknown }).version ?? 0)),
+  );
+  if (
+    [...applied].some(
+      (version) => !Number.isSafeInteger(version) || version < 1 || version > SCHEMA_VERSION,
+    )
+  ) {
+    throw new StudyError('PROJECT_FORMAT_UNSUPPORTED', {
+      reason: 'unsupported_schema_version',
+      supported: SCHEMA_VERSION,
+    });
+  }
+  for (const migration of MIGRATIONS) {
+    if (applied.has(migration.version)) continue;
+    db.transaction(() => {
+      db.exec(migration.sql);
+      migration.migrate?.(db);
+      db.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)').run(
+        migration.version,
+        migration.name,
+        new Date().toISOString(),
+      );
+    });
+  }
+};

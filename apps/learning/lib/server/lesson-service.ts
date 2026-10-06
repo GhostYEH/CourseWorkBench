@@ -10,6 +10,7 @@ import {
   lessonWithdrawSchema,
   statementRevisionApplySchema,
   scenePlanSaveSchema,
+  scenePlanMergeSchema,
   coursewareApplySchema,
   scenePlanSchema,
   GENERATED_ID_PATTERN,
@@ -19,10 +20,19 @@ import {
   type ScenePlanReceiptDto,
   type PlanSceneDto,
 } from '@sew/study-contracts';
-import { assertPlanGrounded } from '@sew/study-domain';
+import {
+  assertPlanGrounded,
+  diffScenePlans,
+  digestOfScenePlan,
+  formalInteractionSceneId,
+  mergeScenePlans,
+  outlineOrderedScenes,
+  planSceneDigest,
+} from '@sew/study-domain';
 import { assertScope, type Session } from './service';
 import { toLessonReviewDto, toLessonVersionDto } from './dto';
 import { attachFormalLessonDocument } from './classroom-service';
+import { readFormalInteractionDefinitions } from './formal-interaction-definition-store';
 import { abortActiveModelCalls } from './model-call';
 
 export const lessonCommandSchema = z.discriminatedUnion('action', [
@@ -34,6 +44,7 @@ export const lessonCommandSchema = z.discriminatedUnion('action', [
   lessonWithdrawSchema,
   statementRevisionApplySchema,
   scenePlanSaveSchema,
+  scenePlanMergeSchema,
   coursewareApplySchema,
 ]);
 
@@ -43,10 +54,92 @@ const stableSceneId = (kind: string, index: number, seed: string): string => {
   return `scene_${kind}_${index.toString(36)}${hash.toString(36)}`.slice(0, 60);
 };
 
+/**
+ * 目标版本还没有计划时，从它的冻结证据包派生确定性初始计划骨架。
+ *
+ * 与界面「逐场景勾选派生」的口径一致：每个已选陈述一个幻灯片场景（`scene_slide_<statementId>`）、
+ * 每道已选题目一个测验场景（`scene_quiz_<questionId>`），知识点由服务端从绑定对象沿用；正文留空，
+ * 由用户编辑或模型候选补齐。跨版本合并的骨架必须来自这里，而不是拿来源版本的计划冒充目标版本。
+ *
+ * 本版本**已审核**的正式互动定义也进入默认计划（用稳定的 `formalInteractionSceneId`）：
+ * 默认计划与冻结定义一一对应，于是「计划里少了某互动场景」只有两种可能——用户在计划里显式
+ * 删除（计划即权威，不会被自动加回），或定义在计划之后才冻结（漏装配，装配时明确报告未生成）。
+ * 两者可区分，不会把「用户删掉的」当成「漏掉的」静默补回。
+ */
+export const initialPlanScenes = (
+  session: Session,
+  lesson: {
+    lessonId?: string;
+    bundleId: string;
+    statementIds: string[];
+    questionIds: string[];
+    version?: number;
+  },
+): PlanSceneDto[] => {
+  const bundleRow = session.store.getEvidenceBundle(session.projectId, lesson.bundleId);
+  if (!bundleRow) throw new StudyError('INTERNAL', { bundleId: lesson.bundleId });
+  const statements = new Map(bundleRow.bundle.statements.map((item) => [item.statementId, item]));
+  const questions = new Map(bundleRow.bundle.questions.map((item) => [item.questionId, item]));
+  const frozen =
+    lesson.lessonId !== undefined && lesson.version !== undefined
+      ? readFormalInteractionDefinitions(session, lesson.lessonId, lesson.version)
+      : null;
+  return [
+    ...lesson.statementIds
+      .map((statementId, index): PlanSceneDto | null => {
+        const statement = statements.get(statementId);
+        if (!statement) return null;
+        return {
+          sceneId: `scene_slide_${statementId}`.slice(0, 60),
+          kind: 'slide',
+          title: `陈述 ${index + 1}`,
+          statementId,
+          questionId: null,
+          knowledgeIds: [statement.knowledgeId],
+          elements: [],
+          note: '',
+        };
+      })
+      .filter((scene): scene is PlanSceneDto => scene !== null),
+    ...lesson.questionIds
+      .map((questionId, index): PlanSceneDto | null => {
+        const question = questions.get(questionId);
+        if (!question) return null;
+        return {
+          sceneId: `scene_quiz_${questionId}`.slice(0, 60),
+          kind: 'quiz',
+          title: `独立测验 ${index + 1}`,
+          statementId: null,
+          questionId,
+          knowledgeIds: [...question.knowledgeIds],
+          elements: [],
+          note: '',
+        };
+      })
+      .filter((scene): scene is PlanSceneDto => scene !== null),
+    ...(frozen?.frozen.definitions ?? []).map((definition): PlanSceneDto => ({
+      sceneId: formalInteractionSceneId(definition.id),
+      kind: 'interactive',
+      title: definition.title,
+      statementId: null,
+      questionId: null,
+      knowledgeIds: [],
+      elements: [],
+      note: '',
+    })),
+  ];
+};
+
 /** 把候选/客户端提交的场景规范化为权威形状：知识点由服务端从绑定对象沿用。 */
 const groundScenes = (
   session: Session,
-  lesson: { bundleId: string; statementIds: string[]; questionIds: string[] },
+  lesson: {
+    lessonId: string;
+    version: number;
+    bundleId: string;
+    statementIds: string[];
+    questionIds: string[];
+  },
   scenes: PlanSceneDto[],
   seed: string,
 ): PlanSceneDto[] => {
@@ -54,6 +147,11 @@ const groundScenes = (
   if (!bundle) throw new StudyError('INTERNAL', { bundleId: lesson.bundleId });
   const statements = new Map(bundle.bundle.statements.map((item) => [item.statementId, item]));
   const questions = new Map(bundle.bundle.questions.map((item) => [item.questionId, item]));
+  // 本版本已审核的正式互动定义：互动场景必须绑定它们的稳定编号（`formalInteractionSceneId`）。
+  const frozen = readFormalInteractionDefinitions(session, lesson.lessonId, lesson.version);
+  const definitionSceneIds = new Set(
+    (frozen?.frozen.definitions ?? []).map((definition) => formalInteractionSceneId(definition.id)),
+  );
   // 客户端提交的知识点只作核对：与服务端从绑定对象派生的结果不一致即拒绝，
   // 不能靠自报知识点扩大这节课的范围；留空表示「交由服务端派生」。
   const checkDeclared = (declared: string[], expected: string[]): void => {
@@ -83,6 +181,18 @@ const groundScenes = (
       const expected = question ? [...question.knowledgeIds] : [];
       checkDeclared(scene.knowledgeIds, expected);
       return { ...scene, sceneId, knowledgeIds: expected };
+    }
+    if (scene.kind === 'interactive') {
+      // 互动场景的编号必须是本版本已审核定义派生出来的稳定编号：客户端不能自造一个
+      // 「看起来像互动」的场景来绕过定义审核与来源绑定。
+      if (!definitionSceneIds.has(sceneId)) {
+        throw new StudyError('CLASSROOM_SCENE_SOURCE_MISSING', {
+          reason: 'interactive_definition_missing',
+          sceneId,
+        });
+      }
+      checkDeclared(scene.knowledgeIds, []);
+      return { ...scene, sceneId, knowledgeIds: [] };
     }
     checkDeclared(scene.knowledgeIds, []);
     return { ...scene, sceneId, knowledgeIds: [] };
@@ -515,6 +625,112 @@ export const executeLessonCommand = (
         error,
       );
     }
+  }
+
+  if (body.action === 'merge-scene-plans') {
+    // 只读预览：比较来源版本与目标草案版本的计划，算出增/删/改/序、冲突与大纲缺口，
+    // 不写入任何计划。写回走 save-scene-plan，版本与审核语义不变；重复调用结果一致。
+    if (body.fromVersion === body.toVersion) {
+      throw new StudyError('INVALID_ARGUMENT', { reason: 'merge_same_version' });
+    }
+    const target = session.store.getLessonVersion(body.lessonId, body.toVersion, projectId);
+    if (!target)
+      throw new StudyError('NOT_FOUND', { lessonId: body.lessonId, version: body.toVersion });
+    const source = session.store.getLessonVersion(body.lessonId, body.fromVersion, projectId);
+    if (!source)
+      throw new StudyError('NOT_FOUND', { lessonId: body.lessonId, version: body.fromVersion });
+    const baseVersion = body.baseVersion ?? body.fromVersion;
+    const base = session.store.getLessonVersion(body.lessonId, baseVersion, projectId);
+    if (!base) throw new StudyError('NOT_FOUND', { lessonId: body.lessonId, version: baseVersion });
+    const sourcePlan = session.store.getScenePlan(projectId, body.lessonId, body.fromVersion);
+    if (!sourcePlan) {
+      throw new StudyError('NOT_FOUND', {
+        reason: 'merge_source_plan_missing',
+        version: body.fromVersion,
+      });
+    }
+    const targetPlan = session.store.getScenePlan(projectId, body.lessonId, body.toVersion);
+    // 目标版本还没有计划时，从它自己的证据包派生确定性骨架作为合并落点，而不是拿来源冒充目标。
+    const currentScenes = targetPlan?.scenes ?? initialPlanScenes(session, target);
+    if (currentScenes.length === 0) {
+      throw new StudyError('INVALID_ARGUMENT', { reason: 'merge_target_plan_empty' });
+    }
+    /**
+     * 共同祖先的选择（决定「哪些改动可以安全并入」）：
+     * - 显式给出 `baseVersion` → 用那一版计划当祖先；
+     * - 未给出、且目标版本**已有**计划 → 以来源版本为祖先。此时「来源相对自己的改动」为空，
+     *   合并不会静默覆盖目标版本已有的编辑；差异照常报告，交给用户决定要不要显式覆盖；
+     * - 未给出、且目标版本**没有**计划 → 以目标骨架为祖先。此时祖先与当前一致，来源版本的
+     *   全部内容都会被并入——这正是「派生新草案后把旧版本计划带过来」的主用例，目标没有可丢的内容。
+     */
+    const basePlan = body.baseVersion
+      ? session.store.getScenePlan(projectId, body.lessonId, body.baseVersion)
+      : targetPlan
+        ? sourcePlan
+        : null;
+    if (body.baseVersion && !basePlan) {
+      throw new StudyError('NOT_FOUND', {
+        reason: 'merge_base_plan_missing',
+        version: body.baseVersion,
+      });
+    }
+    const baseScenes = basePlan?.scenes ?? currentScenes;
+    const resolvedBaseVersion = basePlan ? (body.baseVersion ?? body.fromVersion) : body.toVersion;
+    // 差异按「目标当前 → 来源版本」算：新增=来源独有，删除=目标独有，修改=两侧都有但内容不同。
+    const diff = diffScenePlans(currentScenes, sourcePlan.scenes);
+    const merged = mergeScenePlans({
+      base: baseScenes,
+      incoming: sourcePlan.scenes,
+      current: currentScenes,
+    });
+    if (merged.scenes.length === 0) {
+      throw new StudyError('INVALID_ARGUMENT', { reason: 'merge_result_empty' });
+    }
+    const outline = outlineOrderedScenes(merged.scenes, target.statementIds);
+    const bySource = new Map(sourcePlan.scenes.map((scene) => [scene.sceneId, scene]));
+    const byCurrent = new Map(currentScenes.map((scene) => [scene.sceneId, scene]));
+    const entry = (sceneId: string) => {
+      const scene = bySource.get(sceneId) ?? byCurrent.get(sceneId)!;
+      return {
+        sceneId,
+        kind: scene.kind,
+        title: scene.title,
+        inSource: bySource.has(sceneId),
+        inTarget: byCurrent.has(sceneId),
+      };
+    };
+    return {
+      merge: {
+        baseVersion: resolvedBaseVersion,
+        fromVersion: body.fromVersion,
+        toVersion: body.toVersion,
+        diff: {
+          added: diff.added.map(entry),
+          removed: diff.removed.map(entry),
+          modified: diff.modified.map(entry),
+          reordered: diff.reordered,
+        },
+        conflicts: merged.conflicts.map((conflict) => ({
+          sceneId: conflict.sceneId,
+          reason: conflict.reason,
+          incomingDigest: bySource.has(conflict.sceneId)
+            ? planSceneDigest(bySource.get(conflict.sceneId)!)
+            : null,
+          currentDigest: byCurrent.has(conflict.sceneId)
+            ? planSceneDigest(byCurrent.get(conflict.sceneId)!)
+            : null,
+        })),
+        outlineMissingStatementIds: outline.missing,
+        outlineUnmatchedStatementIds: outline.unmatched,
+        mergedScenes: merged.scenes,
+        mergedDigest: digestOfScenePlan({
+          lessonId: body.lessonId,
+          lessonVersion: body.toVersion,
+          bundleId: target.bundleId,
+          scenes: merged.scenes,
+        }),
+      },
+    };
   }
 
   if (body.action === 'draft') {

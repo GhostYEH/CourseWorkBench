@@ -273,15 +273,23 @@ export const buildPlannedLessonDocument = (input: {
 
     if (scene.kind === 'interactive') {
       const definition = definitions.get(scene.sceneId);
-      const knowledgeIds = definition
-        ? [
-            ...new Set(
-              definition.statementIds
-                .map((statementId) => statements.get(statementId)?.knowledgeId)
-                .filter((value): value is string => Boolean(value)),
-            ),
-          ]
-        : [];
+      // 互动场景必须绑定**本版本已审核**的正式互动定义：定义缺失时这是「漏装配」，
+      // 明确列为未生成（而不是塞一段占位 HTML 冒充互动内容），界面据此提示补定义或删场景。
+      if (!definition) {
+        skipped.push({
+          kind: 'scene',
+          id: scene.sceneId,
+          reason: '互动场景缺少本版本已审核的正式互动定义，未进入课件',
+        });
+        return;
+      }
+      const knowledgeIds = [
+        ...new Set(
+          definition.statementIds
+            .map((statementId) => statements.get(statementId)?.knowledgeId)
+            .filter((value): value is string => Boolean(value)),
+        ),
+      ];
       dslScenes.push({
         id: scene.sceneId,
         stageId,
@@ -306,7 +314,8 @@ export const buildPlannedLessonDocument = (input: {
       return;
     }
 
-    // PBL：首版只做「设计态骨架」场景，内容由人工在计划里给定标题与元素；
+    // PBL：设计态骨架由用户在计划里显式新增（互动定义合同暂不覆盖 PBL），没有内容合同可绑定，
+    // 因此这里不再要求「已审核定义」——但它是用户显式添加的场景，不是静默塞进去的占位内容。
     // 完整 PBL 执行（OMA-046…049）不在本项范围。
     dslScenes.push({
       id: scene.sceneId,

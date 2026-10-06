@@ -65,6 +65,15 @@ export const ClassroomBoardContent = ({
       </div>
     );
   }
+  if (content.kind === 'laser') {
+    return (
+      <div className="reading" data-board-laser={content.elementId}>
+        <strong>激光笔</strong>
+        <p style={{ whiteSpace: 'pre-wrap' }}>{content.text}</p>
+        <span className="hint mono">临时指向本场景已存在的元素：{content.elementId}</span>
+      </div>
+    );
+  }
   if (content.kind !== 'diagram')
     return (
       <div className="reading" style={{ whiteSpace: 'pre-wrap' }}>
@@ -131,6 +140,7 @@ const ClassroomBoardPanelContent = ({
   session,
   playbackDisabled = false,
   onEffectsChange = null,
+  onFocusSeqChange = null,
 }: {
   projectId: string;
   generation: number;
@@ -138,11 +148,18 @@ const ClassroomBoardPanelContent = ({
   playbackDisabled?: boolean;
   /** 把已审核并播放的效果交给画布，教师聚焦才能作用在冻结场景的真实元素上。 */
   onEffectsChange?: ((effects: ClassroomBoardStateDto['effects']) => void) | null;
+  /**
+   * 生效聚焦/激光笔的 seq（null 表示收回）。画布据此决定高亮哪一条效果；
+   * 撤销/重放只改这个指针，不删除已提交的历史效果。
+   */
+  onFocusSeqChange?: ((seq: number | null) => void) | null;
 }): ReactNode => {
   const [state, setState] = useState<ClassroomBoardStateDto | null>(null);
   const [statementIds, setStatementIds] = useState<string[]>([]);
   const [statementId, setStatementId] = useState('');
-  const [kind, setKind] = useState<'text' | 'formula' | 'diagram' | 'highlight' | 'focus'>('text');
+  const [kind, setKind] = useState<
+    'text' | 'formula' | 'diagram' | 'highlight' | 'focus' | 'laser'
+  >('text');
   const [text, setText] = useState('');
   /** 公式的数学排版源码；留空时只显示纯文本形式。 */
   const [latex, setLatex] = useState('');
@@ -156,6 +173,11 @@ const ClassroomBoardPanelContent = ({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * 生效聚焦/激光笔的 seq：`undefined` = 跟随最新一条；`null` = 用户显式收回；数字 = 用户显式回到某条。
+   * 撤销/重放只改这个指针，不删除已提交的历史效果。
+   */
+  const [focusSeq, setFocusSeq] = useState<number | null | undefined>(undefined);
   const lock = useRef(false);
   const epoch = useRef(0);
   const pending = useRef<{ intent: string; requestId: string } | null>(null);
@@ -222,6 +244,11 @@ const ClassroomBoardPanelContent = ({
           signal: controller.signal,
         });
         if (!isCurrent()) return;
+        if (
+          result.effect.item.content.kind === 'focus' ||
+          result.effect.item.content.kind === 'laser'
+        )
+          setFocusSeq(result.effect.seq);
         setMessage(
           result.deduplicated ? '读回已提交白板，没有重复执行。' : '已显示审核过的白板内容。',
         );
@@ -251,6 +278,39 @@ const ClassroomBoardPanelContent = ({
     }
   };
   const active = session.status === 'in_class';
+  /**
+   * 本场景的聚焦/激光笔历史（按 seq 升序）。只取指向本场景的效果：别处场景的指向不该在这里出现，
+   * 也不该被「回到此条」跨场景激活。
+   */
+  const focusHistory = (state?.effects ?? [])
+    .filter(
+      (effect) =>
+        effect.item.sceneId === session.currentSceneId &&
+        (effect.item.content.kind === 'focus' || effect.item.content.kind === 'laser'),
+    )
+    .map((effect) => ({
+      seq: effect.seq,
+      elementId: (effect.item.content as { elementId: string }).elementId,
+      kind: effect.item.content.kind as 'focus' | 'laser',
+    }));
+  const latestFocusSeq = focusHistory.at(-1)?.seq ?? null;
+  /**
+   * 生效位：`undefined` = 跟随最新一条；`null` = 用户显式收回；数字 = 用户显式回到某条。
+   * 用户显式选的 seq 已不在历史里（例如场景切换或效果被清理）时回到「跟随最新」，
+   * 不让一个已经不存在的 seq 卡住画布。
+   */
+  const effectiveFocusSeq =
+    focusSeq === undefined
+      ? latestFocusSeq
+      : focusSeq === null
+        ? null
+        : focusHistory.some((entry) => entry.seq === focusSeq)
+          ? focusSeq
+          : latestFocusSeq;
+  // 生效位变化时报给画布：`null` 表示收回高亮，画布据此清空而不是继续指旧元素。
+  useEffect(() => {
+    onFocusSeqChange?.(effectiveFocusSeq);
+  }, [effectiveFocusSeq, onFocusSeqChange]);
   const content = (): ClassroomBoardContentDto =>
     classroomBoardContentSchema.parse(
       kind === 'diagram'
@@ -266,9 +326,11 @@ const ClassroomBoardPanelContent = ({
           ? { kind, statementId, text }
           : kind === 'focus'
             ? { kind, elementId: focusElementId, text }
-            : kind === 'formula'
-              ? { kind, text, latex: latex.trim() === '' ? null : latex.trim() }
-              : { kind, text },
+            : kind === 'laser'
+              ? { kind, elementId: focusElementId, text }
+              : kind === 'formula'
+                ? { kind, text, latex: latex.trim() === '' ? null : latex.trim() }
+                : { kind, text },
     );
   return (
     <section data-classroom-board className="card">
@@ -287,6 +349,42 @@ const ClassroomBoardPanelContent = ({
         ))}
         {state?.effects.length === 0 ? <p className="muted">尚无已提交的白板内容。</p> : null}
       </div>
+      {focusHistory.length > 0 ? (
+        <div className="card card-nested" data-board-focus-history>
+          <p className="hint">
+            本场景的聚焦/激光笔历史（{focusHistory.length} 条）。「回到此条」只是把生效位指回它，
+            不删除已提交效果；「收回」把生效位清空。历史保留供复核。
+          </p>
+          <ul className="check-list">
+            {focusHistory.map((entry) => (
+              <li key={entry.seq}>
+                <span className="mono">
+                  #{entry.seq} {entry.kind === 'laser' ? '激光笔' : '聚焦'} → {entry.elementId}
+                  {entry.seq === effectiveFocusSeq ? '（当前生效）' : ''}
+                </span>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={busy || entry.seq === effectiveFocusSeq}
+                  data-board-focus-replay={entry.seq}
+                  onClick={() => setFocusSeq(entry.seq)}
+                >
+                  回到此条
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            className="btn"
+            disabled={busy || effectiveFocusSeq === null}
+            data-board-focus-retract
+            onClick={() => setFocusSeq(null)}
+          >
+            收回聚焦/激光笔
+          </button>
+        </div>
+      ) : null}
       <details>
         <summary>编写与审核白板</summary>
         <form
@@ -337,6 +435,7 @@ const ClassroomBoardPanelContent = ({
                 <option value="diagram">概念简图</option>
                 <option value="highlight">重点标注</option>
                 <option value="focus">教师聚焦</option>
+                <option value="laser">激光笔（临时指引，不改变元素呈现）</option>
               </select>
             </label>
           </div>
@@ -367,11 +466,11 @@ const ClassroomBoardPanelContent = ({
                 />
               </label>
             </>
-          ) : kind === 'focus' ? (
+          ) : kind === 'focus' || kind === 'laser' ? (
             <>
               <div className="field">
                 <label>
-                  聚焦到本场景的元素
+                  {kind === 'laser' ? '激光笔指向本场景的元素' : '聚焦到本场景的元素'}
                   <select
                     data-board-focus-element
                     value={focusElementId}
@@ -390,7 +489,7 @@ const ClassroomBoardPanelContent = ({
                 </label>
               </div>
               <label>
-                聚焦说明
+                {kind === 'laser' ? '激光笔说明' : '聚焦说明'}
                 <textarea
                   data-board-text
                   value={text}
@@ -428,7 +527,12 @@ const ClassroomBoardPanelContent = ({
             data-board-create
             type="submit"
             className="btn"
-            disabled={busy || !active || !statementId || (kind === 'focus' && !focusElementId)}
+            disabled={
+              busy ||
+              !active ||
+              !statementId ||
+              ((kind === 'focus' || kind === 'laser') && !focusElementId)
+            }
           >
             保存待核草案
           </button>

@@ -179,6 +179,7 @@ export const POST = route(async (request: Request) => {
       return ok({
         session: toClassroomSessionDto(updated),
         peers: peerRuntimeState(session, body.sessionId),
+        schedule: session.store.classroomState(projectId, body.sessionId).peerSchedule,
       });
     }
     case 'peer-turn': {
@@ -196,6 +197,7 @@ export const POST = route(async (request: Request) => {
       return ok({
         turn,
         peers: peerRuntimeState(session, body.sessionId),
+        schedule: session.store.classroomState(projectId, body.sessionId).peerSchedule,
         session: toClassroomSessionDto(session.store.getClassroomSession(body.sessionId, projectId)!),
       });
     }

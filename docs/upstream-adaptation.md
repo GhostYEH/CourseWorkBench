@@ -19,7 +19,7 @@
 | 上游合同/源码位置 | 本项目适配位置 | 尚需完成的适配 |
 | --- | --- | --- |
 | `@openmaic/storage` `DocumentStore`（`document/http` 的 `HttpDocumentStore`） | `apps/learning/app/api/maic/documents/[[...segments]]/route.ts` + `packages/study-storage/src/repositories/classroom.ts` | 路径/方法、204 写入、上游错误码、409 `FUTURE_VERSION`、项目分区与读写审核指纹守卫已有真实客户端回归；outline 保留在完整文档内，无独立端点。修改 outline 同样须重新审核 |
-| 上游 `DocumentFolderStore` 与 `/api/folders` | `app/api/folders/**`、`repositories/document-organization.ts`、schema v8 | 项目分区创建/重命名/成员归组与取消分组；摘要可选 folderId。删除仅支持 ungroup，remove 明确拒绝，不能通过组织操作级联删除受审课件；课程库 UI 未接入 |
+| 上游 `DocumentFolderStore` 与 `/api/folders` | `app/api/folders/**`、`repositories/document-organization.ts`、schema v8、`app/workbench/library/page.tsx` + `components/lesson-library.tsx` + `lib/document-library.ts` | 项目分区创建/重命名/成员归组与取消分组；摘要可选 folderId。删除仅支持 ungroup，remove 明确拒绝，不能通过组织操作级联删除受审课件；课程库浏览与组织 UI 已接入（OMA-001/002，读取权威存储、写入走上游原始合同），跨项目/全局课程库与发布访问状态仍未接入 |
 | `@openmaic/storage` `AssetStore`/`HttpAssetStore` | `apps/learning/app/api/maic/assets/**` + `packages/study-storage/src/repositories/classroom-assets.ts` | SQLite 保存项目分区的字节、内部 SHA-256、元数据、修订与场景绑定；客户端按会话/项目代次下载并生成对象 URL。演示图片与公式字体使用实际字节；跨课程引用保护、离线回收和大媒体仍需补齐 |
 | `@openmaic/storage` `HttpRuntimeStore`、`HttpAccountKV` | `app/api/maic/runtime/[...segments]/route.ts`、`app/api/maic/kv/[...segments]/route.ts` + SQLite runtime/KV repositories | 已实现原始客户端合同、服务绑定 learner、追加序号与版本冲突、项目代次复验。测验提交由服务原子保存本人作答、review 与收据；`AgentSessionStore` 和教师编排仍未接入 |
 | OpenMAIC PlaybackEngine、课堂加载与场景分派 | `components/openmaic-adaptation/`、`components/classroom-surface.tsx` | 播放引擎、类型、游标、导航、时序及原 ClassroomSurface 页面加载/重试/退出流程实际复制后适配；Stage 视图与场景分派为窄适配。M0 通过服务加载/资源释放端口接线；Director、编辑器、教师/白板及生成媒体管线按后续里程碑接入 |
@@ -145,7 +145,7 @@ M0 的 SET-01 采用固定已发布包及锁文件完整性路线，不依赖 ex
 
 运行与 KV 验证入口为 `tests/classroom-runtime-http.test.ts`；加载/播放适配验证为 `tests/classroom-upstream-adaptation.test.ts`；正式/演示分区和审核入口分别见 `tests/record-scope.test.ts`、`tests/source-review-page.test.ts`。真实目录包鼠标作答和整应用重启验收入口为 `pnpm verify:classroom`，实际结果以当前构建对应报告为准，不能把脚本存在记为已验收。
 
-文件夹组织验证为 `tests/classroom-document-organization.test.ts`；outline 完整往返与未审核修改拒绝归入 `tests/classroom-document-store.test.ts`。组织层不改变内容 scope、审核摘要、来源绑定或资产权限。
+文件夹组织验证为 `tests/classroom-document-organization.test.ts`；课程库浏览与组织 UI 验证为 `tests/lesson-library-page.test.ts`（分组/筛选纯函数、页面呈现真实文档与文件夹归属、读取不产生组织写入）；outline 完整往返与未审核修改拒绝归入 `tests/classroom-document-store.test.ts`。组织层不改变内容 scope、审核摘要、来源绑定或资产权限。
 
 ### 7.5 直接复制的课堂核心代码
 

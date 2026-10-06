@@ -106,7 +106,7 @@ module.exports = async ({
   );
   assert(
     await evaluate(
-      'document.body.textContent.includes("当前不能通过 UID 邀请同学")',
+      'document.body.textContent.includes("未通过本人认证时不能联网邀请")',
       'offline-invite-copy',
     ),
     '离线邀请边界没有呈现',
@@ -129,12 +129,46 @@ module.exports = async ({
       await window.webContents.debugger.sendCommand('Emulation.setFocusEmulationEnabled', {
         enabled: true,
       });
+      await evaluate(
+        `(() => {
+          const target = ${JSON.stringify(uid)};
+          const clipboardApi = navigator.clipboard;
+          const writeText = clipboardApi.writeText.bind(clipboardApi);
+          window.__learnerClipboardWriteDiagnostics = {
+            calls: 0,
+            argumentMatches: false,
+            resolved: false,
+            rejected: false,
+          };
+          Object.defineProperty(clipboardApi, 'writeText', {
+            configurable: true,
+            value: async (text) => {
+              const diagnostic = window.__learnerClipboardWriteDiagnostics;
+              diagnostic.calls += 1;
+              diagnostic.argumentMatches = text === target;
+              try {
+                const result = await writeText(text);
+                diagnostic.resolved = true;
+                return result;
+              } catch (error) {
+                diagnostic.rejected = true;
+                throw error;
+              }
+            },
+          });
+        })()`,
+        'clipboard-wrap-real-write',
+      );
       markStep('learner-profile:clipboard-copy');
       await click('[data-copy-uid]', 'copy-uid');
       await wait(
         'document.querySelector("[data-learner-profile-message]")?.textContent.includes("UID 已复制")',
         '真实复制没有成功反馈',
         'copy-feedback',
+      );
+      const writeDiagnostics = await evaluate(
+        '({...window.__learnerClipboardWriteDiagnostics})',
+        'clipboard-write-diagnostics',
       );
       let immediateText;
       let immediateReadable = false;
@@ -187,7 +221,10 @@ module.exports = async ({
       } else {
         markStep('learner-profile:clipboard-validation');
       }
-      assert(immediateMatches, '复制的 UID 与服务身份不一致');
+      assert(
+        immediateMatches,
+        `复制的 UID 与服务身份不一致；writeText calls=${writeDiagnostics?.calls ?? 0}, argumentMatches=${writeDiagnostics?.argumentMatches === true}, resolved=${writeDiagnostics?.resolved === true}, rejected=${writeDiagnostics?.rejected === true}`,
+      );
       cover(
         'learner UID: real Chromium clipboard copy matches service identity and restores prior supported formats',
       );

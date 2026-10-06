@@ -42,6 +42,24 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/debug@4.1.13)(@types/node@22.20.5)(jiti@2.7.0)(tsx@4.23.15)
 
+  apps/collab-service:
+    dependencies:
+      '@sew/study-contracts':
+        specifier: workspace:*
+        version: link:../../packages/study-contracts
+      '@sew/study-domain':
+        specifier: workspace:*
+        version: link:../../packages/study-domain
+      '@sew/study-storage':
+        specifier: workspace:*
+        version: link:../../packages/study-storage
+      tsx:
+        specifier: ^4.20.5
+        version: 4.23.15
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+
   apps/desktop:
     dependencies:
       '@sew/study-contracts':

@@ -75,7 +75,11 @@ export default tseslint.config(
     rules: js.configs.recommended.rules,
   },
   {
-    files: ['apps/learning/{app,components,lib}/**/*.{ts,tsx}', 'packages/**/src/**/*.ts'],
+    files: [
+      'apps/learning/{app,components,lib}/**/*.{ts,tsx}',
+      'apps/collab-service/src/**/*.ts',
+      'packages/**/src/**/*.ts',
+    ],
     extends: [tseslint.configs.recommended],
     rules: {
       '@typescript-eslint/no-unused-vars': [

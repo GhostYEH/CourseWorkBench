@@ -17,6 +17,10 @@ tmp/
 .task-cache/
 .eslintcache
 
+# 独立协作服务的数据目录（开发/本地运行，不进仓库）
+.collab-data/
+.dev-collab/
+
 # 项目数据目录（用户项目由原生目录选择器创建，不进仓库）
 **/.study/
 **/project.json

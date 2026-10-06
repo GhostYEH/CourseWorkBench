@@ -27,7 +27,7 @@
 - ESLint（含 React Hooks 规则）与 Prettier 已接入根脚本 `pnpm check`。格式检查只覆盖 `scripts/quality/format-scope.json` 里的显式文件清单，**清单通过不等于整仓已格式化**；不要为整仓运行格式化工具。`pnpm check:code` 负责可执行的分层与合同回归，**不替代人工代码审查**。它当前检查：
   1. preload 生成物与 IPC 合同同步、沙箱可加载性；
   2. 全部 Electron CJS 与 `server.mjs` 的 Node 语法；
-  3. **分层依赖方向**（可执行）：`study-contracts` 不得反向依赖领域/存储或框架；`study-domain` 不得依赖框架、存储或文件系统 IO；`study-storage` 不得依赖 Electron/React/Next 或应用层；Electron 主进程不得依赖领域/存储包；
+  3. **分层依赖方向**（可执行）：`study-contracts` 不得反向依赖领域/存储或框架；`study-domain` 不得依赖框架、存储或文件系统 IO；`study-storage` 不得依赖 Electron/React/Next 或应用层；Electron 主进程不得依赖领域/存储包；独立协作服务 `apps/collab-service` 不得依赖 Electron/React/Next、应用层或本地学习服务（`apps/learning`）；
   4. **JSON 解析集中化**：`JSON.parse` 只允许出现在经校验或受控的少数文件（json-codec、项目 manifest、桌面状态/握手、全局偏好），其它位置必须改用 `json-codec` 或先经 schema 校验；多选提交的领域入口 `study-domain/src/assessment.ts` 与客户端恢复入口 `learning/lib/quiz-answer.ts` 分别在解析后校验数组、重复值和允许选项，损坏内容拒绝进入判分/恢复路径；HTTP 正文的带限额解码集中在 `apps/learning/lib/server/bounded-json.ts`（实际流式字节 → 严格 UTF-8 → json-codec，形状仍由调用方 schema 裁定），冻结评测导入和上游课堂文档接口均使用该入口，不再自带流式计数或直接解析；课堂文档仍保留 32 MiB、原始响应与审核顺序，非法 UTF-8 拒绝为 `VALIDATION_FAILED`，有效中文跨字节分片仍接受；浏览器侧用户选中的本地报告文件仍需在允许入口单独登记；
   5. **IPC 通道声明同步**：合同里声明的通道必须都被 preload 白名单使用。
   6. 客户端只消费 DTO 合同，不导入存储/领域包或服务端模块；包根导出显式维护。
@@ -48,3 +48,7 @@
 - 不要为整仓运行格式化工具来掩盖局部改动；沿用相邻代码的格式，提交时只包含任务相关文件。
 - `pnpm build:learning` 通过受控脚本在成功构建且输入未变时记录摘要。组装与分发验证要求该记录匹配当前输入；直接 `next build` 不产生此凭据。生产 HTTP 测试前须用当前源码重建，不能仅检查 BUILD_ID 文件存在。
 - 剩余缺口（N9）：格式清单仍按显式文件维护，`apps/learning/server.mjs` 与其余历史脚本尚未纳入语义 lint；桌面依赖图的完整 `checkJs` 尚未覆盖。上面的可执行检查是过渡措施。
+
+## Agent 工作约定
+
+- **打包限制**：除非用户明确要求生成安装包或未打包目录，否则任何 agent 在执行构建任务时不应调用 `pnpm package:desktop`、`electron-builder` 或其他打包命令。仅当用户明确请求"生成安装包"、"执行打包"或类似指令时才执行打包操作。

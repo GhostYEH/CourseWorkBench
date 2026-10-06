@@ -260,7 +260,10 @@ const closeNativeProject = async () => {
 };
 
 const run = async () => {
-  assert(['boundary', 'lesson-plan'].includes(suite), 'unknown Electron smoke suite');
+  assert(
+    ['boundary', 'lesson-plan', 'collab-panel', 'learner-profile'].includes(suite),
+    'unknown Electron smoke suite',
+  );
   assert(existsSync(serverEntry), 'learning server entry is missing');
   assert(existsSync(preloadPath), 'sandboxed preload is missing');
   assert(
@@ -383,6 +386,34 @@ const run = async () => {
     'main-frame API request did not receive session authentication',
   );
   cover('main-frame API received session authentication');
+
+  if (suite === 'learner-profile') {
+    await require('./smoke-learner-profile.cjs')({
+      window,
+      origin: ready.origin,
+      projectDirectory: tempRoot,
+      serviceRequest,
+      cover,
+      markStep,
+    });
+    await closeNativeProject();
+    return;
+  }
+
+  if (suite === 'collab-panel') {
+    markStep('collab-panel-smoke-started', { servicePid: serviceChild.pid ?? null });
+    await require('./smoke-collab-panel.cjs')({
+      window,
+      origin: ready.origin,
+      serviceRequest,
+      waitForText,
+      waitForUrl,
+      cover,
+      markStep,
+    });
+    await closeNativeProject();
+    return;
+  }
 
   if (suite === 'lesson-plan') {
     markStep('lesson-plan-smoke-started', { servicePid: serviceChild.pid ?? null });
