@@ -582,7 +582,7 @@
         "聚焦分支已接通真实画布：白板 focus 动作经服务端核对元素必须存在于该冻结课件（store.assertClassroomBoardBinding），审核播放后由 apps/learning/lib/classroom/board-focus.ts 取「本场景 seq 最大的效果」，SceneRenderer 用上游 SlideCanvas 的 effects 画高亮框、线型元素退化为聚光，文档中不存在的 id 一律不高亮；切场景即收回。scripts/smoke-classroom-stage.cjs 断言 [data-canvas-focus]、slide-element 存在与 .highlight-overlay 出现，纯函数分支由 tests/classroom-board-focus.test.ts 覆盖。",
         "激光笔与按动作撤销/重放的聚焦控制已落地（OMA-032）：packages/study-contracts/src/classroom-board.ts 增 laser 内容类型（与 focus 同指向真实元素），apps/learning/lib/classroom/board-focus.ts 的 resolveActiveBoardLaser 单独解析激光笔、boardFocusState/previousBoardFocusSeq 给出历史与生效位，resolveActiveBoardFocus 支持 atSeq 指针（null=收回）；课堂面板提供「回到此条/收回」且不删除已提交效果，画布按生效 seq 高亮并在收回时清空。scripts/smoke-classroom-stage.cjs 新增 board laser 断言（原生冒烟 37 组），tests/classroom-board-focus.test.ts 8 项覆盖。",
         "公共标记同步子集：协作服务 /collab/v1/teaching 以当前冻结元素ID执行 focus/laser/clear-board，同事务提交房间版本、事件、状态摘要与收据；CollabSharedScene 只将标记作用于匹配当前场景的真实元素，切场景原子清标记。tests/collab-shared-scene.test.ts、tests/collab-teaching-panel.test.ts 和双客户端脚本覆盖呈现/双端读回/重启恢复。协议3增加当前场景标记动作逐项撤销/重放，按原actionEventId保留applied状态并从旧标记基线按原序重算；200项上限、旧v1状态摘要兼容、原请求重试、越权/等待/跨场景拒绝与双客户端重启均有回归。",
-        "公共白板文字/公式/图形与动作编排（协议4）：新增 write（写入文字/公式/简图）与 erase（按原动作 eventId 擦除）动作及 board.contents；write 的内容必须挂在当前场景关联知识点的冻结已审核 statementId 上，文字/公式/简图沿用本地白板同一套 HTML/脚本与 LaTeX 宏过滤（公共通道不接受任意正文）。生效白板由基线按原序重放生效动作得到：撤销 write 使内容消失、重放按原序恢复、erase 移除一条内容并拒绝重复/未知目标；动作上限、原请求重试与重启恢复沿用协议3。界面新增板书编辑器（文字/公式/简图草稿解析）与逐条擦除，共享场景渲染已写内容，普通成员只看不写。tests/collaboration-teaching-storage.test.ts、tests/collab-teaching-panel.test.ts 与双客户端脚本（51/51）覆盖写入/擦除/撤销/重放/幂等/负例。生成式教师与真人双设备仍保留。"
+        "公共白板命令与持久编排（协议4）：新增 write（文字/公式/简图结构）与 erase，按原序重放生效动作构成 board.contents；支持撤销/重放、原请求重试、额度和重启恢复。服务端校验 statementId 属于当前冻结场景、内容形状与 HTML/LaTeX 过滤；正文仍由房主提交，未证明其与已审核证据语义一致。共享场景和教学面板当前仅展示简图节点标签/边数，未显示连线端点/标签。2026-10-07 双客户端实测51/51只确认命令/持久读回；板书语义审核/准入、完整关系呈现、在线原生操作及真人/provider验收仍待补，status保持partial。"
       ]
     },
     {
@@ -819,7 +819,7 @@
       ],
       "acceptance": "真实PBL场景，有项目背景、角色与目标",
       "evidence": [
-        "PBL 项目制学习合同与领域已落地：packages/study-contracts/src/formal-interaction-pbl.ts 定义冻结项目（真实情境/背景/目标/角色席位/阶段任务/里程碑/评分依据 rubrics）与公开投影（结构上无 rubrics、里程碑无 rubricIds）；packages/study-domain/src/formal-interaction-pbl.ts 的 assertPblDefinitionCoherent/Frozen 保证定义闭环且只有冻结复验过的定义驱动判定。tests/pbl-interaction.test.ts 以「校园食堂浪费调研与提案」真实项目夹具覆盖。存储/路由/界面接入仍待完成，故仍为 partial。"
+        "PBL 项目制学习合同与领域已落地：packages/study-contracts/src/formal-interaction-pbl.ts 定义冻结项目（真实情境/背景/目标/角色席位/阶段任务/里程碑/评分依据 rubrics）与公开投影（结构上无 rubrics、里程碑无 rubricIds）；packages/study-domain/src/formal-interaction-pbl.ts 的 assertPblDefinitionCoherent/Frozen 保证定义闭环且只有冻结复验过的定义驱动判定。tests/pbl-interaction.test.ts 以「校园食堂浪费调研与提案」真实项目夹具覆盖。存储/路由/界面接入仍待完成，仅有基础层，status 继续 planned。"
       ]
     },
     {
@@ -1218,7 +1218,7 @@
       ],
       "acceptance": "文字/公式/图像/图表可编辑，不把课件整体栅格化",
       "evidence": [
-        "可编辑 PPTX 导出结构模型已落地：packages/study-domain/src/lesson-export-pptx.ts 的 buildPptxDeck 把每个场景逐元素映射为离散可编辑形状（text/picture/formula/chart/table/line），富文本解析为运行段、数学保留 LaTeX 源(native-math，无源退化 editable-text 并登记 formula-text-fallback)，全部回指 sourceElementId；assertPptxDeckEditable 拒绝 whole_slide_raster/empty_slide/content_loss/dropped_elements；产物字段收口在 PPTX_MODEL_KEYS 白名单，答案/解析/分值结构上无处存放。tests/lesson-export-pptx.test.ts 覆盖。字节级 PPTX 序列化与路由/存储接入仍待完成，故仍为 partial。"
+        "可编辑 PPTX 导出结构模型已落地：packages/study-domain/src/lesson-export-pptx.ts 的 buildPptxDeck 把每个场景逐元素映射为离散可编辑形状（text/picture/formula/chart/table/line），富文本解析为运行段、数学保留 LaTeX 源(native-math，无源退化 editable-text 并登记 formula-text-fallback)，全部回指 sourceElementId；assertPptxDeckEditable 拒绝 whole_slide_raster/empty_slide/content_loss/dropped_elements；产物字段收口在 PPTX_MODEL_KEYS 白名单，答案/解析/分值结构上无处存放。tests/lesson-export-pptx.test.ts 覆盖。字节级 PPTX 序列化与路由/存储接入仍待完成，仅有基础层，status 继续 planned。"
       ]
     },
     {
@@ -1299,7 +1299,8 @@
       ],
       "acceptance": "Chromium/FFmpeg资源声明，真实可播放视频与失败恢复",
       "evidence": [
-        "MP4 导出任务模型已落地：packages/study-domain/src/lesson-export-mp4.ts 定义渲染计划与任务状态机 draft→queued→preparing→(blocked|capturing→encoding→succeeded|failed|cancelled)，applyMp4JobEvent 为唯一推进入口，必需运行时不到位只能 blocked，未带 playable+sha256 的结果不能算成功；recoverMp4Job 判定 replan/none/publish-verified-output/resume-from-segment，失败分类决定可重试或 needs-attention。tests/lesson-export-mp4.test.ts 覆盖。真实 Chromium/FFmpeg 渲染、任务持久化与路由仍待接入，故仍为 partial。"
+        "MP4 导出任务模型已落地：packages/study-domain/src/lesson-export-mp4.ts 定义渲染计划与任务状态机 draft→queued→preparing→(blocked|capturing→encoding→succeeded|failed|cancelled)，applyMp4JobEvent 为唯一推进入口，必需运行时不到位只能 blocked，未带 playable+sha256 的结果不能算成功；recoverMp4Job 判定 replan/none/publish-verified-output/resume-from-segment，失败分类决定可重试或 needs-attention。tests/lesson-export-mp4.test.ts 覆盖。真实 Chromium/FFmpeg 渲染、任务持久化与路由仍待接入，仅有基础层，status 继续 planned。",
+        "2026-10-07 核验修复（3d9fa4d）：begin-capture 必须经过本轮准备后的资源核验，resources-verified 的事实须覆盖计划必需的运行时；恢复发布还要求合法摘要、正字节长度和独立可播放性事实。旧/缺失事实不发布，走续跑或重新规划。MP4及可移植性定向回归19/19通过；仅修复领域门禁，没有真实渲染/编码或产品接入，status仍为planned。"
       ]
     },
     {
