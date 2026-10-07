@@ -1,9 +1,11 @@
 import { useState, type ReactNode } from 'react';
-import type {
-  ClassroomSharedCourseDto,
-  CollabRoomMemberDto,
-  CollabTeachingOperation,
-  CollabTeachingStateDto,
+import {
+  classroomBoardPublicContentSchema,
+  type ClassroomSharedCourseDto,
+  type CollabBoardContentDto,
+  type CollabRoomMemberDto,
+  type CollabTeachingOperation,
+  type CollabTeachingStateDto,
 } from '@sew/study-contracts';
 
 export const collabSceneStatements = (
@@ -22,6 +24,47 @@ export const currentSceneTeaching = (
   sceneId: string | null,
 ): CollabTeachingStateDto | null =>
   teaching && sceneId && teaching.sceneId === sceneId ? teaching : null;
+
+/** 已写进公共白板的内容；旧状态缺该字段时按空处理。 */
+export const collabBoardContents = (
+  teaching: CollabTeachingStateDto | null,
+): CollabBoardContentDto[] => teaching?.board.contents ?? [];
+
+/**
+ * 把「每行一条」的简图草稿解析为公共白板内容。
+ *
+ * 节点行：`id | 标签`；连线行：`from -> to`（可选 `| 标签`）。
+ * 任一行不合法返回 null，界面据此禁用「写入白板」，不在客户端伪造一个能过校验的形状。
+ */
+export const parseBoardDiagram = (
+  nodesText: string,
+  edgesText: string,
+): {
+  kind: 'diagram';
+  nodes: Array<{ id: string; label: string; x: number; y: number }>;
+  edges: Array<{ from: string; to: string; label?: string }>;
+} | null => {
+  const rows = (value: string): string[] =>
+    value
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+  const nodes = rows(nodesText).map((line, index) => {
+    const [rawId, ...rest] = line.split('|');
+    const id = (rawId ?? '').trim();
+    const label = rest.join('|').trim() || id;
+    // 纵向均匀排布，避免所有节点重叠；坐标仅为公共白板的示意位置。
+    return { id, label, x: 20, y: 20 + index * 60 };
+  });
+  const edges = rows(edgesText).map((line) => {
+    const [pair, ...rest] = line.split('|');
+    const [from, to] = (pair ?? '').split('->').map((part) => part.trim());
+    const label = rest.join('|').trim();
+    return label ? { from: from ?? '', to: to ?? '', label } : { from: from ?? '', to: to ?? '' };
+  });
+  const parsed = classroomBoardPublicContentSchema.safeParse({ kind: 'diagram', nodes, edges });
+  return parsed.success && parsed.data.kind === 'diagram' ? parsed.data : null;
+};
 
 export interface CollabTeachingPanelProps {
   snapshot: ClassroomSharedCourseDto | null;
@@ -51,6 +94,11 @@ export const CollabTeachingPanel = ({
   const [statementId, setStatementId] = useState('');
   const [elementId, setElementId] = useState('');
   const [targetUid, setTargetUid] = useState('');
+  const [contentKind, setContentKind] = useState<'text' | 'formula' | 'diagram'>('text');
+  const [boardText, setBoardText] = useState('');
+  const [boardLatex, setBoardLatex] = useState('');
+  const [diagramNodes, setDiagramNodes] = useState('');
+  const [diagramEdges, setDiagramEdges] = useState('');
   const statement = statements.find((item) => item.statementId === statementId) ?? statements[0];
   const element = elements.find((item) => item.elementId === elementId) ?? elements[0];
   const waiting = state?.waiting ?? null;
@@ -62,6 +110,34 @@ export const CollabTeachingPanel = ({
   const possibleTargets = members.filter(
     (member) => member.uid !== selfUid && member.readiness !== 'left',
   );
+  const contents = collabBoardContents(state);
+
+  // 只构造「当前可写入」的内容：不合法时按钮禁用，绝不把半成品发给服务端。
+  const pendingContent: CollabTeachingOperation | null = (() => {
+    if (contentKind === 'text') {
+      const parsed = classroomBoardPublicContentSchema.safeParse({
+        kind: 'text',
+        text: boardText.trim(),
+      });
+      return parsed.success
+        ? { kind: 'write', statementId: statement?.statementId ?? '', content: parsed.data }
+        : null;
+    }
+    if (contentKind === 'formula') {
+      const parsed = classroomBoardPublicContentSchema.safeParse({
+        kind: 'formula',
+        text: boardText.trim(),
+        latex: boardLatex.trim() || null,
+      });
+      return parsed.success
+        ? { kind: 'write', statementId: statement?.statementId ?? '', content: parsed.data }
+        : null;
+    }
+    const diagram = parseBoardDiagram(diagramNodes, diagramEdges);
+    return diagram
+      ? { kind: 'write', statementId: statement?.statementId ?? '', content: diagram }
+      : null;
+  })();
 
   return (
     <section className="card card-nested" data-collab-teaching>
@@ -103,6 +179,87 @@ export const CollabTeachingPanel = ({
           >
             教师发言（已审核）
           </button>
+
+          <div data-collab-teaching-board-composer>
+            <label>
+              板书类型
+              <select
+                data-collab-teaching-content-kind
+                value={contentKind}
+                disabled={!enabled}
+                onChange={(event) =>
+                  setContentKind(event.target.value as 'text' | 'formula' | 'diagram')
+                }
+              >
+                <option value="text">文字</option>
+                <option value="formula">公式</option>
+                <option value="diagram">图形（简图）</option>
+              </select>
+            </label>
+            {contentKind !== 'diagram' ? (
+              <label>
+                {contentKind === 'formula' ? '公式（可读文本）' : '板书文字'}
+                <textarea
+                  data-collab-teaching-board-text
+                  value={boardText}
+                  maxLength={4000}
+                  onChange={(event) => setBoardText(event.target.value)}
+                />
+              </label>
+            ) : null}
+            {contentKind === 'formula' ? (
+              <label>
+                LaTeX 排版源码（可选）
+                <input
+                  data-collab-teaching-board-latex
+                  className="mono"
+                  value={boardLatex}
+                  maxLength={2000}
+                  onChange={(event) => setBoardLatex(event.target.value)}
+                />
+              </label>
+            ) : null}
+            {contentKind === 'diagram' ? (
+              <>
+                <label>
+                  {'节点（每行 id | 标签）'}
+                  <textarea
+                    data-collab-teaching-board-nodes
+                    value={diagramNodes}
+                    onChange={(event) => setDiagramNodes(event.target.value)}
+                  />
+                </label>
+                <label>
+                  {'连线（每行 起点 -> 终点 | 标签）'}
+                  <textarea
+                    data-collab-teaching-board-edges
+                    value={diagramEdges}
+                    onChange={(event) => setDiagramEdges(event.target.value)}
+                  />
+                </label>
+              </>
+            ) : null}
+            <button
+              type="button"
+              className="btn"
+              data-collab-teaching-write
+              disabled={
+                !enabled ||
+                !statement ||
+                hasPendingWait ||
+                boardActionLimitReached ||
+                !pendingContent
+              }
+              onClick={() => {
+                if (pendingContent) onOperation(pendingContent);
+              }}
+            >
+              写入公共白板
+            </button>
+            <p className="hint">
+              板书内容必须挂在当前场景的已审核陈述上；文字/公式不接受 HTML 或脚本。
+            </p>
+          </div>
 
           <label>
             当前幻灯片元素
@@ -152,7 +309,7 @@ export const CollabTeachingPanel = ({
             清除白板标记
           </button>
           {hasPendingWait ? (
-            <p className="hint">等待期间暂停教师发言、聚焦与激光指示；房主可取消等待。</p>
+            <p className="hint">等待期间暂停教师发言、板书、聚焦与激光指示；房主可取消等待。</p>
           ) : null}
           {boardActionLimitReached ? (
             <p className="hint" data-collab-board-history-limit>
@@ -237,6 +394,45 @@ export const CollabTeachingPanel = ({
         </div>
       ) : null}
 
+      {contents.length > 0 ? (
+        <section data-collab-board-contents aria-label="公共白板已写内容">
+          <h5>公共白板内容</h5>
+          <ul>
+            {contents.map((item) => (
+              <li key={item.eventId} data-collab-board-content={item.eventId}>
+                <span className="hint mono">来源 {item.statementId}</span>
+                {item.content.kind === 'text' ? (
+                  <p style={{ whiteSpace: 'pre-wrap' }}>{item.content.text}</p>
+                ) : item.content.kind === 'formula' ? (
+                  <p style={{ whiteSpace: 'pre-wrap' }}>
+                    {item.content.text}
+                    {item.content.latex ? (
+                      <span className="mono"> · {item.content.latex}</span>
+                    ) : null}
+                  </p>
+                ) : (
+                  <p>
+                    简图：{item.content.nodes.map((node) => node.label).join('、')}（
+                    {item.content.edges.length} 条连线）
+                  </p>
+                )}
+                {owner ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    data-collab-board-erase={item.eventId}
+                    disabled={!enabled || hasPendingWait || boardActionLimitReached}
+                    onClick={() => onOperation({ kind: 'erase', actionEventId: item.eventId })}
+                  >
+                    擦除此内容
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {boardHistory ? (
         <section data-collab-board-history aria-label="公共白板动作历史">
           <h5>公共白板动作历史</h5>
@@ -256,7 +452,11 @@ export const CollabTeachingPanel = ({
                     #{action.seq} {action.kind === 'focus' ? '聚焦' : null}
                     {action.kind === 'laser' ? '激光指示' : null}
                     {action.kind === 'clear-board' ? '清除白板标记' : null}
+                    {action.kind === 'write' ? '板书' : null}
+                    {action.kind === 'erase' ? '擦除' : null}
                     {action.elementId ? ` · ${action.elementId}` : ''}
+                    {action.kind === 'write' && action.content ? ` · ${action.content.kind}` : ''}
+                    {action.targetEventId ? ` · 目标 ${action.targetEventId}` : ''}
                     {action.applied ? ' · 已应用' : ' · 已撤销'}
                   </span>
                   {owner ? (

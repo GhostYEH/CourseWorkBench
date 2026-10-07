@@ -1254,7 +1254,7 @@ export class CollaborationRepository {
         {
           ...teaching,
           sceneId: input.sceneId,
-          board: { focusElementId: null, laserElementId: null },
+          board: { focusElementId: null, laserElementId: null, contents: [] },
         },
         now,
       );
@@ -1282,7 +1282,7 @@ export class CollaborationRepository {
       schemaVersion: 1,
       roomId,
       sceneId,
-      board: { focusElementId: null, laserElementId: null },
+      board: { focusElementId: null, laserElementId: null, contents: [] },
       waiting: null,
       outputs: [],
     });
@@ -1393,11 +1393,15 @@ export class CollaborationRepository {
         : 'board_action';
       const summaries: Record<CollabTeachingCommandInput['operation']['kind'], string> = {
         speak: '教师发言（审核语句）',
+        write: `教师板书（已审核陈述 ${
+          operation.kind === 'write' ? operation.statementId : ''
+        } · ${operation.kind === 'write' ? operation.content.kind : ''}）`,
         focus: `教师聚焦白板元素 ${operation.kind === 'focus' ? operation.elementId : ''}`,
         laser: `教师激光指示元素 ${operation.kind === 'laser' ? operation.elementId : ''}`,
         'clear-board': '教师清除白板标记',
         'undo-board': `教师撤销白板动作 ${operation.kind === 'undo-board' ? operation.actionEventId : ''}`,
         'replay-board': `教师重放白板动作 ${operation.kind === 'replay-board' ? operation.actionEventId : ''}`,
+        erase: `教师擦除白板内容 ${operation.kind === 'erase' ? operation.actionEventId : ''}`,
         wait: '教师等待同学回应',
         acknowledge: '同学确认回应',
         'release-wait': '教师继续课堂',

@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import type { ClassroomSharedCourseDto, CollabTeachingStateDto } from '@sew/study-contracts';
 import {
   CollabTeachingPanel,
+  collabBoardContents,
   collabSceneStatements,
   currentSceneTeaching,
+  parseBoardDiagram,
 } from '../apps/learning/components/collab-teaching-panel';
 
 const require = createRequire(new URL('../apps/learning/package.json', import.meta.url));
@@ -163,6 +165,39 @@ const waitingState = (acknowledged: boolean): CollabTeachingStateDto => ({
   ],
 });
 
+const writeState = (): CollabTeachingStateDto => ({
+  schemaVersion: 1,
+  roomId: 'room',
+  sceneId: 'one',
+  board: {
+    focusElementId: null,
+    laserElementId: null,
+    contents: [
+      {
+        eventId: 'write-action',
+        seq: 1,
+        statementId: 'statement-one',
+        content: { kind: 'text', text: '公共板书内容' },
+      },
+    ],
+    history: {
+      baseline: { focusElementId: null, laserElementId: null },
+      actions: [
+        {
+          eventId: 'write-action',
+          seq: 1,
+          kind: 'write',
+          statementId: 'statement-one',
+          content: { kind: 'text', text: '公共板书内容' },
+          applied: true,
+        },
+      ],
+    },
+  },
+  waiting: null,
+  outputs: [],
+});
+
 describe('共同课堂教师教学消费', () => {
   it('讲解选项只来自当前场景知识点，并在状态场景变化时清空旧状态', () => {
     expect(collabSceneStatements(snapshot, 'one').map((item) => item.statementId)).toEqual([
@@ -308,5 +343,64 @@ describe('共同课堂教师教学消费', () => {
     expect(markup).not.toMatch(/data-collab-board-undo="board-action-1" disabled=""/);
     expect(markup).toContain('data-collab-board-replay="board-action-2"');
     expect(markup).not.toMatch(/data-collab-board-replay="board-action-2" disabled=""/);
+  });
+
+  it('渲染已写公共白板内容、擦除按钮，并解析合法简图', () => {
+    const members = [
+      {
+        uid: selfUid,
+        role: 'owner' as const,
+        identityAuthority: 'online_authenticated' as const,
+        readiness: 'ready' as const,
+      },
+    ];
+    const ownerMarkup = renderToStaticMarkup(
+      createElement(CollabTeachingPanel, {
+        snapshot,
+        sceneId: 'one',
+        selfUid,
+        owner: true,
+        enabled: true,
+        members,
+        state: writeState(),
+        onOperation: () => undefined,
+      }),
+    );
+    const peerMarkup = renderToStaticMarkup(
+      createElement(CollabTeachingPanel, {
+        snapshot,
+        sceneId: 'one',
+        selfUid: peerUid,
+        owner: false,
+        enabled: true,
+        members,
+        state: writeState(),
+        onOperation: () => undefined,
+      }),
+    );
+
+    expect(ownerMarkup).toContain('data-collab-board-contents');
+    expect(ownerMarkup).toContain('data-collab-board-content="write-action"');
+    expect(ownerMarkup).toContain('公共板书内容');
+    expect(ownerMarkup).toContain('data-collab-teaching-write');
+    expect(ownerMarkup).toContain('data-collab-board-erase="write-action"');
+    expect(ownerMarkup).toContain('data-collab-board-action="write-action"');
+    // 普通成员只看内容，没有擦除/写入控制。
+    expect(peerMarkup).toContain('data-collab-board-content="write-action"');
+    expect(peerMarkup).not.toContain('data-collab-board-erase');
+    expect(peerMarkup).not.toContain('data-collab-teaching-write');
+
+    expect(collabBoardContents(writeState())).toHaveLength(1);
+    expect(collabBoardContents(null)).toEqual([]);
+    expect(parseBoardDiagram('a | 起点\nb | 终点', 'a -> b | 连接')).toEqual({
+      kind: 'diagram',
+      nodes: [
+        { id: 'a', label: '起点', x: 20, y: 20 },
+        { id: 'b', label: '终点', x: 20, y: 80 },
+      ],
+      edges: [{ from: 'a', to: 'b', label: '连接' }],
+    });
+    // 连线引用不存在的节点：解析失败，界面据此禁用写入，而不是提交一个非法形状。
+    expect(parseBoardDiagram('a | 起点', 'a -> missing')).toBeNull();
   });
 });

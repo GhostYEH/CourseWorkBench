@@ -13,6 +13,7 @@ export const CollabSharedScene = ({
 }): ReactNode => {
   const scene = snapshot?.scenes.find((item) => item.sceneId === sceneId);
   const sceneTeaching = teaching?.sceneId === sceneId ? teaching : null;
+  const boardContents = sceneTeaching?.board.contents ?? [];
   if (!snapshot) return <p className="hint">共享课程尚未读回，请稍后重试。</p>;
   if (!scene) return <p className="hint">等待房主选择共同课堂场景。</p>;
   return (
@@ -21,6 +22,32 @@ export const CollabSharedScene = ({
         {snapshot.course.title} · v{snapshot.course.lessonVersion} · 共同进度
       </p>
       <h4>{scene.title}</h4>
+      {boardContents.length > 0 ? (
+        <div data-collab-shared-board>
+          <p className="hint">教师公共白板</p>
+          <ul>
+            {boardContents.map((item) => (
+              <li key={item.eventId} data-collab-shared-board-content={item.eventId}>
+                {item.content.kind === 'text' ? (
+                  <span style={{ whiteSpace: 'pre-wrap' }}>{item.content.text}</span>
+                ) : item.content.kind === 'formula' ? (
+                  <span style={{ whiteSpace: 'pre-wrap' }}>
+                    {item.content.text}
+                    {item.content.latex ? (
+                      <span className="mono"> · {item.content.latex}</span>
+                    ) : null}
+                  </span>
+                ) : (
+                  <span>
+                    简图：{item.content.nodes.map((node) => node.label).join('、')}（
+                    {item.content.edges.length} 条连线）
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {scene.type === 'slide'
         ? scene.elements.map((element) => {
             const focused = sceneTeaching?.board.focusElementId === element.elementId;

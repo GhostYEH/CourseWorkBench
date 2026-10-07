@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const serverEntry = join(root, 'apps', 'collab-service', 'server.mjs');
 const localClientEntry = join(root, 'scripts', 'collab-local-client.mjs');
-const PROTOCOL_VERSION = 3;
+const PROTOCOL_VERSION = 4;
 
 const results = [];
 const record = (name, ok, detail = '') => {
@@ -1086,6 +1086,98 @@ try {
       missingBoardAction.result.status === 409 &&
       missingBoardAction.result.error?.details?.reason === 'collab_board_action_not_found',
     `laser replay=${laserReplayed.result.status}, repeat=${laserReplayTwice.result.status}, focus replay=${focusReplayed.result.status}, unknown=${missingBoardAction.result.status}/${missingBoardAction.result.error?.details?.reason}`,
+  );
+
+  const written = await submitTeaching(
+    clientA,
+    tokenA,
+    UID_A,
+    {
+      kind: 'write',
+      statementId: 'statement_k1_scene2',
+      content: { kind: 'text', text: '公共板书：一次函数 y=kx+b' },
+    },
+    'write-text',
+  );
+  const writtenFromB = await clientB.teaching(tokenB, ROOM);
+  const writeActionEventId = written.result.data?.event?.eventId;
+  const eraseUnknown = await submitTeaching(
+    clientA,
+    tokenA,
+    UID_A,
+    { kind: 'erase', actionEventId: 'event_not_written' },
+    'erase-unknown',
+  );
+  const writeOffScene = await submitTeaching(
+    clientA,
+    tokenA,
+    UID_A,
+    {
+      kind: 'write',
+      statementId: 'statement_k2_scene1',
+      content: { kind: 'text', text: '跨场景板书' },
+    },
+    'write-off-scene',
+  );
+  record(
+    '公共白板内容：write 挂已审核陈述写入并由 B 读回，拒绝未知擦除目标与跨场景陈述',
+    written.result.ok &&
+      written.result.data?.state?.board?.contents?.length === 1 &&
+      written.result.data.state.board.contents[0]?.statementId === 'statement_k1_scene2' &&
+      written.result.data.state.board.contents[0]?.content?.kind === 'text' &&
+      written.result.data.state.board.history?.actions?.find(
+        (item) => item.eventId === writeActionEventId,
+      )?.kind === 'write' &&
+      JSON.stringify(writtenFromB.data?.state) === JSON.stringify(written.result.data?.state) &&
+      eraseUnknown.result.status === 409 &&
+      eraseUnknown.result.error?.details?.reason === 'collab_board_action_not_found' &&
+      writeOffScene.result.status === 400 &&
+      writeOffScene.result.error?.details?.reason === 'collab_statement_not_in_scene',
+    `write=${written.result.status}, contents=${written.result.data?.state?.board?.contents?.length}, eraseUnknown=${eraseUnknown.result.status}/${eraseUnknown.result.error?.details?.reason}, offScene=${writeOffScene.result.status}/${writeOffScene.result.error?.details?.reason}`,
+  );
+
+  const writeUndone = await submitTeaching(
+    clientA,
+    tokenA,
+    UID_A,
+    { kind: 'undo-board', actionEventId: writeActionEventId },
+    'undo-write',
+  );
+  const writeReplayed = await submitTeaching(
+    clientA,
+    tokenA,
+    UID_A,
+    { kind: 'replay-board', actionEventId: writeActionEventId },
+    'replay-write',
+  );
+  const writtenAgainFromB = await clientB.teaching(tokenB, ROOM);
+  const erased = await submitTeaching(
+    clientA,
+    tokenA,
+    UID_A,
+    { kind: 'erase', actionEventId: writeActionEventId },
+    'erase-text',
+  );
+  const eraseRetry = await clientA.applyTeaching(tokenA, erased.input);
+  const erasedFromB = await clientB.teaching(tokenB, ROOM);
+  record(
+    '公共白板内容：撤销 write 使内容消失、重放按原序恢复、erase 移除内容且重试幂等，双端一致',
+    writeUndone.result.ok &&
+      writeUndone.result.data?.state?.board?.contents?.length === 0 &&
+      writeReplayed.result.ok &&
+      writeReplayed.result.data?.state?.board?.contents?.length === 1 &&
+      writeReplayed.result.data.state.board.contents[0]?.eventId === writeActionEventId &&
+      JSON.stringify(writtenAgainFromB.data?.state) ===
+        JSON.stringify(writeReplayed.result.data?.state) &&
+      erased.result.ok &&
+      erased.result.data?.state?.board?.contents?.length === 0 &&
+      erased.result.data.state.board.history?.actions?.find(
+        (item) => item.eventId === erased.result.data.event.eventId,
+      )?.targetEventId === writeActionEventId &&
+      eraseRetry.ok &&
+      eraseRetry.data?.deduplicated === true &&
+      JSON.stringify(erasedFromB.data?.state) === JSON.stringify(erased.result.data?.state),
+    `undo=${writeUndone.result.data?.state?.board?.contents?.length}, replay=${writeReplayed.result.data?.state?.board?.contents?.length}, erase=${erased.result.data?.state?.board?.contents?.length}, dedup=${eraseRetry.data?.deduplicated}`,
   );
 
   const peerUndo = await submitTeaching(

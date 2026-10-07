@@ -122,7 +122,7 @@ export type {
 } from './model-connection';
 export { apiErrorPayloadSchema, apiEnvelopeSchema, runtimeApiFailureSchema, apiResponses, collabOnlineViewSchema, collabOnlineWriteSchema } from './responses';
 export { collabTeachingOperationSchema, collabTeachingCommandSchema, collabTeachingStateSchema, collabTeachingViewSchema, collabTeachingResultSchema } from './collaboration-teaching';
-export type { CollabTeachingOperation, CollabTeachingCommandInput, CollabTeachingStateDto, CollabTeachingViewDto, CollabTeachingResultDto } from './collaboration-teaching';
+export type { CollabTeachingOperation, CollabTeachingCommandInput, CollabTeachingStateDto, CollabTeachingViewDto, CollabTeachingResultDto, CollabBoardContentDto } from './collaboration-teaching';
 export type { CollabOnlineViewDto, CollabOnlineWriteDto } from './responses';
 export {
   THEME_IDS, ACCENT_PRESETS, STATUS_TOKEN_KEYS,
@@ -172,7 +172,7 @@ export { LEGACY_LOCAL_LEARNER_KEY, learnerUidSchema, learnerProfileSchema, learn
 export type { LearnerProfileDto, LearnerProfileUpdateInput } from './learner-profile';
 export { classroomRoomCourseSchema, classroomSharedSceneSchema, classroomSharedAssetSchema, classroomSharedCourseSchema, classroomRoomMemberSchema, classroomRoomSchema, classroomInvitationSchema, classroomTeacherLeaseSchema, classroomRoomCreateSchema, classroomRoomCommandSchema } from './classroom-room';
 export type { ClassroomSharedCourseDto, ClassroomRoomDto, ClassroomInvitationDto, ClassroomTeacherLeaseDto } from './classroom-room';
-export { classroomBoardContentSchema, classroomBoardBindingSchema, classroomBoardItemSchema, classroomBoardEffectSchema, classroomBoardStateSchema, classroomBoardItemResultSchema, classroomBoardPlayResultSchema, classroomBoardCommandSchema } from './classroom-board';
+export { classroomBoardContentSchema, classroomBoardPublicContentSchema, classroomBoardBindingSchema, classroomBoardItemSchema, classroomBoardEffectSchema, classroomBoardStateSchema, classroomBoardItemResultSchema, classroomBoardPlayResultSchema, classroomBoardCommandSchema } from './classroom-board';
 export type { ClassroomBoardBindingDto, ClassroomBoardContentDto, ClassroomBoardItemDto, ClassroomBoardEffectDto, ClassroomBoardStateDto, ClassroomBoardCommand } from './classroom-board';
 export { formalInteractionDefinitionSchema, formalInteractionPublicDefinitionSchema, formalInteractionFrozenSchema, formalInteractionValuesSchema, formalInteractionBindingSchema, formalInteractionRecordSchema, formalInteractionReceiptSchema, formalInteractionStateSchema, formalInteractionCommandSchema, PARAMETER_FORMULAS } from './formal-interaction';
 export type { FormalInteractionDefinitionDto, FormalInteractionFrozenDto, FormalInteractionCommand, FormalInteractionStateDto, FormalInteractionBindingDto, FormalInteractionValuesDto, FormalInteractionRecordDto, ParameterFormula } from './formal-interaction';

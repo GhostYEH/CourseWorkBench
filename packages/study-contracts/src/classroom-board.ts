@@ -58,6 +58,19 @@ const diagram = z
       ctx.addIssue({ code: 'custom', message: '简图节点必须唯一，连接必须引用已有节点' });
     }
   });
+/**
+ * 公共白板可写入的**内容**子集：文字 / 公式 / 简图。
+ *
+ * 与完整 `classroomBoardContentSchema` 的区别：这里不含 `highlight`/`focus`/`laser`
+ * 三种「指向已有元素」的指针动作。公共白板的指针动作在协作协议里用元素 id 表达，
+ * 不经过内容类型；本子集只承载教师真正「写上去」的板书内容，且沿用同一套
+ * HTML/脚本与 LaTeX 宏过滤，避免公共通道出现比本地白板更宽的注入面。
+ */
+export const classroomBoardPublicContentSchema = z.union([
+  z.object({ kind: z.literal('text'), text }).strict(),
+  z.object({ kind: z.literal('formula'), text, latex: latex.nullable().default(null) }).strict(),
+  diagram,
+]);
 export const classroomBoardContentSchema = z.union([
   z.object({ kind: z.literal('text'), text }).strict(),
   /**
@@ -167,6 +180,7 @@ export const classroomBoardCommandSchema = z.discriminatedUnion('action', [
 ]);
 export type ClassroomBoardBindingDto = z.infer<typeof classroomBoardBindingSchema>;
 export type ClassroomBoardContentDto = z.infer<typeof classroomBoardContentSchema>;
+export type ClassroomBoardPublicContentDto = z.infer<typeof classroomBoardPublicContentSchema>;
 export type ClassroomBoardItemDto = z.infer<typeof classroomBoardItemSchema>;
 export type ClassroomBoardEffectDto = z.infer<typeof classroomBoardEffectSchema>;
 export type ClassroomBoardStateDto = z.infer<typeof classroomBoardStateSchema>;

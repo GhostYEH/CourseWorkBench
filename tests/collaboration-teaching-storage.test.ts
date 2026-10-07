@@ -351,6 +351,7 @@ describe('collaboration teaching authoritative storage', () => {
     expect(store.collaboration.teachingView(ROOM).state.board).toEqual({
       focusElementId: null,
       laserElementId: null,
+      contents: [],
     });
   });
 
@@ -500,7 +501,11 @@ describe('collaboration teaching authoritative storage', () => {
     });
     expect(moved.room.currentSceneId).toBe('scene_2');
     const movedView = store.collaboration.teachingView(ROOM);
-    expect(movedView.state.board).toEqual({ focusElementId: null, laserElementId: null });
+    expect(movedView.state.board).toEqual({
+      focusElementId: null,
+      laserElementId: null,
+      contents: [],
+    });
     expect(movedView.state.outputs).toHaveLength(1);
     expect(movedView.state.outputs[0]?.conditions).toBe('x 为实数。');
 
@@ -859,5 +864,132 @@ describe('collaboration teaching authoritative storage', () => {
       () => store.collaboration.teachingView(ROOM),
       'collab_teaching_state_identity_or_digest_mismatch',
     );
+  });
+
+  it('writes and erases public board content, replaying history and refusing off-scene statements', () => {
+    const root = mkdtempSync(join(tmpdir(), 'sew-teaching-'));
+    roots.push(root);
+    const store = open(join(root, 'collab.db'));
+    const room = activeRoom(store);
+
+    const written = store.collaboration.applyTeaching(
+      command({
+        operation: {
+          kind: 'write',
+          statementId: 'statement-1',
+          content: { kind: 'text', text: '板书：函数图像' },
+        },
+        expectedRevision: room.revision,
+        requestId: 'write-1',
+        eventId: 'write-1',
+      }),
+    );
+    expect(written.state.board.contents).toHaveLength(1);
+    expect(written.state.board.contents?.[0]?.statementId).toBe('statement-1');
+    expect(written.state.board.history?.actions).toHaveLength(1);
+    expect(written.state.board.history?.actions[0]?.kind).toBe('write');
+
+    // 撤销只翻生效位：内容消失，动作仍在历史里。
+    const undone = store.collaboration.applyTeaching(
+      command({
+        operation: { kind: 'undo-board', actionEventId: 'write-1' },
+        expectedRevision: written.roomRevision,
+        expectedSeq: 2,
+        requestId: 'undo-write-1',
+        eventId: 'undo-write-1',
+      }),
+    );
+    expect(undone.state.board.contents).toHaveLength(0);
+    expect(
+      undone.state.board.history?.actions.find((item) => item.eventId === 'write-1')?.applied,
+    ).toBe(false);
+
+    // 重放按原序恢复内容。
+    const replayed = store.collaboration.applyTeaching(
+      command({
+        operation: { kind: 'replay-board', actionEventId: 'write-1' },
+        expectedRevision: undone.roomRevision,
+        expectedSeq: 3,
+        requestId: 'replay-write-1',
+        eventId: 'replay-write-1',
+      }),
+    );
+    expect(replayed.state.board.contents).toHaveLength(1);
+
+    // erase 移除已写内容，记录 targetEventId；重复 erase 拒绝。
+    const erased = store.collaboration.applyTeaching(
+      command({
+        operation: { kind: 'erase', actionEventId: 'write-1' },
+        expectedRevision: replayed.roomRevision,
+        expectedSeq: 4,
+        requestId: 'erase-write-1',
+        eventId: 'erase-write-1',
+      }),
+    );
+    expect(erased.state.board.contents).toHaveLength(0);
+    expect(
+      erased.state.board.history?.actions.find((item) => item.eventId === 'erase-write-1')
+        ?.targetEventId,
+    ).toBe('write-1');
+    expectReason(
+      () =>
+        store.collaboration.applyTeaching(
+          command({
+            operation: { kind: 'erase', actionEventId: 'write-1' },
+            expectedRevision: erased.roomRevision,
+            expectedSeq: 5,
+            requestId: 'erase-write-2',
+            eventId: 'erase-write-2',
+          }),
+        ),
+      'collab_board_content_already_erased',
+    );
+    expectReason(
+      () =>
+        store.collaboration.applyTeaching(
+          command({
+            operation: { kind: 'erase', actionEventId: 'event_not_written' },
+            expectedRevision: erased.roomRevision,
+            expectedSeq: 5,
+            requestId: 'erase-missing',
+            eventId: 'erase-missing',
+          }),
+        ),
+      'collab_board_action_not_found',
+    );
+
+    // 内容必须挂在当前场景的已审核陈述上。
+    expectReason(
+      () =>
+        store.collaboration.applyTeaching(
+          command({
+            operation: {
+              kind: 'write',
+              statementId: 'statement-unknown',
+              content: { kind: 'text', text: '凭空内容' },
+            },
+            expectedRevision: erased.roomRevision,
+            expectedSeq: 5,
+            requestId: 'write-unknown',
+            eventId: 'write-unknown',
+          }),
+        ),
+      'collab_statement_not_in_scene',
+    );
+
+    // 切场景清空公共白板内容。
+    const moved = store.collaboration.syncScene({
+      roomId: ROOM,
+      actorUid: OWNER,
+      sceneId: 'scene_2',
+      lessonId: 'lesson-1',
+      lessonVersion: 1,
+      expectedRevision: erased.roomRevision,
+      expectedSeq: 5,
+      eventId: 'move-after-board',
+      requestId: 'move-after-board',
+    });
+    expect(moved.room.currentSceneId).toBe('scene_2');
+    expect(store.collaboration.teachingView(ROOM).state.board.contents).toEqual([]);
   });
 });

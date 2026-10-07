@@ -33,8 +33,10 @@ const secret = z.string().regex(/^[a-f0-9]{64}$/);
 /**
  * 协作协议版本。客户端与服务端握手时必须一致；不一致明确拒绝，不猜测兼容。
  * 变更共享命令形状或认证语义时递增。
+ *
+ * v4：公共教学新增 `write`/`erase` 白板内容动作与 `board.contents`。
  */
-export const COLLAB_PROTOCOL_VERSION = 3;
+export const COLLAB_PROTOCOL_VERSION = 4;
 
 /** 协作服务健康检查与握手：端口、协议版本、实例标识、是否开发模式。 */
 export const collabHealthSchema = z
