@@ -24,7 +24,11 @@
       "required": true,
       "status": "partial",
       "phase": "F",
-      "upstreamPaths": ["app/api/stages", "app/api/folders", "lib/persistence/library.ts"],
+      "upstreamPaths": [
+        "app/api/stages",
+        "app/api/folders",
+        "lib/persistence/library.ts"
+      ],
       "acceptance": "可列出并打开项目课程，显示真实场景和资源状态",
       "evidence": [
         "课程库浏览已落地（OMA-001）：apps/learning/app/workbench/library/page.tsx 读取项目分区权威存储（store.listClassroomDocuments + listClassroomSceneSources + listClassroomAssetBindings），列出文档名称/编号、正式或演示范围、场景数与来源/资源绑定数，并可从文档进入已发布课堂；搜索/筛选按名称/描述/编号缩小列表（apps/learning/lib/document-library.ts 的 groupLibraryDocuments/filterLibraryGroups 为纯函数）。tests/lesson-library-page.test.ts 覆盖分组/筛选与页面呈现；页面读取不产生组织写入。仍缺跨项目/全局课程库与发布访问状态（OMA-003），故为 partial。"
@@ -37,7 +41,11 @@
       "required": true,
       "status": "partial",
       "phase": "F",
-      "upstreamPaths": ["app/api/stages", "app/api/folders", "lib/persistence/library.ts"],
+      "upstreamPaths": [
+        "app/api/stages",
+        "app/api/folders",
+        "lib/persistence/library.ts"
+      ],
       "acceptance": "文件夹创建重命名删除、课程归档和空文件夹可重启读回",
       "evidence": [
         "SQLite schema v8 和 /api/folders 支持项目分区创建、重命名、成员归组/取消分组与 ungroup 删除，tests/classroom-document-organization.test.ts 回归通过；remove 级联删除明确拒绝。",
@@ -51,7 +59,11 @@
       "required": true,
       "status": "planned",
       "phase": "F",
-      "upstreamPaths": ["app/api/stages", "app/api/folders", "lib/persistence/library.ts"],
+      "upstreamPaths": [
+        "app/api/stages",
+        "app/api/folders",
+        "lib/persistence/library.ts"
+      ],
       "acceptance": "发布版本冻结，撤回后访问规则生效且保留历史",
       "evidence": []
     },
@@ -510,7 +522,8 @@
       ],
       "acceptance": "真实模型/已审讲解执行，等待本人时不空转",
       "evidence": [
-        "公共教学子集已接通（SYNC-01 / CHAT-01，协议 3/4）：apps/learning/components/collab-teaching-panel.tsx 通过受控在线命令选择冻结已审核 statementId，协作服务从共享快照读取正文和适用条件，拒绝任意正文/跨场景知识引用；双方显示教师（已审核课程）及来源。按目标 UID 等待、本人确认、房主显式释放或取消，等待期间服务端阻断推进。tests/collaboration-teaching-storage.test.ts 与 scripts/collab-two-client-link.mjs 覆盖权限、幂等及恢复。生成式教师、自由问答、AI 同学公共讨论与真人双设备仍未验收，故为 partial。"
+        "公共教学子集已接通（SYNC-01 / CHAT-01，协议 3/4）：apps/learning/components/collab-teaching-panel.tsx 通过受控在线命令选择冻结已审核 statementId，协作服务从共享快照读取正文和适用条件，拒绝任意正文/跨场景知识引用；双方显示教师（已审核课程）及来源。按目标 UID 等待、本人确认、房主显式释放或取消，等待期间服务端阻断推进。tests/collaboration-teaching-storage.test.ts 与 scripts/collab-two-client-link.mjs 覆盖权限、幂等及恢复。生成式教师、自由问答、AI 同学公共讨论与真人双设备仍未验收，故为 partial。",
+        "生成式教师/AI 同学公共输出的合同与领域已落地（协议 4 之上新增通道）：packages/study-contracts/src/collaboration-teaching-ai.ts 定义候选(≤50)与公共输出(≤200)状态、gate、命令；packages/study-domain/src/collaboration-teaching-ai.ts 的 collabTeachingAiGate 在等待本人期间于调用模型之前即拒绝(不空转)、record-ai-candidate 只落待核区、broadcast-ai-candidate 只引用 candidateId 且正文从已核候选读出、公共投影白名单剔除模型/审核/私人字段并写死 AI 标注。tests/collaboration-teaching-ai.test.ts 27 项覆盖。存储/路由/面板接入与真实 provider 仍待完成，故仍为 partial。"
       ]
     },
     {
@@ -805,7 +818,9 @@
         "app/api/pbl/v2"
       ],
       "acceptance": "真实PBL场景，有项目背景、角色与目标",
-      "evidence": []
+      "evidence": [
+        "PBL 项目制学习合同与领域已落地：packages/study-contracts/src/formal-interaction-pbl.ts 定义冻结项目（真实情境/背景/目标/角色席位/阶段任务/里程碑/评分依据 rubrics）与公开投影（结构上无 rubrics、里程碑无 rubricIds）；packages/study-domain/src/formal-interaction-pbl.ts 的 assertPblDefinitionCoherent/Frozen 保证定义闭环且只有冻结复验过的定义驱动判定。tests/pbl-interaction.test.ts 以「校园食堂浪费调研与提案」真实项目夹具覆盖。存储/路由/界面接入仍待完成，故仍为 partial。"
+      ]
     },
     {
       "id": "OMA-047",
@@ -820,7 +835,9 @@
         "app/api/pbl/v2"
       ],
       "acceptance": "任务状态和本人交付重启可读，AI贡献单独标记",
-      "evidence": []
+      "evidence": [
+        "PBL 阶段任务/里程碑/交付物判定已落地：pblTaskViews/pblMilestoneEvaluations 完全由记录推导（重启可读）；pblDeliverableRecordSchema 的 actorType 为 human_learner 字面量，AI 贡献走 pblAiContributionRecordSchema（只能 teacher_ai|peer_ai 且需认领），未认领贡献不进 ownSubmissionCount；reportedStatus 枚举不含 verified。tests/pbl-interaction.test.ts 覆盖。真实持久化与界面仍待接入。"
+      ]
     },
     {
       "id": "OMA-048",
@@ -835,7 +852,9 @@
         "app/api/pbl/v2"
       ],
       "acceptance": "反馈依据真实产物，评价候选和确定性检查分开",
-      "evidence": []
+      "evidence": [
+        "PBL 导师指导与项目评价判定已落地：assertPblFeedbackGrounded 要求反馈逐条绑定真实产物；「评价候选」(pblAssessmentCandidateSchema，无 passed/score) 与「确定性检查」(runPblDeterministicCheck) 两条线并列，reached 只由确定性检查决定，人工采纳(pblEvaluationAcceptanceRecordSchema)不改 reached；assertPblAcceptanceTargetsAssessment 校验采纳指向。tests/pbl-interaction.test.ts 覆盖。"
+      ]
     },
     {
       "id": "OMA-049",
@@ -850,7 +869,9 @@
         "app/api/pbl/v2"
       ],
       "acceptance": "模拟器/开任务/任务更新均实际运行且守权限",
-      "evidence": []
+      "evidence": [
+        "PBL 模拟器与任务工具判定已落地：pblRolePermissions 按席位种类派生权限（canReachMilestone:false 字面量），runPblSimulationStep 真推进模拟状态且逐次守权限，assertPblSimulationCannotWriteFormal 拦截演练写正式记录；模拟器与正式记录共用同一套生产判定（pblEvidenceFromRecord/pblEvidenceFromStep）。tests/pbl-interaction.test.ts 覆盖。真实模拟器界面与存储仍待接入。"
+      ]
     },
     {
       "id": "OMA-050",
@@ -1058,7 +1079,9 @@
         "lib/config/token-plan-presets.ts"
       ],
       "acceptance": "真实任务与产物落盘，生成失败不计成功",
-      "evidence": []
+      "evidence": [
+        "媒体生成图像合同与领域已落地：packages/study-contracts/src/media-generation.ts 定义 imageGenerationCommandSchema（prompt≤8k、count≤16）与 mediaProductRefSchema（sha256+byteLength+项目内相对路径，reviewStatus 恒 pending_review、authority 恒 false）；packages/study-domain/src/media-generation.ts 的 assertMediaGenerationAdmitted（缺 provider/断网→派发前 StudyError；本机 ComfyUI 允许离线）、settleMediaTask（provider 报成功但产物缺失按 failed；failed/cancel 拒绝任何产物；终态不可二次结算）。tests/media-generation.test.ts 覆盖。真实落盘与 ComfyUI 调用、路由/存储仍待接入。"
+      ]
     },
     {
       "id": "OMA-061",
@@ -1076,7 +1099,9 @@
         "lib/config/token-plan-presets.ts"
       ],
       "acceptance": "真实轮询/取消/超时，视频资源可重新播放",
-      "evidence": []
+      "evidence": [
+        "媒体生成视频合同与领域已落地：videoGenerationCommandSchema + 轮询/取消/超时判定 mediaPollDecision（顺序取消>超时>次数，末次间隔压进剩余墙钟）、mediaPollOutcome、cancelMediaTask、mediaResumePolicy；失败不伪造产物与进度。tests/media-generation.test.ts 覆盖。真实轮询 provider 与视频落盘仍待接入。"
+      ]
     },
     {
       "id": "OMA-062",
@@ -1094,7 +1119,9 @@
         "lib/config/token-plan-presets.ts"
       ],
       "acceptance": "文本与音频同步，多个角色音色可区分",
-      "evidence": []
+      "evidence": [
+        "TTS 生成合同与领域已落地：ttsGenerationCommandSchema（text≤20k、playbackRate 0.5–2、voiceProfile 引用）与 mediaVoiceProfileSchema（preset/design/clone + 参考音频资产/摘要）。领域判定保证合成产物只进待核候选、缺 provider 明确失败。tests/media-generation.test.ts 覆盖。真实 TTS provider 合成与音频落盘仍待接入。"
+      ]
     },
     {
       "id": "OMA-063",
@@ -1112,7 +1139,9 @@
         "lib/config/token-plan-presets.ts"
       ],
       "acceptance": "音色参考资源持久，实际合成可播放",
-      "evidence": []
+      "evidence": [
+        "音色管理合同已落地：mediaVoiceProfileSchema 支持 preset/design/clone 三来源，clone 需持久参考音频资产引用与摘要，音色参考资源与产物分离。tests/media-generation.test.ts 覆盖。真实音色参考持久化与合成可播放仍待接入。"
+      ]
     },
     {
       "id": "OMA-064",
@@ -1130,7 +1159,9 @@
         "lib/config/token-plan-presets.ts"
       ],
       "acceptance": "录音授权、转写与发送链实际可用",
-      "evidence": []
+      "evidence": [
+        "ASR 生成合同与领域已落地：asrGenerationCommandSchema + assertMediaGenerationAdmitted 对麦克风未授权在派发前明确拒绝；本地 ASR 后端允许离线。tests/media-generation.test.ts 覆盖。真实录音授权/转写/发送链仍待接入。"
+      ]
     },
     {
       "id": "OMA-065",
@@ -1148,7 +1179,9 @@
         "lib/config/token-plan-presets.ts"
       ],
       "acceptance": "LLM/image/video/TTS/ASR实际用量可重算",
-      "evidence": []
+      "evidence": [
+        "多模态用量合同与领域已落地：mediaUsageObservationSchema/mediaUsageLedgerSchema 分 actual/estimated/unknown/unsettled 四档，summarizeMediaUsage/mediaLedgerForRun 纯重算且与顺序无关，未知按整笔保留不按 0，结算超预占直接拒绝；mediaTextLedgerEntry 把文本维度接入既有 model_usage_calls 口径。tests/media-usage.test.ts 覆盖。持久化与查看界面仍待接入。"
+      ]
     },
     {
       "id": "OMA-066",
@@ -1184,7 +1217,9 @@
         "render-service"
       ],
       "acceptance": "文字/公式/图像/图表可编辑，不把课件整体栅格化",
-      "evidence": []
+      "evidence": [
+        "可编辑 PPTX 导出结构模型已落地：packages/study-domain/src/lesson-export-pptx.ts 的 buildPptxDeck 把每个场景逐元素映射为离散可编辑形状（text/picture/formula/chart/table/line），富文本解析为运行段、数学保留 LaTeX 源(native-math，无源退化 editable-text 并登记 formula-text-fallback)，全部回指 sourceElementId；assertPptxDeckEditable 拒绝 whole_slide_raster/empty_slide/content_loss/dropped_elements；产物字段收口在 PPTX_MODEL_KEYS 白名单，答案/解析/分值结构上无处存放。tests/lesson-export-pptx.test.ts 覆盖。字节级 PPTX 序列化与路由/存储接入仍待完成，故仍为 partial。"
+      ]
     },
     {
       "id": "OMA-068",
@@ -1243,7 +1278,8 @@
       ],
       "acceptance": "KaTeX/Three.js/addons/字体/脚本资源逐一核对",
       "evidence": [
-        "离线资源清单逐项登记：buildLessonExport 在 manifest.resources 里区分已内联的正式绑定图片（含 sha256）与未内联的 katex、three.js 和 formal-interaction 宿主依赖（status=missing 并附缺口说明）。图片只消费实际打包映射，不接受 assets/ 前缀伪引用。重复导出为可重建派生视图。KaTeX/Three.js/addons/字体的实际内联与通用互动外部依赖核对尚未完成，故为 partial。"
+        "离线资源清单逐项登记：buildLessonExport 在 manifest.resources 里区分已内联的正式绑定图片（含 sha256）与未内联的 katex、three.js 和 formal-interaction 宿主依赖（status=missing 并附缺口说明）。图片只消费实际打包映射，不接受 assets/ 前缀伪引用。重复导出为可重建派生视图。KaTeX/Three.js/addons/字体的实际内联与通用互动外部依赖核对尚未完成，故为 partial。",
+        "离线资源内联与重导出：现有静态导出资源清单已落地。本批次新增 classifyMediaReference/collectPptxAssetRefs 用于逐一核对资源（tests/lesson-export-portability.test.ts）；KaTeX/Three.js/addons/字体/脚本资源逐一核对与重导出仍待完成，故仍为 partial。"
       ]
     },
     {
@@ -1262,7 +1298,9 @@
         "render-service"
       ],
       "acceptance": "Chromium/FFmpeg资源声明，真实可播放视频与失败恢复",
-      "evidence": []
+      "evidence": [
+        "MP4 导出任务模型已落地：packages/study-domain/src/lesson-export-mp4.ts 定义渲染计划与任务状态机 draft→queued→preparing→(blocked|capturing→encoding→succeeded|failed|cancelled)，applyMp4JobEvent 为唯一推进入口，必需运行时不到位只能 blocked，未带 playable+sha256 的结果不能算成功；recoverMp4Job 判定 replan/none/publish-verified-output/resume-from-segment，失败分类决定可重试或 needs-attention。tests/lesson-export-mp4.test.ts 覆盖。真实 Chromium/FFmpeg 渲染、任务持久化与路由仍待接入，故仍为 partial。"
+      ]
     },
     {
       "id": "OMA-072",
@@ -1517,7 +1555,10 @@
       "required": true,
       "status": "planned",
       "phase": "C",
-      "upstreamPaths": ["lib/types/widgets.ts", "skills/agent-runtime/vocational"],
+      "upstreamPaths": [
+        "lib/types/widgets.ts",
+        "skills/agent-runtime/vocational"
+      ],
       "acceptance": "技能步骤、工具和成功条件可操作并保存真实本人记录",
       "evidence": []
     }
@@ -1647,12 +1688,27 @@
     },
     "search": {
       "source": "lib/web-search/types.ts",
-      "ids": ["tavily", "exa", "bocha", "brave", "baidu", "claude", "minimax", "doubao", "searxng"],
+      "ids": [
+        "tavily",
+        "exa",
+        "bocha",
+        "brave",
+        "baidu",
+        "claude",
+        "minimax",
+        "doubao",
+        "searxng"
+      ],
       "customExtension": false
     },
     "pdf": {
       "source": "lib/pdf/types.ts",
-      "ids": ["unpdf", "mineru", "mineru-cloud", "alidocmind"],
+      "ids": [
+        "unpdf",
+        "mineru",
+        "mineru-cloud",
+        "alidocmind"
+      ],
       "customExtension": false
     }
   }

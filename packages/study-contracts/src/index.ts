@@ -249,3 +249,67 @@ export type {
   LessonExportFormat, OfflineResourceStatus, OfflineResourceKind,
   LessonExportResourceDto, LessonExportManifest, LessonExportInput, LessonExportResultDto,
 } from './lesson-export';
+
+// PBL 项目制学习（OMA-046~049）
+export {
+  PBL_ROLE_KINDS, PBL_TASK_STATUSES, PBL_REPORTABLE_TASK_STATUSES, PBL_CHECK_KINDS,
+  PBL_ARTIFACT_KINDS, PBL_JUDGEMENT_LEVELS, PBL_SIMULATION_OPERATIONS, PBL_WRITE_OPERATIONS,
+  pblDeterministicCheckSchema, pblRubricSchema, pblProjectRoleSchema, pblProjectGoalSchema,
+  pblPhaseTaskSchema, pblMilestoneSchema, pblProjectDefinitionSchema, pblProjectPublicDefinitionSchema,
+  pblFrozenSchema, pblBindingSchema, pblDeliverablePayloadSchema, pblDeliverableRecordSchema,
+  pblContributionPayloadSchema, pblAiContributionRecordSchema, pblFeedbackPayloadSchema,
+  pblMentorFeedbackRecordSchema, pblAssessmentCandidateSchema, pblAssessmentPayloadSchema,
+  pblAssessmentRecordSchema, pblEvaluationAcceptanceRecordSchema, pblAcceptancePayloadSchema,
+  pblAcknowledgeRecordSchema, pblTaskProgressRecordSchema, pblRecordSchema, pblReceiptSchema,
+  pblDeterministicOutcomeSchema, pblTaskViewSchema, pblMilestoneEvaluationSchema,
+  pblDeliverableDraftSchema, pblRunEvidenceSchema, pblSimulationStepSchema, pblSimulationStepSchemaChecked,
+  pblSimulationStateSchema, pblReviewCommandSchema, pblDraftCommandSchema, pblSubmitCommandSchema,
+  pblContributeCommandSchema, pblAcknowledgeCommandSchema, pblTaskCommandSchema,
+  pblFeedbackRequestCommandSchema, pblFeedbackCommandSchema, pblAssessCommandSchema,
+  pblAcceptEvaluationCommandSchema, pblSimulateCommandSchema, pblCommandSchema,
+  pblProjectStateSchema, pblPublicProjectStateSchema,
+} from './formal-interaction-pbl';
+export type {
+  PblRoleKind, PblTaskStatus, PblReportableTaskStatus, PblCheckKind, PblArtifactKind,
+  PblJudgementLevel, PblSimulationOperation, PblDeterministicCheckDto, PblRubricDto, PblProjectRoleDto,
+  PblProjectGoalDto, PblPhaseTaskDto, PblMilestoneDto, PblProjectDefinitionDto, PblProjectPublicDefinitionDto,
+  PblFrozenDto, PblBindingDto, PblDeliverablePayloadInput, PblDeliverableRecordDto, PblContributionPayloadInput,
+  PblAiContributionRecordDto, PblFeedbackPayloadInput, PblMentorFeedbackRecordDto, PblAssessmentCandidateDto,
+  PblAssessmentPayloadInput, PblAssessmentRecordDto, PblEvaluationAcceptanceRecordDto, PblAcceptancePayloadInput,
+  PblAcknowledgeRecordDto, PblTaskProgressRecordDto, PblRecordDto, PblReceiptDto, PblDeterministicOutcomeDto,
+  PblTaskViewDto, PblMilestoneEvaluationDto, PblDeliverableDraftDto, PblRunEvidenceDto, PblSimulationStepInput,
+  PblSimulationStateDto, PblDraftCommandInput, PblCommand, PblWriteOperation, PblProjectStateDto,
+  PblPublicProjectStateDto,
+} from './formal-interaction-pbl';
+
+// 媒体生成：图像/视频/TTS/ASR 与多模态用量（OMA-060~065）
+export {
+  MEDIA_TASK_KIND, MEDIA_TASK_STATE, MEDIA_FAILURE_KIND, MEDIA_WORKFLOW_LOCATION, MEDIA_VOICE_SOURCE,
+  MEDIA_PLAYBACK_SPEED, MEDIA_POLL_LIMITS, MEDIA_PRIMARY_USAGE, mediaTokenUsageSchema, mediaTaskUsageSchema,
+  zeroMediaUsage, imageGenerationCommandSchema, videoGenerationCommandSchema, ttsGenerationCommandSchema,
+  asrGenerationCommandSchema, mediaGenerationCommandSchema, mediaProductRefSchema, mediaVoiceProfileSchema,
+  mediaUsageObservationSchema, mediaUsageQuantitiesSchema, mediaUsageSummarySchema, mediaUsageLedgerSchema,
+} from './media-generation';
+export type {
+  MediaTaskKind, MediaTaskState, MediaFailureKind, MediaWorkflowLocation, MediaVoiceSource,
+  MediaTokenUsageDto, MediaTaskUsageDto, ImageGenerationCommandDto, VideoGenerationCommandDto,
+  TtsGenerationCommandDto, AsrGenerationCommandDto, MediaGenerationCommandDto, MediaProductRefDto,
+  MediaVoiceProfileDto, MediaUsageObservationDto, MediaUsageQuantitiesDto, MediaUsageSummaryDto,
+  MediaUsageLedgerDto,
+} from './media-generation';
+
+// 生成式教师 / AI 同学公共输出（OMA-029）
+export {
+  COLLAB_TEACHING_AI_CANDIDATE_LIMIT, COLLAB_TEACHING_AI_OUTPUT_LIMIT, COLLAB_TEACHING_AI_BODY_MAX_LENGTH,
+  COLLAB_TEACHING_AI_INSTRUCTION_MAX_LENGTH, COLLAB_TEACHING_AI_NOTE_MAX_LENGTH, COLLAB_TEACHING_AI_SENDER_TYPES,
+  COLLAB_TEACHING_AI_SENDER_LABEL, COLLAB_TEACHING_AI_CANDIDATE_STATUS, COLLAB_TEACHING_AI_GATE_REASONS,
+  collabTeachingAiCandidateSchema, collabTeachingAiPublicOutputSchema, collabTeachingAiOperationSchema,
+  collabTeachingAiCommandSchema, collabTeachingAiStateSchema, collabTeachingAiGateSchema,
+  collabTeachingAiViewSchema, collabTeachingAiResultSchema, createCollabTeachingAiInitialState,
+} from './collaboration-teaching-ai';
+export type {
+  CollabTeachingAiSenderType, CollabTeachingAiCandidateStatus, CollabTeachingAiGateReason,
+  CollabTeachingAiCandidateDto, CollabTeachingAiPublicOutputDto, CollabTeachingAiOperation,
+  CollabTeachingAiCommandInput, CollabTeachingAiStateDto, CollabTeachingAiGateDto, CollabTeachingAiViewDto,
+  CollabTeachingAiResultDto,
+} from './collaboration-teaching-ai';
