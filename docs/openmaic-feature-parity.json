@@ -510,7 +510,7 @@
       ],
       "acceptance": "真实模型/已审讲解执行，等待本人时不空转",
       "evidence": [
-        "公共教学子集已接通（SYNC-01 / CHAT-01，协议2）：apps/learning/components/collab-teaching-panel.tsx 通过受控在线命令选择冻结已审核 statementId，协作服务从共享快照读取正文和适用条件，拒绝任意正文/跨场景知识引用；双方显示教师（已审核课程）及来源。按目标 UID 等待、本人确认、房主显式释放或取消，等待期间服务端阻断推进。tests/collaboration-teaching-storage.test.ts 与 scripts/collab-two-client-link.mjs 覆盖权限、幂等及恢复。生成式教师、自由问答、AI 同学公共讨论与真人双设备仍未验收，故为 partial。"
+        "公共教学子集已接通（SYNC-01 / CHAT-01，协议 3/4）：apps/learning/components/collab-teaching-panel.tsx 通过受控在线命令选择冻结已审核 statementId，协作服务从共享快照读取正文和适用条件，拒绝任意正文/跨场景知识引用；双方显示教师（已审核课程）及来源。按目标 UID 等待、本人确认、房主显式释放或取消，等待期间服务端阻断推进。tests/collaboration-teaching-storage.test.ts 与 scripts/collab-two-client-link.mjs 覆盖权限、幂等及恢复。生成式教师、自由问答、AI 同学公共讨论与真人双设备仍未验收，故为 partial。"
       ]
     },
     {
@@ -568,7 +568,8 @@
       "evidence": [
         "聚焦分支已接通真实画布：白板 focus 动作经服务端核对元素必须存在于该冻结课件（store.assertClassroomBoardBinding），审核播放后由 apps/learning/lib/classroom/board-focus.ts 取「本场景 seq 最大的效果」，SceneRenderer 用上游 SlideCanvas 的 effects 画高亮框、线型元素退化为聚光，文档中不存在的 id 一律不高亮；切场景即收回。scripts/smoke-classroom-stage.cjs 断言 [data-canvas-focus]、slide-element 存在与 .highlight-overlay 出现，纯函数分支由 tests/classroom-board-focus.test.ts 覆盖。",
         "激光笔与按动作撤销/重放的聚焦控制已落地（OMA-032）：packages/study-contracts/src/classroom-board.ts 增 laser 内容类型（与 focus 同指向真实元素），apps/learning/lib/classroom/board-focus.ts 的 resolveActiveBoardLaser 单独解析激光笔、boardFocusState/previousBoardFocusSeq 给出历史与生效位，resolveActiveBoardFocus 支持 atSeq 指针（null=收回）；课堂面板提供「回到此条/收回」且不删除已提交效果，画布按生效 seq 高亮并在收回时清空。scripts/smoke-classroom-stage.cjs 新增 board laser 断言（原生冒烟 37 组），tests/classroom-board-focus.test.ts 8 项覆盖。",
-        "公共标记同步子集：协作服务 /collab/v1/teaching 以当前冻结元素ID执行 focus/laser/clear-board，同事务提交房间版本、事件、状态摘要与收据；CollabSharedScene 只将标记作用于匹配当前场景的真实元素，切场景原子清标记。tests/collab-shared-scene.test.ts、tests/collab-teaching-panel.test.ts 和双客户端脚本覆盖呈现/双端读回/重启恢复。协议3增加当前场景标记动作逐项撤销/重放，按原actionEventId保留applied状态并从旧标记基线按原序重算；200项上限、旧v1状态摘要兼容、原请求重试、越权/等待/跨场景拒绝与双客户端重启均有回归。完整文字/公式/图形与对应动作编排、真人双设备仍保留。"
+        "公共标记同步子集：协作服务 /collab/v1/teaching 以当前冻结元素ID执行 focus/laser/clear-board，同事务提交房间版本、事件、状态摘要与收据；CollabSharedScene 只将标记作用于匹配当前场景的真实元素，切场景原子清标记。tests/collab-shared-scene.test.ts、tests/collab-teaching-panel.test.ts 和双客户端脚本覆盖呈现/双端读回/重启恢复。协议3增加当前场景标记动作逐项撤销/重放，按原actionEventId保留applied状态并从旧标记基线按原序重算；200项上限、旧v1状态摘要兼容、原请求重试、越权/等待/跨场景拒绝与双客户端重启均有回归。",
+        "公共白板文字/公式/图形与动作编排（协议4）：新增 write（写入文字/公式/简图）与 erase（按原动作 eventId 擦除）动作及 board.contents；write 的内容必须挂在当前场景关联知识点的冻结已审核 statementId 上，文字/公式/简图沿用本地白板同一套 HTML/脚本与 LaTeX 宏过滤（公共通道不接受任意正文）。生效白板由基线按原序重放生效动作得到：撤销 write 使内容消失、重放按原序恢复、erase 移除一条内容并拒绝重复/未知目标；动作上限、原请求重试与重启恢复沿用协议3。界面新增板书编辑器（文字/公式/简图草稿解析）与逐条擦除，共享场景渲染已写内容，普通成员只看不写。tests/collaboration-teaching-storage.test.ts、tests/collab-teaching-panel.test.ts 与双客户端脚本（51/51）覆盖写入/擦除/撤销/重放/幂等/负例。生成式教师与真人双设备仍保留。"
       ]
     },
     {
