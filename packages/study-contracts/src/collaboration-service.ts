@@ -16,6 +16,7 @@
  */
 
 import { z } from 'zod';
+import { collabTeachingOperationSchema } from './collaboration-teaching';
 import { learnerUidSchema } from './learner-profile';
 import { classroomSharedCourseSchema } from './classroom-room';
 import {
@@ -33,7 +34,7 @@ const secret = z.string().regex(/^[a-f0-9]{64}$/);
  * 协作协议版本。客户端与服务端握手时必须一致；不一致明确拒绝，不猜测兼容。
  * 变更共享命令形状或认证语义时递增。
  */
-export const COLLAB_PROTOCOL_VERSION = 1;
+export const COLLAB_PROTOCOL_VERSION = 3;
 
 /** 协作服务健康检查与握手：端口、协议版本、实例标识、是否开发模式。 */
 export const collabHealthSchema = z
@@ -211,6 +212,18 @@ export type CollabSnapshotViewDto = z.infer<typeof collabSnapshotViewSchema>;
  * 本地冻结课程读出，界面只发起意图。
  */
 export const collabOnlineCommandSchema = z.discriminatedUnion('action', [
+  z
+    .object({
+      action: z.literal('teaching'),
+      roomId: id,
+      sceneId: id,
+      expectedRevision: z.number().int().positive(),
+      expectedSeq: z.number().int().positive(),
+      eventId: id,
+      requestId: id,
+      operation: collabTeachingOperationSchema,
+    })
+    .strict(),
   z.object({ action: z.literal('enable'), requestId: id }).strict(),
   z.object({ action: z.literal('revoke-credential'), requestId: id }).strict(),
   z

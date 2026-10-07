@@ -62,7 +62,15 @@ const snapshot: ClassroomSharedCourseDto = {
   evidence: {
     planVersion: 1,
     knowledgeVersions: [{ knowledgeId: 'k', revision: 1 }],
-    statements: [],
+    statements: [
+      {
+        statementId: 'statement-intro',
+        knowledgeId: 'k',
+        text: '经审核的引入陈述',
+        conditions: '',
+        evidence: [{ materialId: 'm', revision: 1, segmentId: 's', use: 'concept_basis' }],
+      },
+    ],
     segments: [{ materialId: 'm', revision: 1, segmentId: 's', fingerprint: digest, text: '证据' }],
   },
   sceneSources: [
@@ -94,5 +102,26 @@ describe('共同课堂公共场景消费', () => {
       createElement(CollabSharedScene, { snapshot: null, sceneId: 'intro' }),
     );
     expect(absent).toContain('共享课程尚未读回');
+  });
+
+  it('只在教学状态属于当前场景时标注真实白板元素', () => {
+    const teaching = {
+      schemaVersion: 1 as const,
+      roomId: 'room',
+      sceneId: 'intro',
+      board: { focusElementId: 'e1', laserElementId: null },
+      waiting: null,
+      outputs: [],
+    };
+    const current = renderToStaticMarkup(
+      createElement(CollabSharedScene, { snapshot, sceneId: 'intro', teaching }),
+    );
+    const otherScene = renderToStaticMarkup(
+      createElement(CollabSharedScene, { snapshot, sceneId: 'quiz', teaching }),
+    );
+    expect(current).toContain('data-collab-focus="true"');
+    expect(current).toContain('教师聚焦');
+    expect(otherScene).not.toContain('data-collab-focus');
+    expect(otherScene).not.toContain('教师聚焦');
   });
 });

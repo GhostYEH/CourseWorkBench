@@ -39,6 +39,7 @@ import {
 } from '../lib/classroom/collab-panel-state';
 import { Notice } from './ui';
 import { CollabSharedScene } from './collab-shared-scene';
+import { CollabTeachingPanel, currentSceneTeaching } from './collab-teaching-panel';
 
 export interface CollabLessonOption {
   lessonId: string;
@@ -73,6 +74,7 @@ const emptyView = (): CollabOnlineViewDto => ({
   messages: { messages: [], tailSeq: 0 },
   events: { events: [], tailSeq: 0 },
   snapshot: null,
+  teaching: null,
 });
 
 export const CollabClassroomPanel = ({
@@ -364,6 +366,20 @@ export const CollabClassroomPanel = ({
     orderedScenes.length === 0
       ? null
       : (orderedScenes[currentSceneIndex + 1] ?? orderedScenes[0] ?? null);
+  const currentSceneId = view.room?.currentSceneId ?? null;
+  const teachingView = view.teaching;
+  const teachingScene = currentSceneTeaching(teachingView?.state ?? null, currentSceneId);
+  const teachingRevisionMatches =
+    teachingView !== null &&
+    view.room !== null &&
+    teachingView.roomRevision === view.room.revision &&
+    teachingScene !== null;
+  const teachingEnabled =
+    !onlineBlocked &&
+    roomActions.canSend &&
+    view.room?.status === 'active' &&
+    teachingRevisionMatches;
+  const waitingForPeer = teachingRevisionMatches && teachingScene?.waiting !== null;
 
   return (
     <section data-collab-panel className="card">
@@ -662,8 +678,30 @@ export const CollabClassroomPanel = ({
 
           <CollabSharedScene
             snapshot={view.snapshot?.snapshot ?? null}
-            sceneId={view.room?.currentSceneId ?? null}
+            sceneId={currentSceneId}
+            teaching={teachingScene}
           />
+          {view.room?.status === 'active' ? (
+            <CollabTeachingPanel
+              snapshot={view.snapshot?.snapshot ?? null}
+              sceneId={currentSceneId}
+              selfUid={selfUid}
+              owner={view.room.ownerUid === selfUid}
+              enabled={teachingEnabled}
+              members={view.members}
+              state={teachingScene}
+              onOperation={(operation) => {
+                if (!teachingEnabled || !view.room || !currentSceneId) return;
+                void command(apiResponses.collabOnlineWrite, {
+                  action: 'teaching',
+                  roomId: activeRoomId,
+                  sceneId: currentSceneId,
+                  expectedRevision: view.room.revision,
+                  operation,
+                });
+              }}
+            />
+          ) : null}
           <div data-collab-events>
             <p className="hint">房间事件（{view.events.events.length} 条）</p>
             {view.events.events.map((item) => (
@@ -676,7 +714,13 @@ export const CollabClassroomPanel = ({
                 type="button"
                 className="btn"
                 data-collab-scene-event
-                disabled={onlineBlocked || !roomActions.canSend || !nextScene}
+                disabled={
+                  onlineBlocked ||
+                  !roomActions.canSend ||
+                  !nextScene ||
+                  waitingForPeer ||
+                  (teachingView !== null && !teachingRevisionMatches)
+                }
                 onClick={() =>
                   void command(apiResponses.collabOnlineWrite, {
                     action: 'scene',

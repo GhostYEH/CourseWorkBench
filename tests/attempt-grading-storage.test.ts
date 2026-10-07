@@ -1089,6 +1089,7 @@ describe('production shared grading budget regressions', () => {
         'ALTER TABLE lesson_reviews DROP COLUMN plan_revision; ALTER TABLE lesson_reviews DROP COLUMN plan_digest;',
       );
       // v30：协作权威表（INVITE-01/SYNC-01/CHAT-01）；先删引用 collab_rooms 的子表再删父表。
+      db.exec('DROP TABLE IF EXISTS collab_teaching_states;');
       db.exec(
         'DROP TABLE IF EXISTS collab_room_members; DROP TABLE IF EXISTS collab_room_events; DROP TABLE IF EXISTS collab_room_messages; DROP TABLE IF EXISTS collab_invitations; DROP TABLE IF EXISTS collab_command_receipts; DROP TABLE IF EXISTS collab_rooms; DROP TABLE IF EXISTS collab_registrations;',
       );

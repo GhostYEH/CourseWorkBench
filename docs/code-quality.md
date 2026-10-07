@@ -2,6 +2,17 @@
 
 本项目按职责分层，跨层依赖应朝向稳定契约：`study-contracts` 保存共享类型与 IPC 名称，`study-domain` 保存不依赖 Electron、文件系统或 UI 的规则，`study-storage` 实现持久化，应用层编排流程，Electron 主进程负责操作系统权限和窗口生命周期。底层包不要反向依赖应用层。
 
+## 已核对整改与剩余门禁（2026-10-06）
+
+| ID | 已完成的原定整改 | 仍需遵守/推进 |
+| --- | --- | --- |
+| N1 | ~~apiFetch 对成功/失败 envelope 和业务 DTO 做运行时 schema 校验，拒绝畸形响应~~（[客户端回归](../tests/api-client.test.ts)） | 新消费者继续复用合同；上游原始响应例外仍独立校验 |
+| N3 | ~~实际 native handler 参数/返回值接 IPC 合同、独立 @ts-check 与漂移反例~~（[真实实现检查](../scripts/quality/ipc-contract.test.mjs)） | 范围限原生 handler，全部 CJS 类型覆盖未完成 |
+| N8 | ~~既有计划/run/步骤收据等 JSON 的版本化 schema 与权威列损坏拒绝~~（[JSON](../tests/json-codec.test.ts)、[权威 JSON](../tests/storage-authoritative-json.test.ts)、[计划/run](../tests/plan-run-roles.test.ts)） | 新结构/迁移继续补消费者校验，不因原问题关闭而放宽权威边界 |
+| N9 | ~~ESLint/Hooks、限定格式、分层依赖与原生 IPC 门禁接入~~ | learning/server.mjs 和其余历史脚本的语义 lint、完整 CJS 类型覆盖及明确格式范围仍待补 |
+
+原定问题不重复派发；门禁要求持续有效。具体证据见[收尾记录](closeout-2026-10-06.md)，剩余范围见[待办](待办事项.md)。
+
 ## 类型与边界
 
 - TypeScript 开启 `strict`、`noUncheckedIndexedAccess` 和未使用变量检查。优先为输入、返回值和外部数据定义具体类型。

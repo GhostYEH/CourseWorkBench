@@ -1,5 +1,10 @@
 [
   "package.json",
+  "packages/study-contracts/src/collaboration-teaching.ts",
+  "packages/study-domain/src/collaboration-teaching.ts",
+  "apps/learning/components/collab-teaching-panel.tsx",
+  "tests/collaboration-teaching-storage.test.ts",
+  "tests/collab-teaching-panel.test.ts",
   "apps/learning/components/learner-profile.tsx",
   "tests/learner-profile-page.test.ts",
   "apps/learning/components/collab-shared-scene.tsx",

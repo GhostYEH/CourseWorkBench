@@ -6,11 +6,19 @@
  */
 
 export {
-  normalizeText, fingerprintOf, splitSegments, normalizeMaterial,
-  locateRawSegments, normalizeMaterialWithRawSpans,
+  normalizeText,
+  fingerprintOf,
+  splitSegments,
+  normalizeMaterial,
+  locateRawSegments,
+  normalizeMaterialWithRawSpans,
 } from './normalize';
 export type {
-  RawSegment, NormalizedMaterial, RawSegmentSpan, LocatedSegment, MaterialWithRawSpans,
+  RawSegment,
+  NormalizedMaterial,
+  RawSegmentSpan,
+  LocatedSegment,
+  MaterialWithRawSpans,
 } from './normalize';
 export { runMechanicalCheck, assertMechanicalPassed } from './source';
 export type { RegisteredSegment, MechanicalCheckInput, MechanicalCheckResult } from './source';
@@ -20,70 +28,160 @@ export { checkAdmission } from './admission';
 export type { KnowledgeRecord, AdmissionInput } from './admission';
 export { validateSyllabusMapping, computeSyllabusCoverage } from './syllabus';
 export {
-  buildEvidenceBundle, evidenceBundleDigest, statementIdOf, nextLessonVersion,
-  assertLessonPublishable, assertLessonReviewable, assertLessonTeachable,
-  assertLessonKnowledgeAdmitted, lessonReferencedKnowledgeIds,
+  buildEvidenceBundle,
+  evidenceBundleDigest,
+  statementIdOf,
+  nextLessonVersion,
+  assertLessonPublishable,
+  assertLessonReviewable,
+  assertLessonTeachable,
+  assertLessonKnowledgeAdmitted,
+  lessonReferencedKnowledgeIds,
 } from './lesson';
 export type {
-  BundleSegmentRecord, BundleQuestionRecord, EvidenceBundleInput, LessonPublishFacts,
+  BundleSegmentRecord,
+  BundleQuestionRecord,
+  EvidenceBundleInput,
+  LessonPublishFacts,
 } from './lesson';
 export {
-  findBundleStatement, revisedStatements, assertStatementRevisionDecidable, statementRevisionPrompt,
+  findBundleStatement,
+  revisedStatements,
+  assertStatementRevisionDecidable,
+  statementRevisionPrompt,
 } from './statement-revision';
 export type { RevisedStatementInput } from './statement-revision';
 export {
-  SCENE_PLAN_LIMIT, assertRichTextSafe, assertElementSafe, assertPlanGrounded,
-  normalizeSceneOrder, planSceneId, planElementId, replaceSceneElements, duplicateScene,
-  removeScene, reorderScenes, assertPlanEditable, assertCoursewareDecidable, coursewarePrompt,
-  scenePlanDigest, digestOfScenePlan, planSceneDigest, diffScenePlans, mergeScenePlans,
-  outlineOrderedScenes, assertPlanInteractionsReviewed, assertReviewMatchesPlan, assertPlanPublishable,
+  SCENE_PLAN_LIMIT,
+  assertRichTextSafe,
+  assertElementSafe,
+  assertPlanGrounded,
+  normalizeSceneOrder,
+  planSceneId,
+  planElementId,
+  replaceSceneElements,
+  duplicateScene,
+  removeScene,
+  reorderScenes,
+  assertPlanEditable,
+  assertCoursewareDecidable,
+  coursewarePrompt,
+  scenePlanDigest,
+  digestOfScenePlan,
+  planSceneDigest,
+  diffScenePlans,
+  mergeScenePlans,
+  outlineOrderedScenes,
+  assertPlanInteractionsReviewed,
+  assertReviewMatchesPlan,
+  assertPlanPublishable,
 } from './scene-plan';
-export type { PlanSceneChange, ScenePlanDiff, PlanMergeConflict, PlanMergeResult } from './scene-plan';
+export type {
+  PlanSceneChange,
+  ScenePlanDiff,
+  PlanMergeConflict,
+  PlanMergeResult,
+} from './scene-plan';
 export { assertModelCallAdmitted, modelCallQuotaRemaining } from './guard';
 export type { ModelCallGuardFacts } from './guard';
 export {
-  assertCardGrounded, assertCardApprovable, assertCardPlayable, assertSessionActive,
-  assertClassroomBudget, nextPlayableCard,
+  assertCardGrounded,
+  assertCardApprovable,
+  assertCardPlayable,
+  assertSessionActive,
+  assertClassroomBudget,
+  nextPlayableCard,
 } from './teaching';
 export type { ClassroomBudgetUse } from './teaching';
 export {
-  peerTurnCeiling, shouldPeerSpeak, assertPeerTurnAllowed, peerCapabilities,
-  assertPeerTurnGrounded, peerAttemptPartition, peerSchedule,
+  peerTurnCeiling,
+  shouldPeerSpeak,
+  assertPeerTurnAllowed,
+  peerCapabilities,
+  assertPeerTurnGrounded,
+  peerAttemptPartition,
+  peerSchedule,
 } from './peer';
 export type { PeerScheduleReason } from './peer';
 export {
-  assertCollabInvitationCreatable, assertCollabInvitationDecidable, assertCollabInvitationRevocable,
-  assertCollabMessageWritable, assertCollabEventAppendable, assertCollabResyncCursor,
-  assertCollabRoomStartable, assertCollabAdmission, assertCollabSnapshotMatch,
+  assertCollabInvitationCreatable,
+  assertCollabInvitationDecidable,
+  assertCollabInvitationRevocable,
+  assertCollabMessageWritable,
+  assertCollabEventAppendable,
+  assertCollabResyncCursor,
+  assertCollabRoomStartable,
+  assertCollabAdmission,
+  assertCollabSnapshotMatch,
   assertCollabTeacherEventAllowed,
 } from './collaboration';
-export type { CollabInvitationStatus, CollabInvitationFacts, CollabReadiness } from './collaboration';
+export type {
+  CollabInvitationStatus,
+  CollabInvitationFacts,
+  CollabReadiness,
+} from './collaboration';
 export {
-  collabSecretHash, collabSecretMatches, assertCollabRegistrationCreatable, assertCollabCredentialUsable,
-  assertCollabSessionIssuable, assertCollabCredentialRevocable, assertCollabSceneSyncable,
+  collabSecretHash,
+  collabSecretMatches,
+  assertCollabRegistrationCreatable,
+  assertCollabCredentialUsable,
+  assertCollabSessionIssuable,
+  assertCollabCredentialRevocable,
+  assertCollabSceneSyncable,
   assertCollabSnapshotUploadable,
 } from './collaboration-auth';
 export type { CollabCredentialStatus, CollabCredentialFacts } from './collaboration-auth';
+export { decideCollabTeaching, assertCollabBoardHistoryConsistent } from './collaboration-teaching';
 export {
-  reserveSharedModelTokens, sharedModelDeadlineMs, assertSharedModelSettlement,
-  assertSharedBudget, sharedBudgetRemaining, settlementMeasurement, costMeasurement, resumePolicyForUnsettled,
+  reserveSharedModelTokens,
+  sharedModelDeadlineMs,
+  assertSharedModelSettlement,
+  assertSharedBudget,
+  sharedBudgetRemaining,
+  settlementMeasurement,
+  costMeasurement,
+  resumePolicyForUnsettled,
 } from './budget';
 export {
-  formalInteractionHash, formalInteractionSceneId, formalInteractionDefinitionSessionId,
-  formalInteractionObservationSessionId, publicFormalInteractionDefinition, orderingMatches,
+  formalInteractionHash,
+  formalInteractionSceneId,
+  formalInteractionDefinitionSessionId,
+  formalInteractionObservationSessionId,
+  publicFormalInteractionDefinition,
+  orderingMatches,
   parameterResult,
 } from './formal-interaction';
 export type { SharedBudgetLimits, SharedBudgetUsage } from './budget';
 export type {
-  SyllabusRequirementRecord, SyllabusItemRecord, SyllabusMappingRecord,
-  SyllabusCoveragePointRecord, SyllabusCoverageItemResult, SyllabusCoverageResult,
+  SyllabusRequirementRecord,
+  SyllabusItemRecord,
+  SyllabusMappingRecord,
+  SyllabusCoveragePointRecord,
+  SyllabusCoverageItemResult,
+  SyllabusCoverageResult,
 } from './syllabus';
 export { resolveQuestionOrigin } from './question';
 export type { OriginRecord, TrustedOriginFacts, OriginResolution } from './question';
-export { normalizeAnswer, judgeAnswer, decideAttempt, assertRealWriteAllowed, buildStepKey, answerDisplayPolicy } from './attempt';
-export type { AttemptRequest, AttemptDecision, AnswerVerdict, AnswerDisplayPolicy } from './attempt';
 export {
-  canonicalJson, classroomDocumentDigest, dslVersionState, stripQuizAnswers, assertSceneSourceBindings,
+  normalizeAnswer,
+  judgeAnswer,
+  decideAttempt,
+  assertRealWriteAllowed,
+  buildStepKey,
+  answerDisplayPolicy,
+} from './attempt';
+export type {
+  AttemptRequest,
+  AttemptDecision,
+  AnswerVerdict,
+  AnswerDisplayPolicy,
+} from './attempt';
+export {
+  canonicalJson,
+  classroomDocumentDigest,
+  dslVersionState,
+  stripQuizAnswers,
+  assertSceneSourceBindings,
 } from './classroom';
 export type { DslVersionState, StrippedQuizScene, SceneSourceBinding } from './classroom';
 
@@ -91,4 +189,10 @@ export { gradeQuestionAssessment } from './assessment';
 export { gradeReviewedAnswer } from './attempt-grading';
 
 export { consumptionOf, summarizeModelUsage } from './model-usage';
-export { evaluationDigest, recomputeEvaluation, freezeEvaluation, verifyFrozenEvaluation, assertEvaluationComparable } from './evaluation';
+export {
+  evaluationDigest,
+  recomputeEvaluation,
+  freezeEvaluation,
+  verifyFrozenEvaluation,
+  assertEvaluationComparable,
+} from './evaluation';

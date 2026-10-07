@@ -75,7 +75,7 @@ const intentOf = (command: CollabOnlineCommand): string => {
   const intent: Record<string, unknown> = { ...command };
   delete intent['requestId'];
   if (command.action === 'invite') delete intent['roomId'];
-  if (command.action === 'scene') {
+  if (command.action === 'scene' || command.action === 'teaching') {
     delete intent['eventId'];
     delete intent['expectedSeq'];
     delete intent['expectedRevision'];

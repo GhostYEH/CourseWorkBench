@@ -28,6 +28,7 @@ import {
   collabMemberReadinessCommandSchema,
   collabMessageAppendSchema,
   collabEventAppendSchema,
+  collabTeachingCommandSchema,
   type StudyErrorCode,
   type StudyErrorPayload,
 } from '@sew/study-contracts';
@@ -315,6 +316,11 @@ const dispatchCollab = (
     if (command.kind === 'scene_changed') {
       throw new StudyError('INVALID_ARGUMENT', { reason: 'collab_scene_requires_scene_sync' });
     }
+    if (command.kind === 'teacher_output' || command.kind === 'board_action') {
+      throw new StudyError('INVALID_ARGUMENT', {
+        reason: 'collab_teaching_requires_structured_command',
+      });
+    }
     return ok(
       store.collaboration.appendEvent({
         roomId: command.roomId,
@@ -346,6 +352,16 @@ const dispatchCollab = (
     const roomId = requireQuery(search, 'roomId');
     assertRoomMember(store, session.uid, roomId);
     return ok(store.collaboration.snapshotView(roomId));
+  }
+  if (method === 'GET' && pathname === '/collab/v1/teaching') {
+    const roomId = requireQuery(search, 'roomId');
+    assertRoomMember(store, session.uid, roomId);
+    return ok(store.collaboration.teachingView(roomId));
+  }
+  if (method === 'POST' && pathname === '/collab/v1/teaching') {
+    const command = validate(collabTeachingCommandSchema, body);
+    assertClaimed(session, command.actorUid);
+    return ok(store.collaboration.applyTeaching({ ...command, actorUid: session.uid }));
   }
   throw new StudyError('NOT_FOUND', { reason: 'collab_route_unknown' });
 };

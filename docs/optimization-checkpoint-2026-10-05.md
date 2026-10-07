@@ -1,6 +1,6 @@
-# 全面优化续作记录 · 2026-10-05
+# 历史优化暂停记录 · 2026-10-05
 
-本页保留暂停时的历史快照。恢复后已完成模型分阶段、命令生命周期、测验提取、目录批量读取及门禁接入；用户现要求交给其他智能体继续。最新验证、阻断和可复制提示词见[全面优化交接](optimization-handoff-2026-10-05.md)，下文的遗留项与检查结果不能直接当作当前状态。
+本页保留暂停时的历史快照；下文未完成项、模型委派和检查结果都只描述当时状态，不能直接作为当前派工入口。~~模型分阶段、命令生命周期、测验提取、目录批量读取与根脚本/工程门禁接入~~已由后续源码和回归补齐。当前状态/验证见[2026-10-06 收尾](closeout-2026-10-06.md)，逐项完成标记见[开工清单](开工任务清单.md)，剩余范围见[待办](待办事项.md)；[2026-10-05 交接](optimization-handoff-2026-10-05.md)也已标为历史。
 
 暂停时用户要求先保存、提交，明天继续。源码保存为本地提交 `68e05ca`，本记录另存为 `6d423bb`。产品剩余范围仍以[待办事项](待办事项.md)为准。
 
@@ -33,14 +33,14 @@
 pnpm exec vitest run tests/command-gate.test.ts tests/model-call-guard.test.ts tests/shared-budget.test.ts tests/classroom-teaching.test.ts tests/storage-authoritative-json.test.ts tests/record-scope.test.ts tests/classroom-board-storage.test.ts tests/formal-interaction.test.ts tests/plan-run-roles.test.ts tests/api-boundary.test.ts
 ```
 
-## 下次继续顺序
+## 当时继续顺序（历史指令，当前已完成子项划线）
 
-1. 修复当前 5 项 Hooks lint 问题：`classroom-board-panel.tsx` 的 `refresh` 依赖，`classroom-panel.tsx` 的 `refresh` 和清理阶段 ref，`FormalInteractiveSceneView.tsx` 的清理阶段 ref，以及 `use-command.ts` 的 `scopeKey` 依赖表达。`scopeKey` 用来换项目时重建门禁，不能直接删掉依赖来消除报错。
-2. 完成客户端生命周期整合：继续检查白板、同学、档案、测验及正式互动入口；处理 `useCommand` 的错误状态随作用域变化，以及完成回调异常时的锁释放。测验事件串行追加、尾序号冲突重试、请求 nonce 和持久收据语义必须保留。
+1. ~~修复当时 5 项 Hooks lint 问题~~：`classroom-board-panel.tsx` 的 `refresh` 依赖，`classroom-panel.tsx` 的 `refresh` 和清理阶段 ref，`FormalInteractiveSceneView.tsx` 的清理阶段 ref，以及 `use-command.ts` 的 `scopeKey` 依赖表达。`scopeKey` 用来换项目时重建门禁，不能直接删掉依赖来消除报错。
+2. 完成客户端生命周期整合：继续检查白板、同学、档案、测验及正式互动入口；~~处理 useCommand 的作用域失效写保护和完成回调异常锁释放~~。测验事件串行追加、尾序号冲突重试、请求 nonce 和持久收据语义必须保留。
 3. 收尾模型状态订阅：提供首次读取失败的可见错误与重试；将课堂表面残留的会话 token 轮询改为已有的事件等待入口，并核对界面/文档文案。
 4. 核对 `DISCARDABLE_GENERATION_ERRORS`，用 `StudyErrorCode` 限制真实错误码，清理不存在的旧名称。补模型等待期间权威数据损坏和存储读取失败的复验回归，明确内部故障不会被误报为来源变化。保留项目代次复验失败后不访问数据库的边界。
 5. 继续整理工作台编排、共享测试夹具和大型组件。计量历史兼容仍按实际请求 ID、来源与时间窗关联；不要新增已有的 `request_id` 列或把兼容投影当作授权数据。
-6. 接入 lint/格式检查脚本及合适的检查范围；只格式化本轮相关模块。确认上游原样采用文件与安装资源的豁免范围，继续保留运行依赖和 fail-closed 边界。
-7. 重新 `pnpm build:learning`，再执行 `pnpm check` 和 `node scripts/run-electron-boundary-smoke.cjs`，消除生产构建摘要失配并报告所有未执行用例。实质实现收尾后，请 `code_reviewer` 做独立只读复核，处理发现的问题；按产品待办需要继续组装并验证随包服务和当前目录程序。
+6. ~~接入 lint/限定格式检查脚本及工程门禁~~；新增代码继续维护明确范围。确认上游原样采用文件与安装资源的豁免范围，继续保留运行依赖和 fail-closed 边界。
+7. ~~当前源码受控 build/check、原生冒烟与输入指纹一致性核对~~已有后续收尾证据；未执行的外部验收继续保留。实质实现收尾后，请 `code_reviewer` 做独立只读复核，处理发现的问题；按产品待办需要继续组装并验证随包服务和当前目录程序。
 
-初始独立代码审查已完成；本轮重构整体的完成后复核尚未执行。全面优化仍未结束，不能把本次保存解释为全功能完成。
+暂停时初始审查已完成，整体完成后复核当时未执行；后续独立复核与修复已记录在[2026-10-06 收尾](closeout-2026-10-06.md)。完整产品仍未签核，不能把当时保存或后续软件收尾解释为全功能完成。

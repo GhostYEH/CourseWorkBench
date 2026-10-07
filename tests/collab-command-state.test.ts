@@ -71,6 +71,78 @@ const message = () => ({
 });
 
 describe('未确认协作命令', () => {
+  it('公共白板撤销在页面恢复后沿用原收据，目标和重放意图分别隔离', () => {
+    memoryStorage.clear();
+    const serial = { value: 0 };
+    const path = '/api/study/collab/online';
+    const intent = {
+      action: 'teaching',
+      roomId: 'room_1',
+      sceneId: 'scene_1',
+      expectedRevision: 3,
+      operation: { kind: 'undo-board', actionEventId: 'focus-original' },
+    };
+    const original = persistentTracker('project_a', UID_A, serial).prepare(path, intent, {
+      tailSeq: 8,
+    });
+    const restored = persistentTracker('project_a', UID_A, serial);
+    const retry = restored.prepare(path, { ...intent, expectedRevision: 12 }, { tailSeq: 22 });
+    expect(retry).toEqual(original);
+    expect(collabOnlineCommandSchema.safeParse(retry).success).toBe(true);
+    const otherTarget = restored.prepare(
+      path,
+      { ...intent, operation: { kind: 'undo-board', actionEventId: 'laser-original' } },
+      { tailSeq: 22 },
+    );
+    const replay = restored.prepare(
+      path,
+      { ...intent, operation: { kind: 'replay-board', actionEventId: 'focus-original' } },
+      { tailSeq: 22 },
+    );
+    expect(new Set([retry, otherTarget, replay].map((item) => item.requestId)).size).toBe(3);
+    expect(restored.confirm(path, retry)).toBe(true);
+    const afterConfirm = persistentTracker('project_a', UID_A, serial);
+    expect(
+      afterConfirm.prepare(path, { ...intent, operation: replay['operation'] }, { tailSeq: 25 }),
+    ).toEqual(replay);
+    expect(afterConfirm.confirm(path, retry)).toBe(false);
+    expect(
+      afterConfirm.prepare(
+        path,
+        { ...intent, operation: otherTarget['operation'] },
+        { tailSeq: 25 },
+      ),
+    ).toEqual(otherTarget);
+  });
+  it('公共教学丢响应与页面重建保留原事件、序号和UID等待意图', () => {
+    memoryStorage.clear();
+    const serial = { value: 0 };
+    const intent = {
+      action: 'teaching',
+      roomId: 'room_1',
+      sceneId: 'scene_1',
+      expectedRevision: 3,
+      operation: { kind: 'wait', targetUid: UID_B },
+    };
+    const original = persistentTracker('project_a', UID_A, serial).prepare(
+      '/api/study/collab/online',
+      intent,
+      { tailSeq: 8 },
+    );
+    const retry = persistentTracker('project_a', UID_A, serial).prepare(
+      '/api/study/collab/online',
+      { ...intent, expectedRevision: 10 },
+      { tailSeq: 19 },
+    );
+    expect(collabOnlineCommandSchema.safeParse(retry).success).toBe(true);
+    expect(retry).toEqual(original);
+    expect(retry).toMatchObject({
+      expectedRevision: 3,
+      expectedSeq: 9,
+      operation: { targetUid: UID_B },
+    });
+    expect(serial.value).toBe(2);
+  });
   it('服务端已提交但响应丢失后，刷新重建的同 scope tracker 复用完整场景请求', () => {
     memoryStorage.clear();
     const serial = { value: 0 };
@@ -116,6 +188,82 @@ describe('未确认协作命令', () => {
         body: '未确认消息',
       }).requestId,
     ).not.toBe(first.requestId);
+  });
+
+  it('旧场景持久键含版本时升级保留原请求，刷新版本不会另发新命令', () => {
+    memoryStorage.clear();
+    const serial = { value: 0 };
+    const persistence = persistenceFor('project_a', UID_A);
+    const path = '/api/study/collab/online';
+    const legacyIntent = {
+      action: 'scene',
+      expectedRevision: 3,
+      roomId: 'room_1',
+      sceneId: 'scene_2',
+    };
+    const payload = {
+      ...legacyIntent,
+      expectedSeq: 9,
+      eventId: 'old-event',
+      requestId: 'old-request',
+    };
+    memoryStorage.set(
+      persistence.storageKey,
+      JSON.stringify({
+        version: 1,
+        projectId: 'project_a',
+        uid: UID_A,
+        commands: [{ key: JSON.stringify([path, legacyIntent]), path, payload }],
+      }),
+    );
+    const tracker = persistentTracker('project_a', UID_A, serial);
+    expect(
+      tracker.prepare(path, { ...legacyIntent, expectedRevision: 7 }, { tailSeq: 19 }),
+    ).toEqual(payload);
+    expect(serial.value).toBe(0);
+    expect(tracker.confirm(path, payload)).toBe(true);
+  });
+
+  it('多个旧版本键归并后逐笔确认，保留其他未确认命令', () => {
+    memoryStorage.clear();
+    const serial = { value: 0 };
+    const persistence = persistenceFor('project_a', UID_A);
+    const path = '/api/study/collab/online';
+    const firstIntent = {
+      action: 'scene',
+      expectedRevision: 3,
+      roomId: 'room_1',
+      sceneId: 'scene_2',
+    };
+    const nextIntent = { ...firstIntent, expectedRevision: 5 };
+    const first = { ...firstIntent, expectedSeq: 9, eventId: 'old-one', requestId: 'old-one' };
+    const second = { ...nextIntent, expectedSeq: 11, eventId: 'old-two', requestId: 'old-two' };
+    const chatIntent = { action: 'message', body: '另一个未确认发言', roomId: 'room_1' };
+    const chat = { ...chatIntent, requestId: 'old-chat' };
+    memoryStorage.set(
+      persistence.storageKey,
+      JSON.stringify({
+        version: 1,
+        projectId: 'project_a',
+        uid: UID_A,
+        commands: [
+          { key: JSON.stringify([path, firstIntent]), path, payload: first },
+          { key: JSON.stringify([path, nextIntent]), path, payload: second },
+          { key: JSON.stringify([path, chatIntent]), path, payload: chat },
+        ],
+      }),
+    );
+    const tracker = persistentTracker('project_a', UID_A, serial);
+    expect(tracker.prepare(path, { ...nextIntent, expectedRevision: 8 }, { tailSeq: 19 })).toEqual(
+      first,
+    );
+    expect(tracker.confirm(path, first)).toBe(true);
+    const restarted = persistentTracker('project_a', UID_A, serial);
+    expect(restarted.prepare(path, nextIntent, { tailSeq: 19 })).toEqual(second);
+    expect(restarted.confirm(path, first)).toBe(false);
+    expect(restarted.prepare(path, chatIntent)).toEqual(chat);
+    expect(restarted.confirm(path, second)).toBe(true);
+    expect(serial.value).toBe(0);
   });
 
   it('损坏或不符合合同的存储记录会被拒绝并清除', () => {

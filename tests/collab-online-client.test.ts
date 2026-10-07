@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CollabServiceStore } from '@sew/study-storage';
 import { dispatch, type CollabServiceContext } from '../apps/collab-service/src/service';
-import { apiResponses, StudyError } from '@sew/study-contracts';
+import {
+  apiResponses,
+  collabOnlineCommandSchema,
+  COLLAB_PROTOCOL_VERSION,
+  StudyError,
+} from '@sew/study-contracts';
 import {
   clearCollabCredential,
   readCollabCredential,
@@ -71,7 +76,7 @@ describe('凭据受控存储', () => {
     const store = CollabServiceStore.open({ file: join(root, 'collab.db') });
     const context: CollabServiceContext = {
       store,
-      protocolVersion: 1,
+      protocolVersion: COLLAB_PROTOCOL_VERSION,
       instanceId: 'test-instance',
       dev: true,
       sessions: new Map(),
@@ -129,6 +134,42 @@ describe('凭据受控存储', () => {
 });
 
 describe('在线视图与命令的失败语义', () => {
+  it('在线命令合同接受按原动作 eventId 撤销/重放并拒绝混入任意负载', () => {
+    const base = {
+      action: 'teaching',
+      roomId: 'room_1',
+      sceneId: 'scene_1',
+      expectedRevision: 3,
+      expectedSeq: 8,
+      eventId: 'event_undo_1',
+      requestId: 'request_undo_1',
+    };
+    expect(
+      collabOnlineCommandSchema.safeParse({
+        ...base,
+        operation: { kind: 'undo-board', actionEventId: 'event_focus_1' },
+      }).success,
+    ).toBe(true);
+    expect(
+      collabOnlineCommandSchema.safeParse({
+        ...base,
+        eventId: 'event_replay_1',
+        requestId: 'request_replay_1',
+        operation: { kind: 'replay-board', actionEventId: 'event_focus_1' },
+      }).success,
+    ).toBe(true);
+    expect(
+      collabOnlineCommandSchema.safeParse({
+        ...base,
+        operation: {
+          kind: 'undo-board',
+          actionEventId: 'event_focus_1',
+          elementId: 'caller-selected-element',
+        },
+      }).success,
+    ).toBe(false);
+  });
+
   it('未配置地址：视图标记 configured=false，命令直接拒绝', async () => {
     delete process.env.SEW_COLLAB_SERVICE_URL;
     const view = await readOnlineView(fakeSession);

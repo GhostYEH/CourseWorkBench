@@ -75,7 +75,9 @@ const isInvitation = (path: string, intent: Record<string, unknown>): boolean =>
  * 两者用同一套「首次提交取权威尾序号、未确认重试复用原值」的语义。
  */
 const isScene = (path: string, intent: Record<string, unknown>): boolean =>
-  path.endsWith('/events') || (path.endsWith('/collab/online') && intent['action'] === 'scene');
+  path.endsWith('/events') ||
+  (path.endsWith('/collab/online') &&
+    (intent['action'] === 'scene' || intent['action'] === 'teaching'));
 
 const logicalIntent = (path: string, input: Record<string, unknown>): Record<string, unknown> => {
   const intent = jsonSnapshot(input);
@@ -98,8 +100,12 @@ export const createCollabCommandTracker = (
   const idFactory = options.idFactory ?? defaultIdFactory;
   const pending = new Map<string, CollabCommandPayload>();
   let persistenceAvailable = options.persistence !== undefined;
-  const keyOf = (path: string, intent: Record<string, unknown>): string =>
-    stableJson([path, logicalIntent(path, intent)]);
+  const keyOf = (path: string, intent: Record<string, unknown>): string => {
+    const keyIntent = logicalIntent(path, intent);
+    // A refreshed room version cannot replace the complete payload of a still unconfirmed command.
+    if (path === ONLINE_PATH && isScene(path, intent)) delete keyIntent['expectedRevision'];
+    return stableJson([path, keyIntent]);
+  };
 
   const persist = (): void => {
     const persistence = options.persistence;
@@ -161,10 +167,15 @@ export const createCollabCommandTracker = (
         }
         const payload = freezeSnapshot(structuredClone(entry['payload']));
         const key = keyOf(ONLINE_PATH, payload);
-        if (key !== entry['key'] || restored.some(([existing]) => existing === key)) {
+        const legacyKey = stableJson([ONLINE_PATH, logicalIntent(ONLINE_PATH, payload)]);
+        if (
+          (key !== entry['key'] && legacyKey !== entry['key']) ||
+          restored.some(([existing]) => existing === entry['key'])
+        ) {
           throw new TypeError('Stored collab command identity is invalid');
         }
-        restored.push([key, payload]);
+        // Keep distinct historical version keys until each original request is explicitly confirmed.
+        restored.push([entry['key'], payload]);
       }
       for (const [key, payload] of restored) pending.set(key, payload);
     } catch {
@@ -180,10 +191,15 @@ export const createCollabCommandTracker = (
 
   const removeConfirmed = (path: string, originalPayload: CollabCommandPayload): boolean => {
     const key = keyOf(path, originalPayload);
-    const current = pending.get(key);
     // 对比完整请求：迟到的旧确认不能清掉同正文的下一笔请求。
-    if (!current || stableJson(current) !== stableJson(jsonSnapshot(originalPayload))) return false;
-    pending.delete(key);
+    const original = stableJson(jsonSnapshot(originalPayload));
+    const match = [...pending.entries()].find(
+      ([storedKey, payload]) =>
+        (storedKey === key || (path === ONLINE_PATH && keyOf(path, payload) === key)) &&
+        stableJson(payload) === original,
+    );
+    if (!match) return false;
+    pending.delete(match[0]);
     persist();
     return true;
   };
@@ -198,7 +214,11 @@ export const createCollabCommandTracker = (
       }
       const intent = logicalIntent(path, input);
       const key = keyOf(path, intent);
-      const prior = pending.get(key);
+      const prior =
+        pending.get(key) ??
+        (path === ONLINE_PATH
+          ? [...pending.values()].find((payload) => keyOf(path, payload) === key)
+          : undefined);
       if (prior) return prior;
 
       const generated: Record<string, unknown> = {};

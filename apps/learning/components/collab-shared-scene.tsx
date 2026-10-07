@@ -1,15 +1,18 @@
 import type { ReactNode } from 'react';
-import type { ClassroomSharedCourseDto } from '@sew/study-contracts';
+import type { ClassroomSharedCourseDto, CollabTeachingStateDto } from '@sew/study-contracts';
 
 /** Both members consume the room's frozen public content and authoritative scene pointer. */
 export const CollabSharedScene = ({
   snapshot,
   sceneId,
+  teaching = null,
 }: {
   snapshot: ClassroomSharedCourseDto | null;
   sceneId: string | null;
+  teaching?: CollabTeachingStateDto | null;
 }): ReactNode => {
   const scene = snapshot?.scenes.find((item) => item.sceneId === sceneId);
+  const sceneTeaching = teaching?.sceneId === sceneId ? teaching : null;
   if (!snapshot) return <p className="hint">共享课程尚未读回，请稍后重试。</p>;
   if (!scene) return <p className="hint">等待房主选择共同课堂场景。</p>;
   return (
@@ -19,11 +22,27 @@ export const CollabSharedScene = ({
       </p>
       <h4>{scene.title}</h4>
       {scene.type === 'slide'
-        ? scene.elements.map((element) => (
-            <p key={element.elementId} style={{ whiteSpace: 'pre-wrap' }}>
-              {element.text}
-            </p>
-          ))
+        ? scene.elements.map((element) => {
+            const focused = sceneTeaching?.board.focusElementId === element.elementId;
+            const lasered = sceneTeaching?.board.laserElementId === element.elementId;
+            return (
+              <p
+                key={element.elementId}
+                data-collab-element={element.elementId}
+                data-collab-focus={focused || undefined}
+                data-collab-laser={lasered || undefined}
+                style={{
+                  whiteSpace: 'pre-wrap',
+                  outline: focused ? '2px solid currentColor' : undefined,
+                  background: lasered ? 'rgba(255, 220, 0, 0.24)' : undefined,
+                }}
+              >
+                {focused ? <strong>教师聚焦 · </strong> : null}
+                {lasered ? <strong>激光指示 · </strong> : null}
+                {element.text}
+              </p>
+            );
+          })
         : null}
       {scene.type === 'quiz' ? (
         <>

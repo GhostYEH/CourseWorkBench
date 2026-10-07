@@ -30,6 +30,73 @@ afterEach(() => {
 });
 
 describe('受控客户端跨应用重启命令恢复', () => {
+  it('公共白板撤销恢复保留原版本与事件，重放同目标不混用撤销收据', () => {
+    const undo = {
+      action: 'teaching' as const,
+      roomId: 'room',
+      sceneId: 'scene',
+      expectedRevision: 3,
+      expectedSeq: 8,
+      eventId: 'undo-event',
+      requestId: 'undo-request',
+      operation: { kind: 'undo-board' as const, actionEventId: 'board-original' },
+    };
+    prepareOnlineCommand(session, undo);
+    const regenerated = {
+      ...undo,
+      expectedRevision: 12,
+      expectedSeq: 20,
+      eventId: 'new-event',
+      requestId: 'new-request',
+    };
+    expect(prepareOnlineCommand({ ...session }, regenerated)).toEqual(undo);
+    const replay = {
+      ...regenerated,
+      requestId: 'replay-request',
+      operation: { kind: 'replay-board' as const, actionEventId: 'board-original' },
+    };
+    expect(prepareOnlineCommand(session, replay)).toEqual(replay);
+    confirmOnlineCommand(session, undo.requestId);
+    expect(
+      prepareOnlineCommand({ ...session }, { ...replay, requestId: 'restarted-replay' }),
+    ).toEqual(replay);
+    expect(prepareOnlineCommand(session, regenerated)).toEqual(regenerated);
+  });
+  it('教学等待重启恢复沿用完整原命令，另一目标UID保持独立', () => {
+    const teaching = {
+      action: 'teaching' as const,
+      roomId: 'room',
+      sceneId: 'scene',
+      expectedRevision: 3,
+      expectedSeq: 8,
+      eventId: 'teach-event',
+      requestId: 'teach-request',
+      operation: { kind: 'wait' as const, targetUid: uid },
+    };
+    prepareOnlineCommand(session, teaching);
+    expect(
+      prepareOnlineCommand(
+        { ...session },
+        {
+          ...teaching,
+          expectedRevision: 5,
+          expectedSeq: 10,
+          eventId: 'new-event',
+          requestId: 'new-request',
+        },
+      ),
+    ).toEqual(teaching);
+    const other = {
+      ...teaching,
+      requestId: 'other-target',
+      operation: { kind: 'wait' as const, targetUid: 'uid_10000000-0000-4000-8000-000000000002' },
+    };
+    expect(prepareOnlineCommand(session, other)).toEqual(other);
+    confirmOnlineCommand(session, teaching.requestId);
+    expect(prepareOnlineCommand(session, { ...teaching, requestId: 'fresh' }).requestId).toBe(
+      'fresh',
+    );
+  });
   it('新页面重新生成 requestId 仍复用原命令；明确确认后才允许相同正文的新发言', () => {
     expect(prepareOnlineCommand(session, message)).toEqual(message);
     const restarted = { ...session };

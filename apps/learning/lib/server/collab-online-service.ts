@@ -26,6 +26,7 @@ import {
   collabMessageSchema,
   collabEventSchema,
   collabSnapshotViewSchema,
+  collabTeachingViewSchema,
   classroomInvitationSchema,
   apiResponses,
   type ClassroomSharedCourseDto,
@@ -131,6 +132,7 @@ const emptyView = (online: CollabOnlineViewDto['online']): CollabOnlineViewDto =
   messages: { messages: [], tailSeq: 0 },
   events: { events: [], tailSeq: 0 },
   snapshot: null,
+  teaching: null,
 });
 
 /**
@@ -271,7 +273,7 @@ export const readOnlineView = async (
   view.members = roomView.members;
   if (!roomView.room) return view;
   try {
-    const [messages, events, snapshot] = await Promise.all([
+    const [messages, events, snapshot, teaching] = await Promise.all([
       collabFetch(
         baseUrl,
         {
@@ -297,10 +299,16 @@ export const readOnlineView = async (
         { method: 'GET', path: '/collab/v1/snapshot', query: { roomId }, token },
         collabSnapshotViewSchema,
       ),
+      collabFetch(
+        baseUrl,
+        { method: 'GET', path: '/collab/v1/teaching', query: { roomId }, token },
+        collabTeachingViewSchema,
+      ),
     ]);
     view.messages = messages;
     view.events = events;
     view.snapshot = snapshot;
+    view.teaching = teaching;
   } catch (error) {
     view.online.error = describeCollabError(error);
     if (collabErrorReason(error) === 'collab_unreachable') view.online.connected = false;
@@ -448,6 +456,26 @@ export const runOnlineCommand = async (
   const uid = session.learnerUid;
 
   switch (command.action) {
+    case 'teaching':
+      return collabFetch(
+        baseUrl,
+        {
+          method: 'POST',
+          path: '/collab/v1/teaching',
+          token,
+          body: {
+            roomId: command.roomId,
+            actorUid: uid,
+            sceneId: command.sceneId,
+            expectedRevision: command.expectedRevision,
+            expectedSeq: command.expectedSeq,
+            eventId: command.eventId,
+            requestId: command.requestId,
+            operation: command.operation,
+          },
+        },
+        apiResponses.collabTeaching,
+      );
     case 'invite': {
       const snapshot = freezeLocalSnapshot(
         session,

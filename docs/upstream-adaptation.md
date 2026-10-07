@@ -2,6 +2,12 @@
 
 维护实际采用的上游路径、基线摘要、修改目的与关联验证。OpenMAIC 课堂和持久化适配的当前缺口见[待办事项](待办事项.md)。
 
+## 0. 当前采用状态（2026-10-06）
+
+当前 HEAD `9b74a25` 的软件子项与最终验证见[收尾记录](closeout-2026-10-06.md)。第 2 节对已接入子项划线；后文带日期的安装/模型诊断/阶段报告仅证明当时产物，不代表最新源码。当前源码目录包、独立安装、真实材料/provider 整课和真人双设备均未签核。
+
+~~固定已发布包/实际播放核心与本地存储适配~~；~~来源/课程审核、正式教师/白板/基础互动与有限场景编辑~~；~~项目内课程库/静态导出~~；~~独立在线协作软件链路~~。实际复用范围继续逐文件维护，不将本项目新写实现描述为直接复制上游。
+
 ## 1. 基线与来源边界
 
 | 项目 | 本地位置 | 基线/许可 | 适配边界 |
@@ -14,18 +20,18 @@
 
 当前直接依赖包括 `next`、`react`、`react-dom`、`zod`、`zustand`、`electron`、`electron-builder`、`typescript`、`vitest`、`tsx`。新增依赖需登记用途与许可证。
 
-## 2. 待接入的上游合同与源位置
+## 2. 上游合同的已接入子项与剩余范围
 
-| 上游合同/源码位置 | 本项目适配位置 | 尚需完成的适配 |
+| 上游合同/源码位置 | 本项目适配位置 | 已核对子项与剩余适配 |
 | --- | --- | --- |
-| `@openmaic/storage` `DocumentStore`（`document/http` 的 `HttpDocumentStore`） | `apps/learning/app/api/maic/documents/[[...segments]]/route.ts` + `packages/study-storage/src/repositories/classroom.ts` | 路径/方法、204 写入、上游错误码、409 `FUTURE_VERSION`、项目分区与读写审核指纹守卫已有真实客户端回归；outline 保留在完整文档内，无独立端点。修改 outline 同样须重新审核 |
-| 上游 `DocumentFolderStore` 与 `/api/folders` | `app/api/folders/**`、`repositories/document-organization.ts`、schema v8、`app/workbench/library/page.tsx` + `components/lesson-library.tsx` + `lib/document-library.ts` | 项目分区创建/重命名/成员归组与取消分组；摘要可选 folderId。删除仅支持 ungroup，remove 明确拒绝，不能通过组织操作级联删除受审课件；课程库浏览与组织 UI 已接入（OMA-001/002，读取权威存储、写入走上游原始合同），跨项目/全局课程库与发布访问状态仍未接入 |
-| `@openmaic/storage` `AssetStore`/`HttpAssetStore` | `apps/learning/app/api/maic/assets/**` + `packages/study-storage/src/repositories/classroom-assets.ts` | SQLite 保存项目分区的字节、内部 SHA-256、元数据、修订与场景绑定；客户端按会话/项目代次下载并生成对象 URL。演示图片与公式字体使用实际字节；跨课程引用保护、离线回收和大媒体仍需补齐 |
-| `@openmaic/storage` `HttpRuntimeStore`、`HttpAccountKV` | `app/api/maic/runtime/[...segments]/route.ts`、`app/api/maic/kv/[...segments]/route.ts` + SQLite runtime/KV repositories | 已实现原始客户端合同、服务绑定 learner、追加序号与版本冲突、项目代次复验。测验提交由服务原子保存本人作答、review 与收据；`AgentSessionStore` 和教师编排仍未接入 |
-| OpenMAIC PlaybackEngine、课堂加载与场景分派 | `components/openmaic-adaptation/`、`components/classroom-surface.tsx` | 播放引擎、类型、游标、导航、时序及原 ClassroomSurface 页面加载/重试/退出流程实际复制后适配；Stage 视图与场景分派为窄适配。M0 通过服务加载/资源释放端口接线；Director、编辑器、教师/白板及生成媒体管线按后续里程碑接入 |
-| OpenMAIC `ROLE_ACTIONS` 与角色运行时 | 课堂角色桥接 | 上游 student/assistant 可能默认拥有白板动作；本项目首版同学仅发言，需显式收窄权限 |
-| OpenMAIC 前端 HTTP adapter | `apps/learning/app/api/maic/*` | 渲染端使用上游 `HttpDocumentStore`；文档 body 保持原始合同，额外项目身份/代次头由本地适配添加并在服务端复验 |
-| 互动 iframe 与资源加载协议 | `openmaic-adaptation/SceneRenderer.tsx` | 保留沙箱、当前窗口与实例检查、onLoad 就绪、上游 runtime-error/早期错误重放协议。上游没有周期心跳；本适配没有声称实现心跳。编辑器/资源选择器与 iframe 池未采用 |
+| `@openmaic/storage` `DocumentStore`（`document/http` 的 `HttpDocumentStore`） | `apps/learning/app/api/maic/documents/[[...segments]]/route.ts` + `packages/study-storage/src/repositories/classroom.ts` | ~~实际路径/方法、204/原始错误/409 FUTURE_VERSION、项目分区、读写审核指纹与严格 UTF-8 原始客户端回归~~；outline 保留在完整文档内，修改仍须重新审核 |
+| 上游 `DocumentFolderStore` 与 `/api/folders` | `app/api/folders/**`、`repositories/document-organization.ts`、schema v8、`app/workbench/library/page.tsx` + `components/lesson-library.tsx` + `lib/document-library.ts` | ~~项目分区文件夹创建/重命名/成员归组/取消分组及课程库浏览/组织 UI~~；删除仅支持 ungroup，remove 明确拒绝；跨项目/全局课程库与发布访问状态仍未接入 |
+| `@openmaic/storage` `AssetStore`/`HttpAssetStore` | `apps/learning/app/api/maic/assets/**` + `packages/study-storage/src/repositories/classroom-assets.ts` | ~~SQLite 项目分区字节/内部 SHA-256/修订/场景绑定、受控下载、真实图片/公式字体及跨课程引用保护~~；离线回收与大媒体仍待补齐 |
+| `@openmaic/storage` `HttpRuntimeStore`、`HttpAccountKV` | `app/api/maic/runtime/[...segments]/route.ts`、`app/api/maic/kv/[...segments]/route.ts` + SQLite runtime/KV repositories | ~~原始客户端合同、服务绑定 learner、追加序号/版本冲突/项目代次、本人的作答/review/收据原子提交~~；本项目持久教师会话与有限调度已接入；上游完整 AgentSessionStore/Director 不计完成 |
+| OpenMAIC PlaybackEngine、课堂加载与场景分派 | `components/openmaic-adaptation/`、`components/classroom-surface.tsx` | ~~实际复制适配播放引擎/类型/游标/导航/时序及宿主加载/重试/退出，真实三类场景和本地服务生命周期接线~~；正式教师/白板与有限场景编辑已另有本项目消费者，完整 Director/编辑器/生成媒体管线仍待接入 |
+| OpenMAIC `ROLE_ACTIONS` 与角色运行时 | 课堂角色桥接 | ~~首版 AI 同学仅发言、无本人答题/默认白板写权、simulation 分区与服务端调度~~；完整多角色/圆桌工具动作待做，人设不能放宽领域权限 |
+| OpenMAIC 前端 HTTP adapter | `apps/learning/app/api/maic/*` | ~~实际 HttpDocumentStore 原始载荷、附加项目身份/代次并在服务端复验~~；新采用的原始 HTTP 合同继续逐项记录/校验 |
+| 互动 iframe 与资源加载协议 | `openmaic-adaptation/SceneRenderer.tsx` | ~~沙箱、当前窗口/实例检查、onLoad 就绪、runtime-error/早期错误重放协议及正式互动服务核验~~；上游无周期心跳；上游资源选择器/iframe 池与通用现场恢复未采用/未完成 |
 
 
 每项源码适配落地时记录真实上游路径、基线摘要、改动目的和相关验证。不得以设计目标代替实现记录。
@@ -54,8 +60,8 @@
 | `apps/learning/server.mjs` | 自定义启动器承担 127.0.0.1 监听、握手及会话/控制认证；直接换成上游 `server.js` 会丢失本应用边界 | 在真实课堂生产包与无开发 Node 的 Windows 环境验证，见 PACK-01/02 |
 | `apps/learning/next.config.ts`、`scripts/prepare-learning-dist.mjs` | standalone 输出受 monorepo 根检测影响，产物需组装到消费者预期的服务目录；依赖树物化需避免指向仓库外部的链接 | 真实课堂接入后重建包，核对运行文件、静态资源及依赖 |
 | `apps/desktop/src/main.cjs` | 由主进程定位随包 `resources/node/runtime/`，控制本地服务和项目授权；渲染层不持有原生能力 | 验证原生选择器、真实课堂、安装/卸载及干净环境恢复 |
-| `packages/study-storage` | OpenMAIC AssetStore、课程 Material/Skill 和持久课堂会话仍需按使用范围适配 | 未接入的能力需明确禁用；启用后不能回落为浏览器权威数据 |
-| 课堂入口 | 固定三场景使用上游渲染器、实际播放引擎和服务端存储；窄适配不能替代完整 OpenMAIC 宿主 | 完成生产包、安装态与干净 Windows 验收；教师、白板、Director 等继续按后续里程碑实现 |
+| `packages/study-storage` | AssetStore 与本项目持久课堂会话已有实际适配；完整课程 Material/Skill 和上游 Agent 会话仍待接入 | 未接入的能力需明确禁用；启用后不能回落为浏览器权威数据 |
+| 课堂入口 | 固定三场景使用上游渲染器、实际播放引擎和服务端存储；窄适配不能替代完整 OpenMAIC 宿主 | 当前源码生产目录包/安装态与干净 Windows 验收保留；已审核教师、基础白板已实现，完整 Director/模型整课等继续按后续里程碑推进 |
 
 ## 6. 基线与来源核实记录（2026-10-03）
 
@@ -153,9 +159,9 @@ M0 的 SET-01 采用固定已发布包及锁文件完整性路线，不依赖 ex
 
 原 `ClassroomSurface.tsx:103–297` 的页面加载、重试、effect 与卸载取消分支实际复制并适配到 `useOpenMaicClassroomLoad.ts` / `classroom-host-load.ts`；显示策略复制自 `progressive-load-policy.ts:15–37`，加载 token 来自原 stage store。来源摘要与替换边界登记于 `copiedAndAdapted`。生产 `classroom-surface.tsx` 实际调用该 hook，由服务端项目/代次/来源准入替代远端所有权存储，并通过清理端口释放图片、字体与旧实例；Stage 在宿主 ready 后才挂载。
 
-Stage、PlaybackChromeRoot、SceneRenderer 与 QuizSceneView 的视图胶水仍为独立窄适配，不描述为整体复制原组件。M0 固定课件没有教师动作；执行端明确拒绝未支持动作，TTS/媒体、Director、白板、AI 同学、编辑与生成流程尚未启用，完整功能仍按 M2 及 A—F 跟踪。多课程引用保护已在仓库约束层实现，离线回收与大媒体继续跟踪。
+Stage、PlaybackChromeRoot、SceneRenderer 与 QuizSceneView 的视图胶水仍为独立窄适配，不描述为整体复制原组件。M0 固定样例不证明正式教师编排；执行端明确拒绝未支持动作。本项目已另接已审核教师/基础白板、有限 AI 同学和候选/场景编辑流程；完整 Director、TTS/媒体、完整编辑与生成仍按 M2 及 A—F 跟踪。多课程引用保护已在仓库约束层实现，离线回收与大媒体继续跟踪。
 
-### 7.6 当前分发验证与已知边界（2026-10-04）
+### 7.6 历史分发验证与已知边界（2026-10-04，非当前产物）
 
 模型连接补强后的当前构建为 `nmbMeLOKKj__yqRm22QyP`：完整检查 45 个文件/288 项通过，无跳过；随包服务 14/14，当前 [目录包 30/30](../apps/desktop/release/pack01-verification-2026-10-04T02-59-59.536Z.json)，服务清单 12,131 个文件逐字节匹配当前源码。实际模型调用及整应用重启 [9/9](../apps/desktop/release/model-connection-live-2026-10-04.json) 通过。新版安装包 194,162,258 字节，SHA-256 `D12756102244CC5F54FBDD0C3162B00C4B6DBE0DC2D005A04CB98FB239014C66`，外部验收包已同步。本轮没有重新执行安装/卸载或独立环境验收；下文的 50 项安装态证据与摘要属于此前 M0 基线版本，不作为新版安装态证据。
 

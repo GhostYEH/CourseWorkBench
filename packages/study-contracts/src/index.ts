@@ -121,6 +121,8 @@ export type {
   ModelChatMessage, ModelGenerationInput, ModelGenerationUsageDto, ModelGenerationResultDto,
 } from './model-connection';
 export { apiErrorPayloadSchema, apiEnvelopeSchema, runtimeApiFailureSchema, apiResponses, collabOnlineViewSchema, collabOnlineWriteSchema } from './responses';
+export { collabTeachingOperationSchema, collabTeachingCommandSchema, collabTeachingStateSchema, collabTeachingViewSchema, collabTeachingResultSchema } from './collaboration-teaching';
+export type { CollabTeachingOperation, CollabTeachingCommandInput, CollabTeachingStateDto, CollabTeachingViewDto, CollabTeachingResultDto } from './collaboration-teaching';
 export type { CollabOnlineViewDto, CollabOnlineWriteDto } from './responses';
 export {
   THEME_IDS, ACCENT_PRESETS, STATUS_TOKEN_KEYS,

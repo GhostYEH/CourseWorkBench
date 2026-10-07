@@ -242,6 +242,18 @@ server.listen(0, '127.0.0.1', () => {
       lessonVersion: 1,
       snapshotDigest: documentDigest,
       scenes: document.scenes.map((scene) => ({ sceneId: scene.id, type: scene.type })),
+      publicStatements: bundle.bundle.statements.map((statement) => ({
+        statementId: statement.statementId,
+        knowledgeId: statement.knowledgeId,
+      })),
+      sceneSources: document.scenes.map((scene) => ({
+        sceneId: scene.id,
+        knowledgeIds: [knowledge.knowledgeId],
+      })),
+      sceneElements: document.scenes.map((scene) => ({
+        sceneId: scene.id,
+        elementIds: scene.content.canvas.elements.map((element) => element.id),
+      })),
       protocolVersion: contracts.COLLAB_PROTOCOL_VERSION,
     })}\n`,
   );

@@ -23,6 +23,10 @@ import {
   collabRegistrationSchema,
   collabRoomMemberSchema,
   collabRoomSchema,
+  collabTeachingCommandSchema,
+  collabTeachingStateSchema,
+  collabTeachingViewSchema,
+  collabTeachingResultSchema,
   collabText,
   COLLAB_EVENT_KINDS,
   type ClassroomSharedCourseDto,
@@ -32,6 +36,9 @@ import {
   type CollabRoomDto,
   type CollabRoomMemberDto,
   type CollabSnapshotViewDto,
+  type CollabTeachingCommandInput,
+  type CollabTeachingStateDto,
+  type CollabTeachingViewDto,
 } from '@sew/study-contracts';
 import {
   assertCollabEventAppendable,
@@ -44,6 +51,8 @@ import {
   assertCollabSceneSyncable,
   assertCollabSnapshotUploadable,
   assertCollabTeacherEventAllowed,
+  decideCollabTeaching,
+  assertCollabBoardHistoryConsistent,
   canonicalJson,
   fingerprintOf,
   type CollabInvitationFacts,
@@ -65,7 +74,8 @@ export type CollabAction =
   | 'message'
   | 'event'
   | 'sync-scene'
-  | 'snapshot';
+  | 'snapshot'
+  | 'teaching';
 
 export interface RegisterInput {
   uid: string;
@@ -262,6 +272,7 @@ const validate = <T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, value: unknown
   if (!parsed.success) throw new StudyError('INVALID_ARGUMENT', { reason: 'collab_input_invalid' });
   return parsed.data;
 };
+type CollabTeachingResultDto = z.infer<typeof collabTeachingResultSchema>;
 
 /** 邀请的存储形状：领域判定用的 facts 加上 `updatedAt`，与响应合同一致。 */
 export interface StoredInvitation extends CollabInvitationFacts {
@@ -1180,6 +1191,10 @@ export class CollaborationRepository {
       this.assertCurrentMember(input.roomId, input.actorUid);
       const prior = this.retry(input.requestId, 'sync-scene', input.actorUid, input, z.unknown());
       if (prior) return { ...(prior as Omit<SyncSceneResult, 'deduplicated'>), deduplicated: true };
+      const teaching = this.readTeachingState(input.roomId, room.currentSceneId);
+      if (teaching.waiting) {
+        throw new StudyError('VERSION_CONFLICT', { reason: 'collab_scene_sync_waiting' });
+      }
       const members = this.listMembers(input.roomId);
       const memberUids = members
         .filter((member) => member.readiness !== 'left')
@@ -1234,6 +1249,15 @@ export class CollaborationRepository {
           'UPDATE collab_rooms SET status=?, revision=?, current_scene_id=?, updated_at=? WHERE room_id=?',
         )
         .run(next.status, next.revision, next.currentSceneId, next.updatedAt, input.roomId);
+      this.writeTeachingState(
+        input.roomId,
+        {
+          ...teaching,
+          sceneId: input.sceneId,
+          board: { focusElementId: null, laserElementId: null },
+        },
+        now,
+      );
       const result: SyncSceneResult = {
         room: {
           roomId: next.roomId,
@@ -1249,6 +1273,169 @@ export class CollaborationRepository {
         room: result.room,
         event: result.event,
       });
+      return result;
+    });
+  }
+
+  private emptyTeachingState(roomId: string, sceneId: string): CollabTeachingStateDto {
+    return collabTeachingStateSchema.parse({
+      schemaVersion: 1,
+      roomId,
+      sceneId,
+      board: { focusElementId: null, laserElementId: null },
+      waiting: null,
+      outputs: [],
+    });
+  }
+
+  /** Load and revalidate both the authoritative SQL identity columns and JSON digest. */
+  private readTeachingState(roomId: string, currentSceneId: string): CollabTeachingStateDto {
+    const row = this.db
+      .prepare('SELECT * FROM collab_teaching_states WHERE room_id=?')
+      .get(roomId) as Row | undefined;
+    if (!row) return this.emptyTeachingState(roomId, currentSceneId);
+    const state = readRequiredJsonColumn(
+      row['state_json'],
+      collabTeachingStateSchema,
+      'collab_teaching_states.state_json',
+      { reason: 'collab_teaching_state_corrupt' },
+    );
+    if (
+      state.roomId !== roomId ||
+      state.sceneId !== String(row['scene_id']) ||
+      state.sceneId !== currentSceneId ||
+      fingerprintOf(canonicalJson(state)) !== String(row['state_digest'])
+    ) {
+      throw new StudyError('INTERNAL', {
+        reason: 'collab_teaching_state_identity_or_digest_mismatch',
+      });
+    }
+    assertCollabBoardHistoryConsistent(state.board);
+    return state;
+  }
+
+  private writeTeachingState(
+    roomId: string,
+    state: CollabTeachingStateDto,
+    updatedAt: string,
+  ): void {
+    const checked = collabTeachingStateSchema.parse(state);
+    this.db
+      .prepare(
+        `INSERT INTO collab_teaching_states (room_id, scene_id, state_json, state_digest, updated_at)
+       VALUES (?,?,?,?,?)
+       ON CONFLICT(room_id) DO UPDATE SET scene_id=excluded.scene_id, state_json=excluded.state_json,
+         state_digest=excluded.state_digest, updated_at=excluded.updated_at`,
+      )
+      .run(
+        roomId,
+        checked.sceneId,
+        encodeJson(checked),
+        fingerprintOf(canonicalJson(checked)),
+        updatedAt,
+      );
+  }
+
+  /** Read the shared teacher/board state. The service checks the bound session's membership first. */
+  teachingView(roomId: string): CollabTeachingViewDto {
+    const room = this.readRoom(roomId);
+    if (!room) throw new StudyError('NOT_FOUND', { reason: 'collab_room_missing' });
+    const state = this.readTeachingState(roomId, room.currentSceneId);
+    return collabTeachingViewSchema.parse({
+      state,
+      roomRevision: room.revision,
+      tailSeq: this.tailSeq('collab_room_events', roomId),
+    });
+  }
+
+  /** Apply a structured teacher/board command in the same transaction as event, revision and receipt. */
+  applyTeaching(raw: CollabTeachingCommandInput): CollabTeachingResultDto {
+    const input = validate(collabTeachingCommandSchema, raw);
+    return this.db.transaction(() => {
+      const room = this.readRoom(input.roomId);
+      if (!room) throw new StudyError('NOT_FOUND', { reason: 'collab_room_missing' });
+      this.assertCurrentMember(input.roomId, input.actorUid);
+      const prior = this.retry(
+        input.requestId,
+        'teaching',
+        input.actorUid,
+        input,
+        collabTeachingResultSchema,
+      );
+      if (prior) return collabTeachingResultSchema.parse({ ...prior, deduplicated: true });
+      const snapshot = this.readSnapshot(input.roomId);
+      if (!snapshot) throw new StudyError('INTERNAL', { reason: 'collab_snapshot_missing' });
+      const state = this.readTeachingState(input.roomId, room.currentSceneId);
+      const tailSeq = this.tailSeq('collab_room_events', input.roomId);
+      const now = new Date().toISOString();
+      const nextState = decideCollabTeaching({
+        command: input,
+        state,
+        snapshot: snapshot.snapshot,
+        ownerUid: room.ownerUid,
+        activeMemberUids: this.listMembers(input.roomId)
+          .filter((member) => member.readiness !== 'left')
+          .map((member) => member.uid),
+        roomActive: room.status === 'active',
+        roomRevision: room.revision,
+        expectedTailSeq: tailSeq,
+        nextSeq: tailSeq + 1,
+        now,
+      });
+      const operation = input.operation;
+      const kind: CollabEventDto['kind'] = [
+        'speak',
+        'wait',
+        'release-wait',
+        'cancel-wait',
+      ].includes(operation.kind)
+        ? 'teacher_output'
+        : 'board_action';
+      const summaries: Record<CollabTeachingCommandInput['operation']['kind'], string> = {
+        speak: '教师发言（审核语句）',
+        focus: `教师聚焦白板元素 ${operation.kind === 'focus' ? operation.elementId : ''}`,
+        laser: `教师激光指示元素 ${operation.kind === 'laser' ? operation.elementId : ''}`,
+        'clear-board': '教师清除白板标记',
+        'undo-board': `教师撤销白板动作 ${operation.kind === 'undo-board' ? operation.actionEventId : ''}`,
+        'replay-board': `教师重放白板动作 ${operation.kind === 'replay-board' ? operation.actionEventId : ''}`,
+        wait: '教师等待同学回应',
+        acknowledge: '同学确认回应',
+        'release-wait': '教师继续课堂',
+        'cancel-wait': '教师取消等待',
+      };
+      const event = collabEventSchema.parse({
+        eventId: input.eventId,
+        roomId: input.roomId,
+        seq: tailSeq + 1,
+        kind,
+        actorUid: input.actorUid,
+        summary: summaries[operation.kind],
+        createdAt: now,
+      });
+      this.db
+        .prepare(
+          'INSERT INTO collab_room_events (room_id, seq, event_id, kind, actor_uid, summary, created_at) VALUES (?,?,?,?,?,?,?)',
+        )
+        .run(
+          event.roomId,
+          event.seq,
+          event.eventId,
+          event.kind,
+          event.actorUid,
+          event.summary,
+          event.createdAt,
+        );
+      this.db
+        .prepare('UPDATE collab_rooms SET revision=revision+1, updated_at=? WHERE room_id=?')
+        .run(now, input.roomId);
+      this.writeTeachingState(input.roomId, nextState, now);
+      const result = collabTeachingResultSchema.parse({
+        state: nextState,
+        roomRevision: room.revision + 1,
+        event,
+        deduplicated: false,
+      });
+      this.receipt(input.requestId, 'teaching', input.actorUid, input, result);
       return result;
     });
   }
