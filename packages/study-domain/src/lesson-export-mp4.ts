@@ -540,8 +540,26 @@ const TRANSITIONS: Readonly<Record<Mp4JobEvent, readonly Mp4JobState[]>> = {
 };
 
 /** 当前状态下允许的事件（界面据此禁用按钮，而不是点了再报错）。 */
+const hasVerifiedResourcesSincePreparation = (job: Mp4RenderJob): boolean => {
+  let preparationIndex = -1;
+  for (let index = job.events.length - 1; index >= 0; index -= 1) {
+    if (job.events[index]?.event === 'begin-preparation') {
+      preparationIndex = index;
+      break;
+    }
+  }
+  return (
+    preparationIndex >= 0 &&
+    job.events.slice(preparationIndex + 1).some((item) => item.event === 'resources-verified')
+  );
+};
+
 export const mp4JobAllowedEvents = (job: Mp4RenderJob): Mp4JobEvent[] =>
-  MP4_JOB_EVENTS.filter((event) => TRANSITIONS[event].includes(job.state));
+  MP4_JOB_EVENTS.filter(
+    (event) =>
+      TRANSITIONS[event].includes(job.state) &&
+      (event !== 'begin-capture' || hasVerifiedResourcesSincePreparation(job)),
+  );
 
 const pushEvent = (
   job: Mp4RenderJob,
@@ -596,9 +614,9 @@ export const createMp4RenderJob = (input: {
  * 唯一的推进入口：非法推进即拒绝，状态迁移写入事件轨迹。
  *
  * 关键的守卫（都在这一处收口，界面与执行侧无法各自绕开）：
- * - `resources-verified` 只在运行时确实到位时接受（由调用方以 `mp4BlockingRuntimes` 判定后传入）；
+ * - `resources-verified` 必须携带本次实测运行时，且覆盖计划中的必需运行时；
  *   宣称就绪却带缺口 → 拒绝，任务停在 `preparing`；带缺口则走 `resources-unavailable` 进 `blocked`；
- * - 未通过运行时核验的任务根本进不到 `begin-capture`（该事件只接受 `preparing` 状态）；
+ * - `begin-capture` 还要求本轮 `begin-preparation` 之后存在成功的核验事件；
  * - `segment-captured` 必须按**连续顺序**推进（片段号 == nextSegmentIndex）且带字节数与 sha256；
  * - `encoding-completed` 必须带可播放产物的摘要：`playable` 为 false 时只能算 `fail`，
  *   不能宣称导出成功（清单验收「真实可播放视频」）；
@@ -610,6 +628,7 @@ export const applyMp4JobEvent = (
   payload: {
     readonly at: string;
     readonly blockingRuntimes?: readonly Mp4RuntimeDeclaration[];
+    readonly runtimes?: readonly Mp4RuntimeDeclaration[];
     readonly segmentIndex?: number;
     readonly artifact?: { readonly byteLength: number; readonly sha256: string };
     readonly failure?: Mp4JobFailure;
@@ -649,11 +668,29 @@ export const applyMp4JobEvent = (
       return pushEvent(job, event, 'preparing', payload.at, '开始核验渲染运行时');
 
     case 'resources-verified': {
-      const blocking = payload.blockingRuntimes ?? [];
-      if (blocking.length > 0) {
+      const runtimes = payload.runtimes;
+      if (!runtimes) {
+        throw new StudyError('INVALID_ARGUMENT', { reason: 'mp4_runtime_evidence_missing' });
+      }
+      const verified = normalizeMp4Runtimes(runtimes);
+      const verifiedByKey = new Map(
+        verified.map((runtime) => [`${runtime.kind}:${runtime.reference.toLowerCase()}`, runtime]),
+      );
+      const required = plan.runtimes.filter((runtime) => runtime.required);
+      const uncovered = required.filter((runtime) => {
+        const actual = verifiedByKey.get(`${runtime.kind}:${runtime.reference.toLowerCase()}`);
+        return (
+          !actual ||
+          !actual.required ||
+          actual.status !== 'available' ||
+          actual.expectedDigest !== runtime.expectedDigest
+        );
+      });
+      const blocking = mp4BlockingRuntimes(verified);
+      if (blocking.length > 0 || uncovered.length > 0) {
         throw new StudyError('CLASSROOM_SCENE_SOURCE_MISSING', {
           reason: 'mp4_runtime_unverified',
-          references: blocking.map((runtime) => runtime.reference),
+          references: [...new Set([...blocking, ...uncovered].map((runtime) => runtime.reference))],
         });
       }
       return pushEvent(job, event, 'preparing', payload.at, '运行时核验通过');
@@ -678,6 +715,9 @@ export const applyMp4JobEvent = (
     }
 
     case 'begin-capture': {
+      if (!hasVerifiedResourcesSincePreparation(job)) {
+        throw new StudyError('INVALID_ARGUMENT', { reason: 'mp4_resources_not_verified' });
+      }
       return pushEvent({ ...job, failure: null }, event, 'capturing', payload.at, '开始逐帧采集');
     }
 
@@ -870,6 +910,8 @@ export interface Mp4RecoveryFacts {
     readonly exists: boolean;
     readonly sha256: string | null;
     readonly byteLength: number | null;
+    /** 由执行侧独立解码/探测后得出的可播放事实；旧恢复记录缺失时按未核验处理。 */
+    readonly playable?: boolean;
   };
   /**
    * 重启后**当前权威**的场景计划内容摘要：由服务侧对本版本现存场景调用 `mp4PlanDigestOf` 得到。
@@ -916,6 +958,12 @@ export const recoverMp4Job = (facts: Mp4RecoveryFacts): Mp4RecoveryDecision => {
   }
   if (job.state === 'succeeded') {
     const matched =
+      facts.outputOnDisk.exists &&
+      facts.outputOnDisk.playable === true &&
+      Number.isInteger(facts.outputOnDisk.byteLength) &&
+      facts.outputOnDisk.byteLength! > 0 &&
+      facts.outputOnDisk.sha256 !== null &&
+      /^[a-f0-9]{64}$/.test(facts.outputOnDisk.sha256) &&
       job.delivery.sha256 === facts.outputOnDisk.sha256 &&
       job.delivery.byteLength === facts.outputOnDisk.byteLength;
     return matched
@@ -956,7 +1004,15 @@ export const recoverMp4Job = (facts: Mp4RecoveryFacts): Mp4RecoveryDecision => {
   }
 
   // 「结果未知」：进程被杀/响应丢失，但输出可能已经写好。先对账再决定，绝不盲目重跑一遍。
-  if (facts.outputOnDisk.exists && facts.outputOnDisk.sha256 !== null && job.state === 'encoding') {
+  if (
+    facts.outputOnDisk.exists &&
+    facts.outputOnDisk.sha256 !== null &&
+    /^[a-f0-9]{64}$/.test(facts.outputOnDisk.sha256) &&
+    Number.isInteger(facts.outputOnDisk.byteLength) &&
+    facts.outputOnDisk.byteLength! > 0 &&
+    facts.outputOnDisk.playable === true &&
+    job.state === 'encoding'
+  ) {
     return {
       action: 'publish-verified-output',
       fromSegmentIndex: job.nextSegmentIndex,

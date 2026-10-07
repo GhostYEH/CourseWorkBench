@@ -172,7 +172,7 @@ const advanceToCapturing = (plan: Mp4RenderPlan = buildPlan()): Mp4RenderJob => 
   job = applyMp4JobEvent(
     job,
     'resources-verified',
-    { at: '2026-10-07T00:00:02.000Z', blockingRuntimes: [] },
+    { at: '2026-10-07T00:00:02.000Z', runtimes: plan.runtimes },
     plan,
   );
   return applyMp4JobEvent(job, 'begin-capture', { at: '2026-10-07T00:00:03.000Z' }, plan);
@@ -204,7 +204,12 @@ const recovery = (input: {
   plan: Mp4RenderPlan;
   runtimes: () => Mp4RuntimeDeclaration[];
   actualOverride?: Map<number, string>;
-  outputOnDisk?: { exists: boolean; sha256: string | null; byteLength: number | null };
+  outputOnDisk?: {
+    exists: boolean;
+    sha256: string | null;
+    byteLength: number | null;
+    playable?: boolean;
+  };
   currentPlanDigest?: string | null;
 }): Mp4RecoveryFacts => ({
   job: input.job,
@@ -559,6 +564,24 @@ describe('mp4 job state machine (OMA-071 failure recovery)', () => {
       ),
     ).toBe('mp4_illegal_transition');
     const preparing = applyMp4JobEvent(queued, 'begin-preparation', { at: 'x' }, plan);
+    expect(mp4JobAllowedEvents(preparing)).not.toContain('begin-capture');
+    expect(reasonOf(() => applyMp4JobEvent(preparing, 'begin-capture', { at: 'x' }, plan))).toBe(
+      'mp4_resources_not_verified',
+    );
+    const forgedPreparing: Mp4RenderJob = {
+      ...queued,
+      state: 'preparing',
+      events: [
+        ...queued.events,
+        { event: 'begin-preparation', state: 'preparing', at: 'x', note: '手工构造状态' },
+      ],
+    };
+    expect(
+      reasonOf(() => applyMp4JobEvent(forgedPreparing, 'begin-capture', { at: 'x' }, plan)),
+    ).toBe('mp4_resources_not_verified');
+    expect(
+      reasonOf(() => applyMp4JobEvent(preparing, 'resources-verified', { at: 'x' }, plan)),
+    ).toBe('mp4_runtime_evidence_missing');
     // 运行时不到位时不能宣称核验通过
     const gaps = mp4BlockingRuntimes([
       runtime({
@@ -574,7 +597,20 @@ describe('mp4 job state machine (OMA-071 failure recovery)', () => {
         applyMp4JobEvent(
           preparing,
           'resources-verified',
-          { at: 'x', blockingRuntimes: gaps },
+          {
+            at: 'x',
+            runtimes: plan.runtimes.map((item) =>
+              item.kind === 'ffmpeg'
+                ? {
+                    ...item,
+                    status: 'missing' as const,
+                    note: '缺少 ffmpeg',
+                    actualVersion: null,
+                    actualDigest: null,
+                  }
+                : item,
+            ),
+          },
           plan,
         ),
       ),
@@ -768,11 +804,24 @@ describe('mp4 job state machine (OMA-071 failure recovery)', () => {
         job: encodingJob,
         plan,
         runtimes: readyRuntimes,
-        outputOnDisk: { exists: true, sha256: SHA_C, byteLength: 999_999 },
+        outputOnDisk: { exists: true, sha256: SHA_C, byteLength: 999_999, playable: true },
       }),
     );
     expect(published.action).toBe('publish-verified-output');
     expect(published.discardSegments).toBe(0);
+    for (const outputOnDisk of [
+      { exists: true, sha256: SHA_C, byteLength: 999_999 },
+      { exists: true, sha256: SHA_C, byteLength: 999_999, playable: false },
+      { exists: true, sha256: SHA_C, byteLength: 0, playable: true },
+      { exists: true, sha256: SHA_C, byteLength: null, playable: true },
+      { exists: true, sha256: null, byteLength: 999_999, playable: true },
+    ]) {
+      const unverified = recoverMp4Job(
+        recovery({ job: encodingJob, plan, runtimes: readyRuntimes, outputOnDisk }),
+      );
+      expect(unverified.action).toBe('resume-from-segment');
+      expect(unverified.state).toBe('queued');
+    }
     // 场景 B：采集中断且尚无可信片段 → 先复验磁盘现场
     const capturing = applyMp4JobEvent(
       advanceToCapturing(plan),
@@ -805,10 +854,19 @@ describe('mp4 job state machine (OMA-071 failure recovery)', () => {
         job: succeeded,
         plan,
         runtimes: readyRuntimes,
-        outputOnDisk: { exists: true, sha256: SHA_C, byteLength: 999_999 },
+        outputOnDisk: { exists: true, sha256: SHA_C, byteLength: 999_999, playable: true },
       }),
     );
     expect(verified.action).toBe('none');
+    const oldSuccessEvidence = recoverMp4Job(
+      recovery({
+        job: succeeded,
+        plan,
+        runtimes: readyRuntimes,
+        outputOnDisk: { exists: true, sha256: SHA_C, byteLength: 999_999 },
+      }),
+    );
+    expect(oldSuccessEvidence.action).toBe('replan');
     // 宣称成功但磁盘没有产物 → 不能算完成，作废重来
     const lost = recoverMp4Job(recovery({ job: succeeded, plan, runtimes: readyRuntimes }));
     expect(lost.action).toBe('replan');

@@ -278,7 +278,7 @@ describe('media portability across export formats (OMA-072)', () => {
       at: '2026-10-07T00:00:00.000Z',
     });
     job = applyMp4JobEvent(job, 'begin-preparation', { at: 'x' }, plan);
-    job = applyMp4JobEvent(job, 'resources-verified', { at: 'x', blockingRuntimes: [] }, plan);
+    job = applyMp4JobEvent(job, 'resources-verified', { at: 'x', runtimes: plan.runtimes }, plan);
     job = applyMp4JobEvent(job, 'begin-capture', { at: 'x' }, plan);
     job = applyMp4JobEvent(
       job,
