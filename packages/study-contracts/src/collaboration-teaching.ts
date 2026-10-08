@@ -9,21 +9,29 @@ const id = z.string().min(1).max(200);
  * 公共教学命令。
  *
  * 两条来源纪律贯穿所有操作：
- * - `speak`/`write` 只能引用**当前场景**知识点关联的冻结已审核 `statementId`，
- *   正文由服务端从共享快照读出（`speak`）或由房主随已审核陈述一起提交（`write`），
+ * - `speak` 只能引用**当前场景**知识点关联的冻结已审核 `statementId`；
+ *   `write` 必须引用独立的人工板书审核回执，不能单凭陈述 ID 获准，
  *   调用方不能凭空塞任意正文；
  * - `focus`/`laser`/`erase` 只能指向当前冻结课件里**真实存在**的元素/已写内容。
  *
- * 协议 4 在协议 3 的指针动作（focus/laser/clear-board/undo/replay）之外，新增
- * `write`（把文字/公式/简图写进公共白板）与 `erase`（按原动作 id 擦除已写内容）。
+ * 协议 5 增加独立板书正文审核回执，再允许 `write` 引用回执。
  */
 export const collabTeachingOperationSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('speak'), statementId: id }).strict(),
   z
     .object({
+      kind: z.literal('review-board-content'),
+      statementId: id,
+      content: classroomBoardPublicContentSchema,
+      semanticReviewed: z.literal(true),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal('write'),
       statementId: id,
       content: classroomBoardPublicContentSchema,
+      reviewEventId: id,
     })
     .strict(),
   z.object({ kind: z.literal('focus'), elementId: id }).strict(),
@@ -60,9 +68,22 @@ const boardContentSchema = z
     seq: z.number().int().positive(),
     statementId: id,
     content: classroomBoardPublicContentSchema,
+    reviewEventId: id.optional(),
   })
   .strict();
 export type CollabBoardContentDto = z.infer<typeof boardContentSchema>;
+
+const boardReviewedContentSchema = z
+  .object({
+    eventId: id,
+    seq: z.number().int().positive(),
+    statementId: id,
+    content: classroomBoardPublicContentSchema,
+    reviewerUid: learnerUidSchema,
+    sceneId: id,
+  })
+  .strict();
+export type CollabBoardReviewedContentDto = z.infer<typeof boardReviewedContentSchema>;
 
 /**
  * 当前场景的公共白板动作历史（协议 3 起，协议 4 扩展内容动作）。
@@ -79,6 +100,7 @@ const boardActionSchema = z
     elementId: id.optional(),
     statementId: id.optional(),
     content: classroomBoardPublicContentSchema.optional(),
+    reviewEventId: id.optional(),
     targetEventId: id.optional(),
     applied: z.boolean(),
   })
@@ -103,6 +125,7 @@ const boardActionSchema = z
     const hasElement = action.elementId !== undefined;
     const hasContent = action.content !== undefined;
     const hasStatement = action.statementId !== undefined;
+    const hasReviewEvent = action.reviewEventId !== undefined;
     const hasTarget = action.targetEventId !== undefined;
     switch (action.kind) {
       case 'focus':
@@ -111,12 +134,14 @@ const boardActionSchema = z
         forbid(hasContent, 'content');
         forbid(hasStatement, 'statementId');
         forbid(hasTarget, 'targetEventId');
+        forbid(hasReviewEvent, 'reviewEventId');
         break;
       case 'clear-board':
         forbid(hasElement, 'elementId');
         forbid(hasContent, 'content');
         forbid(hasStatement, 'statementId');
         forbid(hasTarget, 'targetEventId');
+        forbid(hasReviewEvent, 'reviewEventId');
         break;
       case 'write':
         expect(hasContent, 'content');
@@ -129,6 +154,7 @@ const boardActionSchema = z
         forbid(hasElement, 'elementId');
         forbid(hasContent, 'content');
         forbid(hasStatement, 'statementId');
+        forbid(hasReviewEvent, 'reviewEventId');
         break;
     }
   });
@@ -181,10 +207,34 @@ export const collabTeachingStateSchema = z
         laserElementId: id.nullable(),
         /** 已写入公共白板的内容；历史重放得到，随场景切换清空。可选以兼容旧状态。 */
         contents: z.array(boardContentSchema).max(200).optional(),
+        /** Explicit human review receipts. Optional only for legacy persisted states. */
+        reviewedContents: z.array(boardReviewedContentSchema).max(200).optional(),
         /** Optional for backwards compatibility with already persisted v1 states. */
         history: boardHistorySchema.optional(),
       })
-      .strict(),
+      .strict()
+      .superRefine((board, ctx) => {
+        const eventIds = new Set<string>();
+        const seqs = new Set<number>();
+        let previousSeq = 0;
+        (board.reviewedContents ?? []).forEach((receipt, index) => {
+          if (eventIds.has(receipt.eventId))
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['reviewedContents', index, 'eventId'],
+              message: 'duplicate review eventId',
+            });
+          if (seqs.has(receipt.seq) || receipt.seq <= previousSeq)
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['reviewedContents', index, 'seq'],
+              message: 'review receipts must be ordered by unique seq',
+            });
+          eventIds.add(receipt.eventId);
+          seqs.add(receipt.seq);
+          previousSeq = receipt.seq;
+        });
+      }),
     waiting: z
       .object({
         waitEventId: id,

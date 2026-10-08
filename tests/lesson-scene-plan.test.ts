@@ -537,13 +537,13 @@ describe('场景计划与完整课件候选（存储层）', () => {
       });
 
     // 没有已审核定义：互动场景列为未生成（漏装配），而不是塞占位内容冒充；
-    // PBL 骨架是用户在计划里显式新增的，仍按其身份装配。
+    // PBL 同样必须绑定冻结定义，手写骨架不会冒充可执行项目。
     const without = build(undefined);
-    expect(without.scenes.map((scene) => scene.sceneId)).toEqual([
-      'scene_slide_a',
+    expect(without.scenes.map((scene) => scene.sceneId)).toEqual(['scene_slide_a']);
+    expect(without.skipped.map((item) => item.id)).toEqual([
+      'scene_formal_interaction_parameter',
       'scene_formal_interaction_pbl',
     ]);
-    expect(without.skipped.map((item) => item.id)).toEqual(['scene_formal_interaction_parameter']);
     expect(without.skipped.every((item) => item.reason.includes('缺少本版本已审核'))).toBe(true);
 
     // 有定义才生成对应的 interactive 场景，知识点由定义绑定的陈述沿用。
@@ -561,11 +561,12 @@ describe('场景计划与完整课件候选（存储层）', () => {
         predictionRequired: false,
       },
     ]);
-    expect(withDefinitions.skipped).toEqual([]);
+    expect(withDefinitions.skipped.map((item) => item.id)).toEqual([
+      'scene_formal_interaction_pbl',
+    ]);
     expect(withDefinitions.document.scenes.map((scene) => scene.type)).toEqual([
       'slide',
       'interactive',
-      'pbl',
     ]);
     const interactive = withDefinitions.scenes.find(
       (scene) => scene.sceneId === 'scene_formal_interaction_parameter',

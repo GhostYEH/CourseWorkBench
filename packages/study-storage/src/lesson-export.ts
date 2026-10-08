@@ -157,8 +157,39 @@ const renderInteractive = (scene: DocumentScene): string => {
   return `<section class="interactive" data-scene="${escapeHtml(scene.id)}"><h2>${escapeHtml(scene.title)}</h2><iframe class="widget" sandbox="allow-scripts" title="${escapeHtml(scene.title)}" srcdoc="${escapeHtml(html)}"></iframe></section>`;
 };
 
-const renderPbl = (scene: DocumentScene): string =>
-  `<section class="pbl" data-scene="${escapeHtml(scene.id)}"><h2>${escapeHtml(scene.title)}</h2><p class="muted">PBL 场景为设计态骨架，完整内容生成尚未实现。</p></section>`;
+const renderPbl = (scene: DocumentScene): string => {
+  const project = scene.content?.['projectV2'];
+  if (
+    typeof scene.content?.['definitionId'] !== 'string' ||
+    scene.content['definitionId'].length === 0 ||
+    !project ||
+    typeof project !== 'object' ||
+    Array.isArray(project)
+  ) {
+    return `<section class="pbl" data-scene="${escapeHtml(scene.id)}"><h2>${escapeHtml(scene.title)}</h2><p class="muted">这是历史 PBL 场景骨架，没有关联已冻结的公开项目定义。</p></section>`;
+  }
+  const definition = project as Record<string, unknown>;
+  const text = (value: unknown): string => (typeof value === 'string' ? value : '');
+  const goals = Array.isArray(definition['gains']) ? definition['gains'] : [];
+  const milestones = Array.isArray(definition['milestones']) ? definition['milestones'] : [];
+  const goalList = goals.map((goal) => `<li>${escapeHtml(String(goal))}</li>`).join('');
+  const milestoneList = milestones
+    .map((raw) => {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return '';
+      const milestone = raw as Record<string, unknown>;
+      const tasks = Array.isArray(milestone['microtasks']) ? milestone['microtasks'] : [];
+      const taskList = tasks
+        .map((item) => {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) return '';
+          const task = item as Record<string, unknown>;
+          return `<li><strong>${escapeHtml(text(task['title']))}</strong>${text(task['description']) ? `：${escapeHtml(text(task['description']))}` : ''}</li>`;
+        })
+        .join('');
+      return `<li><h4>${escapeHtml(text(milestone['title']))}</h4>${text(milestone['description']) ? `<p>${escapeHtml(text(milestone['description']))}</p>` : ''}<ul>${taskList}</ul></li>`;
+    })
+    .join('');
+  return `<section class="pbl" data-scene="${escapeHtml(scene.id)}"><h2>${escapeHtml(text(definition['title']) || scene.title)}</h2><p>${escapeHtml(text(definition['description']))}</p>${text(definition['learningObjective']) ? `<h3>项目目标</h3><p>${escapeHtml(text(definition['learningObjective']))}</p>` : ''}${goalList ? `<h3>预期成果</h3><ul>${goalList}</ul>` : ''}${milestoneList ? `<h3>阶段与任务</h3><ol>${milestoneList}</ol>` : ''}</section>`;
+};
 
 const renderScene = (scene: DocumentScene): string => {
   if (scene.type === 'slide') return renderSlide(scene);

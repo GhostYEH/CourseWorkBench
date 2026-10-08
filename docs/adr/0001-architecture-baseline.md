@@ -4,7 +4,7 @@
 - 更新：2026-10-06（本机实现与安装证据范围复核）
 - 关联：`docs/Electron开发设计.md`、`docs/开工任务清单.md`（ADR-01）、`docs/upstream-adaptation.md`
 
-~~Electron/回环 Next/SQLite 架构与授权边界、真实课堂生产宿主及当前隔离服务/原生回归~~；完整安装和故障矩阵仍未签核，证据见[最新收尾](../closeout-2026-10-06.md)。
+Electron/回环 Next/SQLite 架构与授权边界、真实课堂生产宿主及当前隔离服务/原生回归；完整安装和故障矩阵仍未签核，证据见[最新收尾](../closeout-2026-10-06.md)。
 
 ## 背景
 

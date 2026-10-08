@@ -65,6 +65,7 @@ const ScenePlanEditor = ({
   bundle,
   plan,
   interactions = [],
+  reviewedPbl = [],
   busy,
   onSaved,
 }: {
@@ -75,6 +76,8 @@ const ScenePlanEditor = ({
   plan: ScenePlanDto | null;
   /** 本版本已审核的正式互动定义（场景编号由服务端按 `formalInteractionSceneId` 派生）。 */
   interactions?: Array<{ sceneId: string; title: string }>;
+  /** Only frozen PBL definitions are eligible for a plan scene. */
+  reviewedPbl?: Array<{ sceneId: string; title: string }>;
   busy: boolean;
   onSaved: (message: string) => void;
 }): ReactNode => {
@@ -82,8 +85,8 @@ const ScenePlanEditor = ({
   const editable = lesson.status === 'draft';
   const initial = useMemo<PlanSceneDto[]>(() => {
     if (plan) return plan.scenes;
-    return initialLessonPlanScenes(bundle, lesson, interactions);
-  }, [plan, bundle, lesson, interactions]);
+    return initialLessonPlanScenes(bundle, lesson, interactions, reviewedPbl);
+  }, [plan, bundle, lesson, interactions, reviewedPbl]);
 
   /**
    * 编辑器保存必须绑定**实际加载的那一版计划 revision**。
@@ -108,6 +111,9 @@ const ScenePlanEditor = ({
   const remoteRevision = plan?.revision ?? 0;
   const stale = remoteRevision > loadedRevision;
   const overLimit = editor.scenes.length > SCENE_PLAN_WRITE_LIMIT;
+  const invalidPbl = editor.scenes.some(
+    (scene) => scene.kind === 'pbl' && !reviewedPbl.some((item) => item.sceneId === scene.sceneId),
+  );
 
   const selectedStatements = bundle.statements.filter((statement) =>
     lesson.statementIds.includes(statement.statementId),
@@ -218,6 +224,30 @@ const ScenePlanEditor = ({
           statementId: null,
           questionId: next.questionId,
           knowledgeIds: [...next.knowledgeIds],
+          elements: [],
+          note: '',
+        },
+      ]);
+      return;
+    }
+    if (kind === 'pbl') {
+      const used = new Set(
+        editor.scenes.filter((scene) => scene.kind === 'pbl').map((scene) => scene.sceneId),
+      );
+      const next = reviewedPbl.find((item) => !used.has(item.sceneId));
+      if (!next) {
+        setError('没有可新增的已冻结 PBL 定义；请先完成项目定义的人工审核。');
+        return;
+      }
+      apply([
+        ...editor.scenes,
+        {
+          sceneId: next.sceneId,
+          kind: 'pbl',
+          title: next.title,
+          statementId: null,
+          questionId: null,
+          knowledgeIds: [],
           elements: [],
           note: '',
         },
@@ -355,7 +385,7 @@ const ScenePlanEditor = ({
         <button
           type="button"
           className="btn btn-primary"
-          disabled={disabled || editor.scenes.length === 0 || stale || overLimit}
+          disabled={disabled || editor.scenes.length === 0 || stale || overLimit || invalidPbl}
           data-scene-plan-save
           onClick={() => void save()}
         >
@@ -388,7 +418,16 @@ const ScenePlanEditor = ({
             key={kind}
             type="button"
             className="btn"
-            disabled={disabled || editor.scenes.length >= SCENE_PLAN_WRITE_LIMIT}
+            disabled={
+              disabled ||
+              editor.scenes.length >= SCENE_PLAN_WRITE_LIMIT ||
+              (kind === 'pbl' &&
+                reviewedPbl.every((item) =>
+                  editor.scenes.some(
+                    (scene) => scene.kind === 'pbl' && scene.sceneId === item.sceneId,
+                  ),
+                ))
+            }
             onClick={() => addScene(kind)}
           >
             新增{KIND_LABEL[kind]}
@@ -432,7 +471,11 @@ const ScenePlanEditor = ({
                 <button
                   type="button"
                   className="btn"
-                  disabled={disabled || editor.scenes.length >= SCENE_PLAN_WRITE_LIMIT}
+                  disabled={
+                    disabled ||
+                    scene.kind === 'pbl' ||
+                    editor.scenes.length >= SCENE_PLAN_WRITE_LIMIT
+                  }
                   data-scene-duplicate={scene.sceneId}
                   onClick={() => apply(duplicateSceneAt(editor.scenes, scene.sceneId))}
                 >

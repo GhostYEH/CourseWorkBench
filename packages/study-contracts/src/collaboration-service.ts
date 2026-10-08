@@ -17,6 +17,7 @@
 
 import { z } from 'zod';
 import { collabTeachingOperationSchema } from './collaboration-teaching';
+import { collabTeachingAiOperationSchema } from './collaboration-teaching-ai';
 import { learnerUidSchema } from './learner-profile';
 import { classroomSharedCourseSchema } from './classroom-room';
 import {
@@ -35,8 +36,9 @@ const secret = z.string().regex(/^[a-f0-9]{64}$/);
  * 变更共享命令形状或认证语义时递增。
  *
  * v4：公共教学新增 `write`/`erase` 白板内容动作与 `board.contents`。
+ * v5：板书先保存人工审核回执，写入必须引用回执；新增受控公共 AI 生成、审核与播报。
  */
-export const COLLAB_PROTOCOL_VERSION = 4;
+export const COLLAB_PROTOCOL_VERSION = 5;
 
 /** 协作服务健康检查与握手：端口、协议版本、实例标识、是否开发模式。 */
 export const collabHealthSchema = z
@@ -214,6 +216,25 @@ export type CollabSnapshotViewDto = z.infer<typeof collabSnapshotViewSchema>;
  * 本地冻结课程读出，界面只发起意图。
  */
 export const collabOnlineCommandSchema = z.discriminatedUnion('action', [
+  z
+    .object({
+      action: z.literal('teaching-ai'),
+      roomId: id,
+      sceneId: id,
+      expectedRevision: z.number().int().positive(),
+      expectedSeq: z.number().int().positive(),
+      eventId: id,
+      requestId: id,
+      // Renderer may request a generation or review/broadcast an existing candidate;
+      // model bodies can only be registered by the guarded local execution path.
+      operation: z.discriminatedUnion('kind', [
+        collabTeachingAiOperationSchema.options[0]!,
+        collabTeachingAiOperationSchema.options[1]!,
+        collabTeachingAiOperationSchema.options[3]!,
+        collabTeachingAiOperationSchema.options[4]!,
+      ]),
+    })
+    .strict(),
   z
     .object({
       action: z.literal('teaching'),

@@ -1,10 +1,12 @@
-import { mkdtempSync, rmSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { collabOnlineCommandSchema } from '@sew/study-contracts';
 import {
   prepareOnlineCommand,
   confirmOnlineCommand,
+  readLegacyOnlineCommands,
 } from '../apps/learning/lib/server/collab-command-outbox';
 import type { Session } from '../apps/learning/lib/server/service';
 
@@ -160,5 +162,103 @@ describe('受控客户端跨应用重启命令恢复', () => {
       writeFileSync(join(root, 'collab-command-outbox', file), '{corrupt');
     }
     expect(() => prepareOnlineCommand(session, message)).toThrow();
+  });
+
+  it('保留 v4 未审核 write 作为仅元数据的 legacy 记录，同时允许新的 v5 命令排队与确认', () => {
+    const legacy = {
+      action: 'teaching',
+      roomId: 'room',
+      sceneId: 'scene',
+      expectedRevision: 3,
+      expectedSeq: 8,
+      eventId: 'legacy-event',
+      requestId: 'legacy-write-request',
+      operation: {
+        kind: 'write',
+        statementId: 'statement',
+        content: { kind: 'text', text: '旧版草稿正文' },
+      },
+    };
+    prepareOnlineCommand(session, message);
+    const file = join(
+      root,
+      'collab-command-outbox',
+      readdirSync(join(root, 'collab-command-outbox'))[0]!,
+    );
+    const envelope = JSON.parse(readFileSync(file, 'utf8')) as { commands: unknown[] };
+    envelope.commands.push(legacy);
+    writeFileSync(file, JSON.stringify(envelope));
+
+    expect(readLegacyOnlineCommands(session)).toEqual({
+      count: 1,
+      requestIds: ['legacy-write-request'],
+      commands: [
+        {
+          requestId: 'legacy-write-request',
+          roomId: 'room',
+          sceneId: 'scene',
+          eventId: 'legacy-event',
+        },
+      ],
+      reason: 'board_write_requires_review',
+    });
+    expect(() => collabOnlineCommandSchema.parse(legacy)).toThrow();
+
+    const unrelatedMessage = { ...message, body: '新消息', requestId: 'message-after-legacy' };
+    expect(prepareOnlineCommand(session, unrelatedMessage)).toEqual(unrelatedMessage);
+    const reviewedWrite = {
+      action: 'teaching' as const,
+      roomId: 'room',
+      sceneId: 'scene',
+      expectedRevision: 4,
+      expectedSeq: 9,
+      eventId: 'v5-write-event',
+      requestId: 'v5-write-request',
+      operation: {
+        kind: 'write' as const,
+        statementId: 'statement',
+        content: { kind: 'text' as const, text: '新审核正文' },
+        reviewEventId: 'review-event',
+      },
+    };
+    expect(prepareOnlineCommand(session, reviewedWrite)).toEqual(reviewedWrite);
+    confirmOnlineCommand(session, reviewedWrite.requestId);
+    expect(readLegacyOnlineCommands(session)).toEqual({
+      count: 1,
+      requestIds: ['legacy-write-request'],
+      commands: [
+        {
+          requestId: 'legacy-write-request',
+          roomId: 'room',
+          sceneId: 'scene',
+          eventId: 'legacy-event',
+        },
+      ],
+      reason: 'board_write_requires_review',
+    });
+    const preserved = JSON.parse(readFileSync(file, 'utf8')) as { commands: unknown[] };
+    expect(preserved.commands).toContainEqual(legacy);
+    expect(JSON.stringify(readLegacyOnlineCommands(session))).not.toContain('旧版草稿正文');
+    confirmOnlineCommand(session, legacy.requestId);
+    expect(readLegacyOnlineCommands(session)).toEqual({
+      count: 0,
+      requestIds: [],
+      commands: [],
+      reason: 'board_write_requires_review',
+    });
+  });
+
+  it('拒绝 envelope 中无法识别的命令记录', () => {
+    prepareOnlineCommand(session, message);
+    const file = join(
+      root,
+      'collab-command-outbox',
+      readdirSync(join(root, 'collab-command-outbox'))[0]!,
+    );
+    const envelope = JSON.parse(readFileSync(file, 'utf8')) as { commands: unknown[] };
+    envelope.commands.push({ action: 'unknown-command', requestId: 'unknown' });
+    writeFileSync(file, JSON.stringify(envelope));
+    expect(() => prepareOnlineCommand(session, { ...message, requestId: 'new-message' })).toThrow();
+    expect(() => confirmOnlineCommand(session, message.requestId)).toThrow();
   });
 });

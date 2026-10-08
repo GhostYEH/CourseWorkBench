@@ -22,10 +22,12 @@ import type {
   Stage,
 } from '@openmaic/dsl';
 import { DSL_VERSION } from '@openmaic/dsl';
-import { formalInteractionSceneId } from '@sew/study-domain';
+import { StudyError } from '@sew/study-contracts';
+import { formalInteractionSceneId, pblProjectSceneId } from '@sew/study-domain';
 import type {
   EvidenceBundleDto,
   FormalInteractionDefinitionDto,
+  PblFrozenDto,
   PlanElementDto,
   PlanSceneDto,
   ScenePlanDto,
@@ -33,6 +35,7 @@ import type {
 import type { ClassroomDocument, LessonScene } from './reviewed-lesson';
 import { FORMAL_SCENE_LIMIT, formalStageId } from './formal-lesson-document';
 import { escapePlanText, renderPlanRichText } from './plan-rich-text';
+import { pblSceneContent } from './pbl-scene-content';
 
 const theme = {
   backgroundColor: '#f4f6fb',
@@ -126,6 +129,8 @@ export interface PlannedLessonScene {
   title: string;
   knowledgeIds: string[];
   statementId: string | null;
+  /** PBL source statements derived from this version's frozen definition. */
+  statementIds?: string[];
 }
 
 export interface PlannedLessonSkipped {
@@ -157,6 +162,7 @@ export const buildPlannedLessonDocument = (input: {
   title: string;
   frozenAt: string;
   interactions?: FormalInteractionDefinitionDto[];
+  pblDefinition?: PblFrozenDto | null;
 }): PlannedLessonDocument => {
   const parsed = Date.parse(input.frozenAt);
   const at = Number.isFinite(parsed) ? parsed : 0;
@@ -166,6 +172,8 @@ export const buildPlannedLessonDocument = (input: {
   const definitions = new Map(
     (input.interactions ?? []).map((item) => [formalInteractionSceneId(item.id), item]),
   );
+  const pblDefinition = input.pblDefinition ?? null;
+  const pblSceneId = pblDefinition ? pblProjectSceneId(pblDefinition.definition.id) : null;
 
   const scenes: PlannedLessonScene[] = [];
   const dslScenes: Array<Scene<Action, PlannedSceneContent>> = [];
@@ -314,9 +322,37 @@ export const buildPlannedLessonDocument = (input: {
       return;
     }
 
-    // PBL：设计态骨架由用户在计划里显式新增（互动定义合同暂不覆盖 PBL），没有内容合同可绑定，
-    // 因此这里不再要求「已审核定义」——但它是用户显式添加的场景，不是静默塞进去的占位内容。
-    // 完整 PBL 执行（OMA-046…049）不在本项范围。
+    // 历史计划里的自由 PBL 场景只能显式跳过；当前可授课场景必须绑定本版本冻结定义。
+    if (!pblDefinition) {
+      skipped.push({
+        kind: 'scene',
+        id: scene.sceneId,
+        reason: 'PBL 场景缺少本版本已审核并冻结的定义，未进入课件',
+      });
+      return;
+    }
+    if (scene.sceneId !== pblSceneId) {
+      throw new StudyError('CLASSROOM_SCENE_SOURCE_MISSING', {
+        reason: 'pbl_scene_definition_mismatch',
+        sceneId: scene.sceneId,
+      });
+    }
+    const statementIds = [...pblDefinition.definition.statementIds];
+    const knowledgeIds = [
+      ...new Set(
+        statementIds
+          .map((id) => statements.get(id)?.knowledgeId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    if (knowledgeIds.length === 0 || statementIds.some((id) => !statements.has(id))) {
+      skipped.push({
+        kind: 'scene',
+        id: scene.sceneId,
+        reason: 'PBL 定义引用的陈述不在冻结证据包，未进入课件',
+      });
+      return;
+    }
     dslScenes.push({
       id: scene.sceneId,
       stageId,
@@ -325,13 +361,14 @@ export const buildPlannedLessonDocument = (input: {
       createdAt: at,
       updatedAt: at,
       type: 'pbl',
-      content: { type: 'pbl' },
+      content: pblSceneContent(pblDefinition, input.frozenAt),
     });
     scenes.push({
       sceneId: scene.sceneId,
       sceneType: 'pbl',
       title: scene.title,
-      knowledgeIds: [],
+      knowledgeIds,
+      statementIds,
       statementId: null,
       questionId: null,
     });

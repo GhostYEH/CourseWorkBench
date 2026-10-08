@@ -75,8 +75,14 @@ import { formalInteractionHash, formalInteractionSceneId } from './formal-intera
 export const pblHash = formalInteractionHash;
 
 /** PBL 场景编号：由项目定义编号派生，一个定义一个场景（OMA-046）。 */
-export const pblProjectSceneId = (definitionId: string): string =>
-  formalInteractionSceneId(`pbl_${definitionId}`);
+export const pblProjectSceneId = (definitionId: string): string => {
+  const readable = formalInteractionSceneId(`pbl_${definitionId}`);
+  // Definition IDs allow free text; planned scene IDs must be safe and bounded.
+  // Preserve existing short IDs, hash everything that would otherwise be renamed or truncated.
+  return /^[a-z0-9_]{1,60}$/.test(readable)
+    ? readable
+    : `scene_pbl_${pblHash(definitionId).slice(0, 40)}`;
+};
 
 /** 冻结定义的存放分区（按课程版本）。 */
 export const pblDefinitionSessionId = (lessonId: string, version: number): string =>
@@ -123,10 +129,11 @@ export const pblReceiptId = (record: PblRecordDto): string => `pbl-${pblHash(rec
 /** 把记录包成收据（正文逐字保留）。 */
 export const pblReceiptFrom = (
   record: PblRecordDto,
-): { id: string; createdAt: string; payload: PblRecordDto } => ({
+): { id: string; createdAt: string; payload: PblRecordDto; artifactId: string | null } => ({
   id: pblReceiptId(record),
   createdAt: record.createdAt,
   payload: record,
+  artifactId: record.kind === 'deliverable' ? pblArtifactIdFromRecord(record) : null,
 });
 
 const invalid = (reason: string, extra?: Record<string, unknown>): never => {

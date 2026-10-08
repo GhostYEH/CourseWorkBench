@@ -7,7 +7,8 @@ import { QuestionAuthoring } from '../../../components/question-authoring';
 import { TeachingClassroom } from '../../../components/teaching-classroom';
 import { toClassroomSessionDto,toExplanationDto,toKnowledgePointDto,toLessonReviewDto,toLessonVersionDto } from '../../../lib/server/dto';
 import { readFormalInteractionDefinitions } from '../../../lib/server/formal-interaction-definition-store';
-import { formalInteractionSceneId } from '@sew/study-domain';
+import { formalInteractionSceneId, pblProjectSceneId } from '@sew/study-domain';
+import { readPblDefinition } from '../../../lib/server/pbl-definition-store';
 import { modelConnection } from '../../../lib/server/model-connection';
 import { requireSession } from '../../../lib/server/service';
 import { readWorkbenchKnowledge,readWorkbenchQuestions } from '../../../lib/server/workbench-data';
@@ -58,6 +59,15 @@ export default function LessonsPage(): ReactNode {
         title: definition.title,
       })),
     );
+  }
+  /** Only locally frozen definitions can be selected by the scene-plan editor. */
+  const reviewedPbl = new Map<string, Array<{ sceneId: string; title: string }>>();
+  for (const version of versions) {
+    const frozen = readPblDefinition(session, version.lessonId, version.version);
+    reviewedPbl.set(`${version.lessonId}:${version.version}`, frozen ? [{
+      sceneId: pblProjectSceneId(frozen.frozen.definition.id),
+      title: frozen.frozen.definition.title,
+    }] : []);
   }
 
   /** 已发布版本 → 已挂接的课件文档（场景编号取自文档本身，不从讲解卡反推）。 */
@@ -143,6 +153,8 @@ export default function LessonsPage(): ReactNode {
         scenePlans={scenePlans}
         coursewareCandidates={coursewareCandidates}
         reviewedInteractions={reviewedInteractions}
+        reviewedPbl={reviewedPbl}
+        learnerUid={session.learnerUid}
         modelConfigured={modelConnection.status().configured}
       />
 

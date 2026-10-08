@@ -103,6 +103,8 @@ export const MODEL_CALL_PURPOSE = [
   'review_suggestion',
   'statement_revision',
   'courseware_generation',
+  'collab_teaching_ai',
+  'pbl_guidance',
 ] as const;
 export type ModelCallPurpose = (typeof MODEL_CALL_PURPOSE)[number];
 

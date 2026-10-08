@@ -124,4 +124,41 @@ describe('共同课堂公共场景消费', () => {
     expect(otherScene).not.toContain('data-collab-focus');
     expect(otherScene).not.toContain('教师聚焦');
   });
+
+  it('公共场景用与教师面板相同的 SVG 呈现关系端点、方向和标签', () => {
+    const teaching = {
+      schemaVersion: 1 as const,
+      roomId: 'room',
+      sceneId: 'intro',
+      board: {
+        focusElementId: null,
+        laserElementId: null,
+        contents: [
+          {
+            eventId: 'diagram-event',
+            seq: 1,
+            statementId: 'statement-intro',
+            content: {
+              kind: 'diagram' as const,
+              nodes: [
+                { id: 'a', label: '起点', x: 75, y: 100 },
+                { id: 'b', label: '终点', x: 925, y: 100 },
+              ],
+              edges: [{ from: 'a', to: 'b', label: '流向' }],
+            },
+          },
+        ],
+      },
+      waiting: null,
+      outputs: [],
+    };
+    const markup = renderToStaticMarkup(
+      createElement(CollabSharedScene, { snapshot, sceneId: 'intro', teaching }),
+    );
+    expect(markup).toContain('x1="103" y1="100" x2="897" y2="100"');
+    expect(markup).toContain('data-from-node="a" data-to-node="b"');
+    expect(markup).toMatch(/marker-end="url\(#collab-board-arrow-[^)]+\)"/);
+    expect(markup).toContain('data-collab-board-edge-label="true">流向</text>');
+    expect(markup).toContain('起点 → 终点：流向');
+  });
 });

@@ -251,6 +251,35 @@ export const collabTeachingAiViewSchema = z
   .strict();
 export type CollabTeachingAiViewDto = z.infer<typeof collabTeachingAiViewSchema>;
 
+/** Member-safe public transcript; internal candidate/model/review data stays with the owner. */
+export const collabTeachingAiPublicItemSchema = z
+  .object({
+    seq: z.number().int().positive(),
+    eventId: id,
+    senderType: z.enum(COLLAB_TEACHING_AI_SENDER_TYPES),
+    aiLabel: z.literal('AI'),
+    displayName: collabText(80).nullable(),
+    body: aiBodyText,
+    anchorStatementId: id,
+    conditions: z.string().max(2000),
+  })
+  .strict();
+export type CollabTeachingAiPublicItemDto = z.infer<typeof collabTeachingAiPublicItemSchema>;
+
+/** Owner receives authoritative candidates; another member receives only the public projection. */
+export const collabTeachingAiReadViewSchema = z
+  .object({
+    roomId: id,
+    sceneId: id,
+    state: collabTeachingAiStateSchema.nullable(),
+    publicOutputs: z.array(collabTeachingAiPublicItemSchema).max(COLLAB_TEACHING_AI_OUTPUT_LIMIT),
+    roomRevision: z.number().int().positive(),
+    tailSeq: z.number().int().nonnegative(),
+    gate: collabTeachingAiGateSchema,
+  })
+  .strict();
+export type CollabTeachingAiReadViewDto = z.infer<typeof collabTeachingAiReadViewSchema>;
+
 export const collabTeachingAiResultSchema = z
   .object({
     state: collabTeachingAiStateSchema,

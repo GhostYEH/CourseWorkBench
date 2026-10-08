@@ -13,6 +13,7 @@ module.exports = async ({
   cover,
   markStep = () => {},
   planOnly = false,
+  pblOnly = false,
 }) => {
   const state = await serviceRequest('GET', '/api/study/state');
   const scope = { projectId: state.project.projectId, generation: state.project.generation };
@@ -294,8 +295,8 @@ module.exports = async ({
   })()`);
   };
 
-  if (planOnly) {
-    await require('./smoke-lesson-plan.cjs')({
+  if (planOnly || pblOnly) {
+    await require(pblOnly ? './smoke-pbl.cjs' : './smoke-lesson-plan.cjs')({
       window,
       origin,
       serviceRequest,

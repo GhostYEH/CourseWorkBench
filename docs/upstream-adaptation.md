@@ -1,12 +1,14 @@
 # 上游适配记录
 
+历史桌面程序和报告已按本次清理要求移至项目外归档；下文原路径仅用于追溯当时证据，归档位置见[工作区清理与提交记录](release-closeout-2026-10-08.md)。当前学习服务构建保留，历史包不作为当前源码验收依据。
+
 维护实际采用的上游路径、基线摘要、修改目的与关联验证。OpenMAIC 课堂和持久化适配的当前缺口见[待办事项](待办事项.md)。
 
 ## 0. 当前采用状态（2026-10-06）
 
-产品源码基线 `3d9fa4d`（`11cd2db` 基础 + 本次 MP4 修复） 的消费者及本次核验见[2026-10-07 核验记录](closeout-2026-10-06.md#2026-10-07-提交核验与规划更新)。第 2 节只划线已接入子项；带日期的历史构建/安装/模型记录不能作为最新证据。本次未重建，当前目录包、独立安装、真人/provider 未签核。
+产品源码基线 `3d9fa4d`（`11cd2db` 基础 + 本次 MP4 修复） 的消费者及本次核验见[2026-10-07 核验记录](closeout-2026-10-06.md#2026-10-07-提交核验与规划更新)。第 2 节登记实际已接入子项及剩余适配；带日期的历史构建/安装/模型记录不能作为最新证据。本次未重建，当前目录包、独立安装、真人/provider 未签核。
 
-~~固定已发布包/实际播放核心与本地存储适配~~；~~来源/课程审核、正式教师/白板/基础互动与有限场景编辑~~；~~项目内课程库/静态导出~~；~~独立在线协作软件链路~~。实际复用范围继续逐文件维护，不将本项目新写实现描述为直接复制上游。
+固定已发布包/实际播放核心与本地存储适配；来源/课程审核、正式教师/白板/基础互动与有限场景编辑；项目内课程库/静态导出；独立在线协作软件链路。实际复用范围继续逐文件维护，不将本项目新写实现描述为直接复制上游。
 
 ## 1. 基线与来源边界
 
@@ -24,14 +26,14 @@
 
 | 上游合同/源码位置 | 本项目适配位置 | 已核对子项与剩余适配 |
 | --- | --- | --- |
-| `@openmaic/storage` `DocumentStore`（`document/http` 的 `HttpDocumentStore`） | `apps/learning/app/api/maic/documents/[[...segments]]/route.ts` + `packages/study-storage/src/repositories/classroom.ts` | ~~实际路径/方法、204/原始错误/409 FUTURE_VERSION、项目分区、读写审核指纹与严格 UTF-8 原始客户端回归~~；outline 保留在完整文档内，修改仍须重新审核 |
-| 上游 `DocumentFolderStore` 与 `/api/folders` | `app/api/folders/**`、`repositories/document-organization.ts`、schema v8、`app/workbench/library/page.tsx` + `components/lesson-library.tsx` + `lib/document-library.ts` | ~~项目分区文件夹创建/重命名/成员归组/取消分组及课程库浏览/组织 UI~~；删除仅支持 ungroup，remove 明确拒绝；跨项目/全局课程库与发布访问状态仍未接入 |
-| `@openmaic/storage` `AssetStore`/`HttpAssetStore` | `apps/learning/app/api/maic/assets/**` + `packages/study-storage/src/repositories/classroom-assets.ts` | ~~SQLite 项目分区字节/内部 SHA-256/修订/场景绑定、受控下载、真实图片/公式字体及跨课程引用保护~~；离线回收与大媒体仍待补齐 |
-| `@openmaic/storage` `HttpRuntimeStore`、`HttpAccountKV` | `app/api/maic/runtime/[...segments]/route.ts`、`app/api/maic/kv/[...segments]/route.ts` + SQLite runtime/KV repositories | ~~原始客户端合同、服务绑定 learner、追加序号/版本冲突/项目代次、本人的作答/review/收据原子提交~~；本项目持久教师会话与有限调度已接入；上游完整 AgentSessionStore/Director 不计完成 |
-| OpenMAIC PlaybackEngine、课堂加载与场景分派 | `components/openmaic-adaptation/`、`components/classroom-surface.tsx` | ~~实际复制适配播放引擎/类型/游标/导航/时序及宿主加载/重试/退出，真实三类场景和本地服务生命周期接线~~；正式教师/白板与有限场景编辑已另有本项目消费者，完整 Director/编辑器/生成媒体管线仍待接入 |
-| OpenMAIC `ROLE_ACTIONS` 与角色运行时 | 课堂角色桥接 | ~~首版 AI 同学仅发言、无本人答题/默认白板写权、simulation 分区与服务端调度~~；完整多角色/圆桌工具动作待做，人设不能放宽领域权限 |
-| OpenMAIC 前端 HTTP adapter | `apps/learning/app/api/maic/*` | ~~实际 HttpDocumentStore 原始载荷、附加项目身份/代次并在服务端复验~~；新采用的原始 HTTP 合同继续逐项记录/校验 |
-| 互动 iframe 与资源加载协议 | `openmaic-adaptation/SceneRenderer.tsx` | ~~沙箱、当前窗口/实例检查、onLoad 就绪、runtime-error/早期错误重放协议及正式互动服务核验~~；上游无周期心跳；上游资源选择器/iframe 池与通用现场恢复未采用/未完成 |
+| `@openmaic/storage` `DocumentStore`（`document/http` 的 `HttpDocumentStore`） | `apps/learning/app/api/maic/documents/[[...segments]]/route.ts` + `packages/study-storage/src/repositories/classroom.ts` | 实际路径/方法、204/原始错误/409 FUTURE_VERSION、项目分区、读写审核指纹与严格 UTF-8 原始客户端回归；outline 保留在完整文档内，修改仍须重新审核 |
+| 上游 `DocumentFolderStore` 与 `/api/folders` | `app/api/folders/**`、`repositories/document-organization.ts`、schema v8、`app/workbench/library/page.tsx` + `components/lesson-library.tsx` + `lib/document-library.ts` | 项目分区文件夹创建/重命名/成员归组/取消分组及课程库浏览/组织 UI；删除仅支持 ungroup，remove 明确拒绝；跨项目/全局课程库与发布访问状态仍未接入 |
+| `@openmaic/storage` `AssetStore`/`HttpAssetStore` | `apps/learning/app/api/maic/assets/**` + `packages/study-storage/src/repositories/classroom-assets.ts` | SQLite 项目分区字节/内部 SHA-256/修订/场景绑定、受控下载、真实图片/公式字体及跨课程引用保护；离线回收与大媒体仍待补齐 |
+| `@openmaic/storage` `HttpRuntimeStore`、`HttpAccountKV` | `app/api/maic/runtime/[...segments]/route.ts`、`app/api/maic/kv/[...segments]/route.ts` + SQLite runtime/KV repositories | 原始客户端合同、服务绑定 learner、追加序号/版本冲突/项目代次、本人的作答/review/收据原子提交；本项目持久教师会话与有限调度已接入；上游完整 AgentSessionStore/Director 不计完成 |
+| OpenMAIC PlaybackEngine、课堂加载与场景分派 | `components/openmaic-adaptation/`、`components/classroom-surface.tsx` | 实际复制适配播放引擎/类型/游标/导航/时序及宿主加载/重试/退出，真实三类场景和本地服务生命周期接线；正式教师/白板与有限场景编辑已另有本项目消费者，完整 Director/编辑器/生成媒体管线仍待接入 |
+| OpenMAIC `ROLE_ACTIONS` 与角色运行时 | 课堂角色桥接 | 首版 AI 同学仅发言、无本人答题/默认白板写权、simulation 分区与服务端调度；完整多角色/圆桌工具动作待做，人设不能放宽领域权限 |
+| OpenMAIC 前端 HTTP adapter | `apps/learning/app/api/maic/*` | 实际 HttpDocumentStore 原始载荷、附加项目身份/代次并在服务端复验；新采用的原始 HTTP 合同继续逐项记录/校验 |
+| 互动 iframe 与资源加载协议 | `openmaic-adaptation/SceneRenderer.tsx` | 沙箱、当前窗口/实例检查、onLoad 就绪、runtime-error/早期错误重放协议及正式互动服务核验；上游无周期心跳；上游资源选择器/iframe 池与通用现场恢复未采用/未完成 |
 
 
 每项源码适配落地时记录真实上游路径、基线摘要、改动目的和相关验证。不得以设计目标代替实现记录。
@@ -51,9 +53,9 @@
 
 ## 5. 当前实现约束与待验收边界
 
-用户指定网关的模型连接已独立接通：`model-connection.ts` 负责 HTTPS Chat Completions 诊断，`settings.cjs` 以 Electron safeStorage 保存用户级凭据，主进程恢复后经控制接口传入服务内存。实际桌面报告见 [模型连接验证](../apps/desktop/release/model-connection-live-2026-10-04.json)：请求 `muse-spark-1.3`，网关返回 `muse-spark-1.3-contributor`，有效回复、主框架无密钥回显、控制接口鉴权、整应用重启恢复与不自动重试均成立。凭据不进入安装包或项目备份；这是连接诊断实现，尚非上游 provider 全功能或教师/生成验收。
+用户指定网关的模型连接已独立接通：`model-connection.ts` 负责 HTTPS Chat Completions 诊断，`settings.cjs` 以 Electron safeStorage 保存用户级凭据，主进程恢复后经控制接口传入服务内存。实际桌面报告见 模型连接验证（历史路径：`../apps/desktop/release/model-connection-live-2026-10-04.json`）：请求 `muse-spark-1.3`，网关返回 `muse-spark-1.3-contributor`，有效回复、主框架无密钥回显、控制接口鉴权、整应用重启恢复与不自动重试均成立。凭据不进入安装包或项目备份；这是连接诊断实现，尚非上游 provider 全功能或教师/生成验收。
 
-32/256 token 的诊断曾返回空最终文本，实测模型先消耗 511 个推理 token；调整固定上限至 1024 后取得有效回复，[失败记录](../apps/desktop/release/model-connection-live-2026-10-04-token-cap-failed.json) 保留。独立代码审查发现服务 shutdown gate 会拒绝自身取消请求，已改成专用父进程取消路由，并用真实生产 HTTP 退出回归验证取消被受理。加密写入的 Windows EXDEV 回退只写密文；初次配置程序改为正常退出以完成系统加密状态落盘，之后跨进程解密与实际应用重启已验证。
+32/256 token 的诊断曾返回空最终文本，实测模型先消耗 511 个推理 token；调整固定上限至 1024 后取得有效回复，失败记录（历史路径：`../apps/desktop/release/model-connection-live-2026-10-04-token-cap-failed.json`） 保留。独立代码审查发现服务 shutdown gate 会拒绝自身取消请求，已改成专用父进程取消路由，并用真实生产 HTTP 退出回归验证取消被受理。加密写入的 Windows EXDEV 回退只写密文；初次配置程序改为正常退出以完成系统加密状态落盘，之后跨进程解密与实际应用重启已验证。
 
 | 源位置 | 需保留的技术边界 | 后续验收 |
 | --- | --- | --- |
@@ -163,13 +165,13 @@ Stage、PlaybackChromeRoot、SceneRenderer 与 QuizSceneView 的视图胶水仍�
 
 ### 7.6 历史分发验证与已知边界（2026-10-04，非当前产物）
 
-模型连接补强后的当前构建为 `nmbMeLOKKj__yqRm22QyP`：完整检查 45 个文件/288 项通过，无跳过；随包服务 14/14，当前 [目录包 30/30](../apps/desktop/release/pack01-verification-2026-10-04T02-59-59.536Z.json)，服务清单 12,131 个文件逐字节匹配当前源码。实际模型调用及整应用重启 [9/9](../apps/desktop/release/model-connection-live-2026-10-04.json) 通过。新版安装包 194,162,258 字节，SHA-256 `D12756102244CC5F54FBDD0C3162B00C4B6DBE0DC2D005A04CB98FB239014C66`，外部验收包已同步。本轮没有重新执行安装/卸载或独立环境验收；下文的 50 项安装态证据与摘要属于此前 M0 基线版本，不作为新版安装态证据。
+模型连接补强后的当前构建为 `nmbMeLOKKj__yqRm22QyP`：完整检查 45 个文件/288 项通过，无跳过；随包服务 14/14，当前 目录包 30/30（历史路径：`../apps/desktop/release/pack01-verification-2026-10-04T02-59-59.536Z.json`），服务清单 12,131 个文件逐字节匹配当前源码。实际模型调用及整应用重启 9/9（历史路径：`../apps/desktop/release/model-connection-live-2026-10-04.json`） 通过。新版安装包 194,162,258 字节，SHA-256 `D12756102244CC5F54FBDD0C3162B00C4B6DBE0DC2D005A04CB98FB239014C66`，外部验收包已同步。本轮没有重新执行安装/卸载或独立环境验收；下文的 50 项安装态证据与摘要属于此前 M0 基线版本，不作为新版安装态证据。
 
-此前 M0 基线构建 `49ENHGnGrzqlR_fZx8HK1` 的目录包验证为 [30/30](../apps/desktop/release/pack01-verification-2026-10-03T23-46-26.290Z.json)，随包服务为 14/14；完整 `pnpm check` 为 37 个文件、226 项通过且无跳过。安装态 [50 项课堂及 M1 来源界面验证](../apps/desktop/release/m0-installed-classroom-2026-10-03T23-46-57Z-retry.json) 使用真实原生选择器和鼠标，覆盖图片/字体、测验与解题过程、互动明确提交/去重/重启读回、初始化脚本错误诊断、离线手动重试、服务崩溃、会话轮换和项目切换；还验证空正文不写样例、二次导入建立新版本、历史段落定位。
+此前 M0 基线构建 `49ENHGnGrzqlR_fZx8HK1` 的目录包验证为 30/30（历史路径：`../apps/desktop/release/pack01-verification-2026-10-03T23-46-26.290Z.json`），随包服务为 14/14；完整 `pnpm check` 为 37 个文件、226 项通过且无跳过。安装态 50 项课堂及 M1 来源界面验证（历史路径：`../apps/desktop/release/m0-installed-classroom-2026-10-03T23-46-57Z-retry.json`） 使用真实原生选择器和鼠标，覆盖图片/字体、测验与解题过程、互动明确提交/去重/重启读回、初始化脚本错误诊断、离线手动重试、服务崩溃、会话轮换和项目切换；还验证空正文不写样例、二次导入建立新版本、历史段落定位。
 
-安装态首轮滑块操作因脚本未等待滚动后坐标稳定而超时，[失败报告](../apps/desktop/release/m0-installed-classroom-2026-10-03T23-47-06Z.json) 保留。改为瞬时滚动、等待两帧、验证可见 iframe 命中并拖动滑块后，同一已安装应用重新通过；复测从便携验收包运行脚本，使用安装后的随包 Node。打包工具全局缓存曾报跨卷 rename EXDEV，下载归档经字节复制和摘要复验后使用任务本地缓存构建成功。没有更改课堂功能以回避失败。
+安装态首轮滑块操作因脚本未等待滚动后坐标稳定而超时，失败报告（历史路径：`../apps/desktop/release/m0-installed-classroom-2026-10-03T23-47-06Z.json`） 保留。改为瞬时滚动、等待两帧、验证可见 iframe 命中并拖动滑块后，同一已安装应用重新通过；复测从便携验收包运行脚本，使用安装后的随包 Node。打包工具全局缓存曾报跨卷 rename EXDEV，下载归档经字节复制和摘要复验后使用任务本地缓存构建成功。没有更改课堂功能以回避失败。
 
-随后卸载成功，两份外部项目清单与数据库 SHA-256 均不变，见 [安装/卸载验证](../apps/desktop/release/m0-install-uninstall-2026-10-04-final.json)。安装包为 `学科备考工作台-0.1.0-setup.exe`，194,237,536 字节，SHA-256 `43A79A98669E5D90BC5A39539D0E41E00806F49C1FF8D5C569997968A489FF0A`。[外部验收包](../apps/desktop/release/m0-acceptance-kit/README.md) 已生成，输入摘要与安装包/脚本一同保存。本机证据不能替代 PACK-02；用户已确认暂无独立环境，先完成代码与本机验收。
+随后卸载成功，两份外部项目清单与数据库 SHA-256 均不变，见 安装/卸载验证（历史路径：`../apps/desktop/release/m0-install-uninstall-2026-10-04-final.json`）。安装包为 `学科备考工作台-0.1.0-setup.exe`，194,237,536 字节，SHA-256 `43A79A98669E5D90BC5A39539D0E41E00806F49C1FF8D5C569997968A489FF0A`。外部验收包（历史路径：`../apps/desktop/release/m0-acceptance-kit/README.md`） 已生成，输入摘要与安装包/脚本一同保存。本机证据不能替代 PACK-02；用户已确认暂无独立环境，先完成代码与本机验收。
 
 第一次安装比目录包缺少 1,090 个文件（包含 265 个 JS/CJS/MJS），路径集中在 256—378 字符；失败报告保留，未把缺失视为成功。修复采用确定的根版本选择和最近祖先依赖解析，避免无差别深层复制；版本冲突仍在消费者局部保留。无法安全纯物化的跨版本循环明确报错，不能无限展开或默默解析到错误版本。最终服务清单含 12,024 个文件，最长相对路径 132 字符。
 
@@ -177,7 +179,7 @@ Stage、PlaybackChromeRoot、SceneRenderer 与 QuizSceneView 的视图胶水仍�
 
 ### 7.7 N1 分发验证记录（2026-10-04，早于当前 M2）
 
-N1 的构建 `lRAF-MacCtj9Lt1oUz7dc` 完成运行时响应 schema 与显式课程 DTO 补强；完整检查为 47 个文件 / 311 个用例，跳过 0。随包服务 14/14、[目录包 30/30](../apps/desktop/release/pack01-verification-2026-10-04T03-24-40.757Z.json)、[实际 Electron 课堂 50/50](../apps/desktop/release/m0-classroom-ui-2026-10-04T03-26-37.716Z.json) 通过，包含课堂互动、离线重试、崩溃恢复与材料历史读回。服务清单 12,132 个文件，最长相对路径 132 字符；对应源码为 191 个文件，摘要 `ae2bc1b56ea53b424fb9ab39c993ace7dc8878f321d929fd7d378fa8a30129dc`。
+N1 的构建 `lRAF-MacCtj9Lt1oUz7dc` 完成运行时响应 schema 与显式课程 DTO 补强；完整检查为 47 个文件 / 311 个用例，跳过 0。随包服务 14/14、目录包 30/30（历史路径：`../apps/desktop/release/pack01-verification-2026-10-04T03-24-40.757Z.json`）、实际 Electron 课堂 50/50（历史路径：`../apps/desktop/release/m0-classroom-ui-2026-10-04T03-26-37.716Z.json`） 通过，包含课堂互动、离线重试、崩溃恢复与材料历史读回。服务清单 12,132 个文件，最长相对路径 132 字符；对应源码为 191 个文件，摘要 `ae2bc1b56ea53b424fb9ab39c993ace7dc8878f321d929fd7d378fa8a30129dc`。
 
 该轮生成的安装包为 194,169,810 字节，SHA-256 `166b5bcd836115b9f663b4b3de143b3842dc53dbd2e0819834f1f6741ec88f0b`，外部验收包已同步，但未重做安装/卸载及独立环境验收。此分发产物早于 M2 的课程审核与课堂会话提交，不作为当前 M2 的安装证据。
 
@@ -209,7 +211,7 @@ SQLite 升至 v18：v17 保存候选/审核/命令收据，v18 保存绑定 run 
 
 M2-E 补充历史记录（早于 M2-F 及本阶段）：浏览器层暂停真实题 B 提交请求，切回题 A 并断言其草稿和可提交状态，放行原请求后确认 B 已持久判分。关闭隐藏窗口的后台节流并在滚动后等待两帧，完整 Electron 冒烟再次通过。随包服务已按该轮构建重新组装，清单 12,155 文件，最长相对路径 132 字符；`pnpm verify:service` 14/14 通过。
 
-上述 M2-E 目录包位于 `apps/desktop/release/m2e-2026-10-04/win-unpacked/`，使用本地同版本 Electron 38.8.6 组装，未更新安装包。[实际目录包 30/30](../apps/desktop/release/m2e-2026-10-04/pack01-verification.json) 通过：包内 10 个桌面 CJS 摘要、runtime 元数据、12,155 个服务文件及该轮构建来源均匹配；从临时中文空格路径启动实际 exe，生产 SSR、沙箱 preload、认证边界、隔离 profile 与受控关闭均通过。复跑命令为 `node scripts/verify-packaged-desktop.mjs --app-dir apps/desktop/release/m2e-2026-10-04/win-unpacked`。这是历史本机目录包证据，不等于本阶段安装/卸载或独立 Windows 环境验收。
+上述 M2-E 目录包位于 `apps/desktop/release/m2e-2026-10-04/win-unpacked/`，使用本地同版本 Electron 38.8.6 组装，未更新安装包。实际目录包 30/30（历史路径：`../apps/desktop/release/m2e-2026-10-04/pack01-verification.json`） 通过：包内 10 个桌面 CJS 摘要、runtime 元数据、12,155 个服务文件及该轮构建来源均匹配；从临时中文空格路径启动实际 exe，生产 SSR、沙箱 preload、认证边界、隔离 profile 与受控关闭均通过。复跑命令为 `node scripts/verify-packaged-desktop.mjs --app-dir apps/desktop/release/m2e-2026-10-04/win-unpacked`。这是历史本机目录包证据，不等于本阶段安装/卸载或独立 Windows 环境验收。
 
 ### 本阶段：本地房间、白板与正式互动（2026-10-04）
 
@@ -219,7 +221,7 @@ schema v19—v23 依次新增旧本人 UID 映射、个人房间/快照/教师�
 
 该阶段历史构建 `2oj_FjjcGYi2uTYty5UUh`，248 个输入文件，SHA-256 `7c6a5fe38a9fda0cd831cc928e78f3a1e7881e3eea064343a1f37f363eb7a7f8`；`pnpm check` **72 文件 / 588 用例通过，零跳过**。房间绑定、推进/结束原子同步与共享 HTML 边界有实际路由/SQLite 回归。原生 Electron 冒烟 29 组覆盖包含真实房间/白板/参数与关系互动、数据库重开和 UID 实际剪贴板；数据库重开不替代整应用崩溃或安装态功能验收。
 
-该历史随包服务为 12,254 文件，最长相对路径 132；服务 **14/14**、[目录包 **30/30**](../apps/desktop/release/stage-handoff-2026-10-04/pack01-verification.json) 通过。目录 `apps/desktop/release/stage-handoff-2026-10-04/win-unpacked` 使用本地同版本 Electron 38.8.6，早于后续同学/预算/恢复源码；未重建 NSIS、未安装/卸载、无真实付费 provider。当前验证见[项目说明](../README.md#当前验证)，剩余范围见[待办事项](待办事项.md)。用户暂缓真实材料金标准和真人双设备验收，85 项清单仍为 22 partial / 63 planned / 0 完整签核。
+该历史随包服务为 12,254 文件，最长相对路径 132；服务 **14/14**、目录包 **30/30**（历史路径：`../apps/desktop/release/stage-handoff-2026-10-04/pack01-verification.json`） 通过。目录 `apps/desktop/release/stage-handoff-2026-10-04/win-unpacked` 使用本地同版本 Electron 38.8.6，早于后续同学/预算/恢复源码；未重建 NSIS、未安装/卸载、无真实付费 provider。当前验证见[项目说明](../README.md#当前验证)，剩余范围见[待办事项](待办事项.md)。用户暂缓真实材料金标准和真人双设备验收，85 项清单仍为 22 partial / 63 planned / 0 完整签核。
 
 ### 本轮：AI 同学运行、共享预算与四层恢复（2026-10-04，接手轮）
 
@@ -249,3 +251,7 @@ schema v19—v23 依次新增旧本人 UID 映射、个人房间/快照/教师�
 `formal-interaction-pbl.ts`、`media-generation.ts`、`collaboration-teaching-ai.ts` 合同/领域，以及 `lesson-export-pptx.ts` / `lesson-export-mp4.ts` 均为本项目基础实现；barrel 显式导出，测试通过包名消费，格式范围已登记。本批未新增第三方依赖，不把这些文件记录为已接入完整上游功能。
 
 实际消费者尚待补：PBL 存储/路由/场景、媒体 provider/资产/用量、PPTX 字节序列化、MP4 渲染编码与持久任务、生成式教师审核/广播/provider 桥接。后续真正采用渲染/编码/provider 包或上游源码时另登记精确版本、路径与许可证。公共板书语义准入与简图连线呈现的剩余范围继续维护在待办。
+
+## 2026-10-08 PBL 实际消费者
+
+复用既有 PBL 合同和纯判定，新增本地 SQLite runtime 分区、本人受控路由、guarded 模型指导、正式 DSL 场景和作者/交付/演练界面。`pbl-scene-content.ts` 只把公开背景、角色职责、目标和任务映射至上游 `PBLContent.projectV2`，私有评分依据与本人产物保留在本地服务。未复制新的上游源码或增加第三方依赖。具体文件、验证和剩余多角色/外部验收见[本轮收尾](closeout-2026-10-08.md)；四项状态更新为 partial，不宣称完整能力完成。

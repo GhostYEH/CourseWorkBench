@@ -35,6 +35,7 @@ const SELF = 'uid_11111111-1111-4111-8111-111111111111';
 const PEER = 'uid_22222222-2222-4222-8222-222222222222';
 const STRANGER = 'uid_33333333-3333-4333-8333-333333333333';
 const DIGEST = 'a'.repeat(64);
+const INVITATION_NOW = Date.parse('2026-10-07T00:00:00.000Z');
 
 const invitation = (over: Partial<ClassroomInvitationDto> = {}): ClassroomInvitationDto => ({
   invitationId: 'inv_1',
@@ -88,12 +89,16 @@ const message = (over: Partial<CollabMessageDto> = {}): CollabMessageDto => ({
 
 describe('邀请的可点性判定', () => {
   it('发给自己的待决邀请才能表态，发起方不能替对方接受', () => {
-    const view = collabInvitationView(invitation({ inviterUid: PEER, inviteeUid: SELF }), SELF);
+    const view = collabInvitationView(
+      invitation({ inviterUid: PEER, inviteeUid: SELF }),
+      SELF,
+      INVITATION_NOW,
+    );
     expect(view).toMatchObject({ direction: 'incoming', canDecide: true, canRevoke: false });
     expect(view.blockedReason).toBeNull();
   });
   it('本人发起的待决邀请只能撤销，不能自答', () => {
-    const view = collabInvitationView(invitation(), SELF);
+    const view = collabInvitationView(invitation(), SELF, INVITATION_NOW);
     expect(view).toMatchObject({ direction: 'outgoing', canDecide: false, canRevoke: true });
   });
   it('对方已接受后双方都不再能改判', () => {

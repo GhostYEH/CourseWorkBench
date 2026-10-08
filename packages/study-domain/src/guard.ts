@@ -59,7 +59,7 @@ export const assertModelCallAdmitted = (facts: ModelCallGuardFacts): void => {
     throw new StudyError('KNOWLEDGE_INVALIDATED', { reason: 'knowledge_table_changed' });
   }
   assertLessonKnowledgeAdmitted(facts.referencedKnowledgeIds, facts.admittedKnowledgeIds);
-  if (facts.purpose === 'teaching_prompt') {
+  if (facts.purpose === 'teaching_prompt' || facts.purpose === 'collab_teaching_ai' || facts.purpose === 'pbl_guidance') {
     if (!facts.lesson) {
       throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { reason: 'lesson_required' });
     }

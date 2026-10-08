@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedOn": "2026-10-06",
+  "recordedOn": "2026-10-08",
   "baseline": {
     "root": "F:/file/OpenMAIC-main",
     "version": "1.1.1",
@@ -810,7 +810,7 @@
       "category": "pbl",
       "name": "项目制学习场景与角色选择",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "C",
       "upstreamPaths": [
         "lib/pbl/v2",
@@ -819,7 +819,8 @@
       ],
       "acceptance": "真实PBL场景，有项目背景、角色与目标",
       "evidence": [
-        "PBL 项目制学习合同与领域已落地：packages/study-contracts/src/formal-interaction-pbl.ts 定义冻结项目（真实情境/背景/目标/角色席位/阶段任务/里程碑/评分依据 rubrics）与公开投影（结构上无 rubrics、里程碑无 rubricIds）；packages/study-domain/src/formal-interaction-pbl.ts 的 assertPblDefinitionCoherent/Frozen 保证定义闭环且只有冻结复验过的定义驱动判定。tests/pbl-interaction.test.ts 以「校园食堂浪费调研与提案」真实项目夹具覆盖。存储/路由/界面接入仍待完成，仅有基础层，status 继续 planned。"
+        "2026-10-08：pbl-definition-store.ts/pbl-service.ts 接入未审正式草案的本人语义冻结、服务端 AI 席位身份、真实证据准入与不可变读回；pbl-project-author.tsx 和正式/计划装配呈现公开真实情境、角色职责和目标。多真人授权及完整项目编辑尚未完成。",
+        "回归及产物证据见 tests/pbl-service.test.ts、tests/pbl-http.test.ts、tests/pbl-model.test.ts、tests/pbl-scene-integration.test.ts、tests/pbl-ui.test.ts、scripts/smoke-pbl.cjs 和 docs/closeout-2026-10-08.md。"
       ]
     },
     {
@@ -827,7 +828,7 @@
       "category": "pbl",
       "name": "阶段任务、里程碑与交付物",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "C",
       "upstreamPaths": [
         "lib/pbl/v2",
@@ -836,7 +837,8 @@
       ],
       "acceptance": "任务状态和本人交付重启可读，AI贡献单独标记",
       "evidence": [
-        "PBL 阶段任务/里程碑/交付物判定已落地：pblTaskViews/pblMilestoneEvaluations 完全由记录推导（重启可读）；pblDeliverableRecordSchema 的 actorType 为 human_learner 字面量，AI 贡献走 pblAiContributionRecordSchema（只能 teacher_ai|peer_ai 且需认领），未认领贡献不进 ownSubmissionCount；reportedStatus 枚举不含 verified。tests/pbl-interaction.test.ts 覆盖。真实持久化与界面仍待接入。"
+        "2026-10-08：本人认证任务开启/更新、SQLite 正式草稿及交付幂等收据、每任务草稿重启恢复与私人历史已接到 HTTP/课堂 UI；AI 贡献单独存放与本人认领投影，计数不冒充本人交付。多真人及跨设备恢复仍待验收。",
+        "回归及产物证据见 tests/pbl-service.test.ts、tests/pbl-http.test.ts、tests/pbl-model.test.ts、tests/pbl-scene-integration.test.ts、tests/pbl-ui.test.ts、scripts/smoke-pbl.cjs 和 docs/closeout-2026-10-08.md。"
       ]
     },
     {
@@ -844,7 +846,7 @@
       "category": "pbl",
       "name": "导师指导与项目评价",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "C",
       "upstreamPaths": [
         "lib/pbl/v2",
@@ -853,7 +855,8 @@
       ],
       "acceptance": "反馈依据真实产物，评价候选和确定性检查分开",
       "evidence": [
-        "PBL 导师指导与项目评价判定已落地：assertPblFeedbackGrounded 要求反馈逐条绑定真实产物；「评价候选」(pblAssessmentCandidateSchema，无 passed/score) 与「确定性检查」(runPblDeterministicCheck) 两条线并列，reached 只由确定性检查决定，人工采纳(pblEvaluationAcceptanceRecordSchema)不改 reached；assertPblAcceptanceTargetsAssessment 校验采纳指向。tests/pbl-interaction.test.ts 覆盖。"
+        "2026-10-08：pbl-model.ts 与 /api/study/pbl/mentor 接通真实连接运行时、来源/run/共享预算/取消/迟到守卫和用量台账；反馈逐条绑定本人真实产物，评价候选经本人采纳但不改确定性结论，重试恢复已付费正文。外部 provider 的实际指导质量尚未验收。",
+        "回归及产物证据见 tests/pbl-service.test.ts、tests/pbl-http.test.ts、tests/pbl-model.test.ts、tests/pbl-scene-integration.test.ts、tests/pbl-ui.test.ts、scripts/smoke-pbl.cjs 和 docs/closeout-2026-10-08.md。"
       ]
     },
     {
@@ -861,7 +864,7 @@
       "category": "pbl",
       "name": "PBL模拟器与任务工具",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "C",
       "upstreamPaths": [
         "lib/pbl/v2",
@@ -870,7 +873,8 @@
       ],
       "acceptance": "模拟器/开任务/任务更新均实际运行且守权限",
       "evidence": [
-        "PBL 模拟器与任务工具判定已落地：pblRolePermissions 按席位种类派生权限（canReachMilestone:false 字面量），runPblSimulationStep 真推进模拟状态且逐次守权限，assertPblSimulationCannotWriteFormal 拦截演练写正式记录；模拟器与正式记录共用同一套生产判定（pblEvidenceFromRecord/pblEvidenceFromStep）。tests/pbl-interaction.test.ts 覆盖。真实模拟器界面与存储仍待接入。"
+        "2026-10-08：正式场景开启/更新任务和 /pbl/simulation 的真人 demo 回放工具、权限/步数/nonce/binding 门禁已接入 UI，共用生产判定且不写正式记录。完整 AI/导师多角色演练与安装态故障矩阵仍未完成。",
+        "回归及产物证据见 tests/pbl-service.test.ts、tests/pbl-http.test.ts、tests/pbl-model.test.ts、tests/pbl-scene-integration.test.ts、tests/pbl-ui.test.ts、scripts/smoke-pbl.cjs 和 docs/closeout-2026-10-08.md。"
       ]
     },
     {

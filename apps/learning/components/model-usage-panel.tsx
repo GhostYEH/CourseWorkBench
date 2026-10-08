@@ -9,6 +9,8 @@ const PURPOSE_LABEL: Record<ModelUsagePurpose, string> = {
   review_suggestion: '复习建议',
   statement_revision: '陈述改写',
   courseware_generation: '完整课件生成',
+  collab_teaching_ai: '公共教师 / AI 同学候选',
+  pbl_guidance: 'PBL 导师 / 同行候选',
 };
 
 const MEASUREMENT_LABEL = { actual: '实际', estimated: '估算', unknown: '未知' } as const;

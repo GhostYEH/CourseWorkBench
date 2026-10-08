@@ -29,6 +29,7 @@ import {
   collabMessageAppendSchema,
   collabEventAppendSchema,
   collabTeachingCommandSchema,
+  collabTeachingAiCommandSchema,
   type StudyErrorCode,
   type StudyErrorPayload,
 } from '@sew/study-contracts';
@@ -362,6 +363,30 @@ const dispatchCollab = (
     const command = validate(collabTeachingCommandSchema, body);
     assertClaimed(session, command.actorUid);
     return ok(store.collaboration.applyTeaching({ ...command, actorUid: session.uid }));
+  }
+  if (method === 'GET' && pathname === '/collab/v1/teaching-ai') {
+    const roomId = requireQuery(search, 'roomId');
+    return ok(store.collaboration.teachingAiView(roomId, session.uid));
+  }
+  if (method === 'POST' && pathname === '/collab/v1/teaching-ai') {
+    const command = validate(collabTeachingAiCommandSchema, body);
+    assertClaimed(session, command.actorUid);
+    if (command.operation.kind === 'record-ai-candidate') {
+      throw new StudyError('INVALID_ARGUMENT', {
+        reason: 'collab_ai_record_requires_controlled_gateway',
+      });
+    }
+    return ok(store.collaboration.applyTeachingAi({ ...command, actorUid: session.uid }));
+  }
+  if (method === 'POST' && pathname === '/collab/v1/teaching-ai/candidates') {
+    const command = validate(collabTeachingAiCommandSchema, body);
+    assertClaimed(session, command.actorUid);
+    if (command.operation.kind !== 'record-ai-candidate') {
+      throw new StudyError('INVALID_ARGUMENT', { reason: 'collab_ai_candidate_ingress_only' });
+    }
+    // This endpoint records a pending candidate from the authenticated host gateway. The
+    // independent service cannot prove an external model call; origin records that declaration.
+    return ok(store.collaboration.recordTeachingAiCandidate({ ...command, actorUid: session.uid }));
   }
   throw new StudyError('NOT_FOUND', { reason: 'collab_route_unknown' });
 };

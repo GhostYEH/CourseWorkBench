@@ -40,6 +40,7 @@ import {
 import { Notice } from './ui';
 import { CollabSharedScene } from './collab-shared-scene';
 import { CollabTeachingPanel, currentSceneTeaching } from './collab-teaching-panel';
+import { CollabTeachingAiPanel } from './collab-teaching-ai-panel';
 
 export interface CollabLessonOption {
   lessonId: string;
@@ -54,6 +55,7 @@ interface CollabPanelProps {
   selfUid: string;
   selfDisplayName: string;
   lessons: CollabLessonOption[];
+  peerProfiles?: Array<{ roleProfileId: string; name: string }>;
 }
 
 const UID_PATTERN = /^uid_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -75,6 +77,8 @@ const emptyView = (): CollabOnlineViewDto => ({
   events: { events: [], tailSeq: 0 },
   snapshot: null,
   teaching: null,
+  teachingAi: null,
+  legacyBoardWrites: [],
 });
 
 export const CollabClassroomPanel = ({
@@ -82,6 +86,7 @@ export const CollabClassroomPanel = ({
   selfUid,
   selfDisplayName,
   lessons,
+  peerProfiles = [],
 }: CollabPanelProps): ReactNode => {
   const [view, setView] = useState<CollabOnlineViewDto>(emptyView);
   const [inviteeUid, setInviteeUid] = useState('');
@@ -381,9 +386,68 @@ export const CollabClassroomPanel = ({
     teachingRevisionMatches;
   const waitingForPeer = teachingRevisionMatches && teachingScene?.waiting !== null;
 
+  const confirmLegacyBoard = async (requestId: string): Promise<void> => {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    const turn = epoch.current;
+    const controller = new AbortController();
+    controllers.current.add(controller);
+    try {
+      await apiFetch(`${ONLINE_PATH}/confirm`, apiResponses.collabOnlineConfirmation, {
+        method: 'POST',
+        headers: {
+          'x-sew-project-id': scope.projectId,
+          'x-sew-generation': String(scope.generation),
+        },
+        body: JSON.stringify({ requestId }),
+        signal: controller.signal,
+      });
+      if (turn !== epoch.current || controller.signal.aborted) return;
+      setNotice('已结束这条旧版板书请求的恢复记录。');
+      await refresh(controller.signal, turn, activeRoomId);
+    } catch (caught) {
+      if (turn === epoch.current && !controller.signal.aborted) setError(describeApiError(caught));
+    } finally {
+      controllers.current.delete(controller);
+      if (turn === epoch.current) {
+        lock.current = false;
+        setBusy(false);
+      }
+    }
+  };
+
   return (
     <section data-collab-panel className="card">
       <h3>双人共同课堂</h3>
+      {view.legacyBoardWrites.length > 0 ? (
+        <Notice tone="pending">
+          升级前有 {view.legacyBoardWrites.length}{' '}
+          条板书写入结果未确认，原请求已保留。请先核对对应房间的公共板书；新内容需要重新人工审核。
+          {view.legacyBoardWrites.map((item) => (
+            <p key={item.requestId}>
+              房间 <code>{item.roomId}</code> · 场景 <code>{item.sceneId}</code> · 板书事件{' '}
+              <code>{item.eventId}</code>
+              <button
+                type="button"
+                className="btn"
+                disabled={busy}
+                onClick={() => setActiveRoomId(item.roomId)}
+              >
+                查看对应房间
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={busy}
+                onClick={() => void confirmLegacyBoard(item.requestId)}
+              >
+                我已核对这条旧板书结果
+              </button>
+            </p>
+          ))}
+        </Notice>
+      ) : null}
       <div data-collab-online-status>
         {gate.available ? (
           <Notice tone="info">
@@ -688,6 +752,7 @@ export const CollabClassroomPanel = ({
               selfUid={selfUid}
               owner={view.room.ownerUid === selfUid}
               enabled={teachingEnabled}
+              busy={busy}
               members={view.members}
               state={teachingScene}
               onOperation={(operation) => {
@@ -702,6 +767,36 @@ export const CollabClassroomPanel = ({
               }}
             />
           ) : null}
+          <CollabTeachingAiPanel
+            view={view.teachingAi?.sceneId === currentSceneId ? view.teachingAi : null}
+            snapshot={view.snapshot?.snapshot ?? null}
+            selfUid={selfUid}
+            enabled={
+              !onlineBlocked &&
+              roomActions.canSend &&
+              view.room?.status === 'active' &&
+              view.teachingAi?.roomRevision === view.room.revision
+            }
+            busy={busy}
+            peerProfiles={peerProfiles}
+            onOperation={(operation) => {
+              if (
+                onlineBlocked ||
+                busy ||
+                !view.room ||
+                !currentSceneId ||
+                view.teachingAi?.roomRevision !== view.room.revision
+              )
+                return;
+              void command(apiResponses.collabOnlineWrite, {
+                action: 'teaching-ai',
+                roomId: activeRoomId,
+                sceneId: currentSceneId,
+                expectedRevision: view.room.revision,
+                operation,
+              });
+            }}
+          />
           <div data-collab-events>
             <p className="hint">房间事件（{view.events.events.length} 条）</p>
             {view.events.events.map((item) => (

@@ -25,6 +25,7 @@ import {
   diffScenePlans,
   digestOfScenePlan,
   formalInteractionSceneId,
+  pblProjectSceneId,
   mergeScenePlans,
   outlineOrderedScenes,
   planSceneDigest,
@@ -33,6 +34,7 @@ import { assertScope, type Session } from './service';
 import { toLessonReviewDto, toLessonVersionDto } from './dto';
 import { attachFormalLessonDocument } from './classroom-service';
 import { readFormalInteractionDefinitions } from './formal-interaction-definition-store';
+import { readPblDefinition } from './pbl-definition-store';
 import { abortActiveModelCalls } from './model-call';
 
 export const lessonCommandSchema = z.discriminatedUnion('action', [
@@ -84,6 +86,10 @@ export const initialPlanScenes = (
     lesson.lessonId !== undefined && lesson.version !== undefined
       ? readFormalInteractionDefinitions(session, lesson.lessonId, lesson.version)
       : null;
+  const pbl =
+    lesson.lessonId !== undefined && lesson.version !== undefined
+      ? readPblDefinition(session, lesson.lessonId, lesson.version)
+      : null;
   return [
     ...lesson.statementIds
       .map((statementId, index): PlanSceneDto | null => {
@@ -127,6 +133,20 @@ export const initialPlanScenes = (
       elements: [],
       note: '',
     })),
+    ...(pbl
+      ? [
+          {
+            sceneId: pblProjectSceneId(pbl.frozen.definition.id),
+            kind: 'pbl' as const,
+            title: pbl.frozen.definition.title,
+            statementId: null,
+            questionId: null,
+            knowledgeIds: [],
+            elements: [],
+            note: '',
+          },
+        ]
+      : []),
   ];
 };
 
@@ -152,6 +172,8 @@ const groundScenes = (
   const definitionSceneIds = new Set(
     (frozen?.frozen.definitions ?? []).map((definition) => formalInteractionSceneId(definition.id)),
   );
+  const pblDefinition = readPblDefinition(session, lesson.lessonId, lesson.version);
+  const pblSceneId = pblDefinition ? pblProjectSceneId(pblDefinition.frozen.definition.id) : null;
   // 客户端提交的知识点只作核对：与服务端从绑定对象派生的结果不一致即拒绝，
   // 不能靠自报知识点扩大这节课的范围；留空表示「交由服务端派生」。
   const checkDeclared = (declared: string[], expected: string[]): void => {
@@ -190,6 +212,19 @@ const groundScenes = (
           reason: 'interactive_definition_missing',
           sceneId,
         });
+      }
+      checkDeclared(scene.knowledgeIds, []);
+      return { ...scene, sceneId, knowledgeIds: [] };
+    }
+    if (scene.kind === 'pbl') {
+      if (!pblDefinition || sceneId !== pblSceneId) {
+        throw new StudyError('CLASSROOM_SCENE_SOURCE_MISSING', {
+          reason: 'pbl_definition_missing_or_scene_mismatch',
+          sceneId,
+        });
+      }
+      if (scene.statementId !== null || scene.questionId !== null || scene.elements.length > 0) {
+        throw new StudyError('INVALID_ARGUMENT', { reason: 'pbl_scene_shape_invalid', sceneId });
       }
       checkDeclared(scene.knowledgeIds, []);
       return { ...scene, sceneId, knowledgeIds: [] };

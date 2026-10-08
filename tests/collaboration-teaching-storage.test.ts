@@ -866,11 +866,32 @@ describe('collaboration teaching authoritative storage', () => {
     );
   });
 
-  it('writes and erases public board content, replaying history and refusing off-scene statements', () => {
+  it('reviews, writes and erases public board content, replaying history and refusing off-scene statements', () => {
     const root = mkdtempSync(join(tmpdir(), 'sew-teaching-'));
     roots.push(root);
     const store = open(join(root, 'collab.db'));
     const room = activeRoom(store);
+
+    const reviewed = store.collaboration.applyTeaching(
+      command({
+        operation: {
+          kind: 'review-board-content',
+          statementId: 'statement-1',
+          content: { kind: 'text', text: '板书：函数图像' },
+          semanticReviewed: true,
+        },
+        expectedRevision: room.revision,
+        expectedSeq: 1,
+        requestId: 'review-board-1',
+        eventId: 'review-board-1',
+      }),
+    );
+    expect(reviewed.state.board.reviewedContents?.[0]).toMatchObject({
+      eventId: 'review-board-1',
+      statementId: 'statement-1',
+      reviewerUid: OWNER,
+      sceneId: 'scene_1',
+    });
 
     const written = store.collaboration.applyTeaching(
       command({
@@ -878,14 +899,17 @@ describe('collaboration teaching authoritative storage', () => {
           kind: 'write',
           statementId: 'statement-1',
           content: { kind: 'text', text: '板书：函数图像' },
+          reviewEventId: 'review-board-1',
         },
-        expectedRevision: room.revision,
+        expectedRevision: reviewed.roomRevision,
+        expectedSeq: 2,
         requestId: 'write-1',
         eventId: 'write-1',
       }),
     );
     expect(written.state.board.contents).toHaveLength(1);
     expect(written.state.board.contents?.[0]?.statementId).toBe('statement-1');
+    expect(written.state.board.contents?.[0]?.reviewEventId).toBe('review-board-1');
     expect(written.state.board.history?.actions).toHaveLength(1);
     expect(written.state.board.history?.actions[0]?.kind).toBe('write');
 
@@ -894,7 +918,7 @@ describe('collaboration teaching authoritative storage', () => {
       command({
         operation: { kind: 'undo-board', actionEventId: 'write-1' },
         expectedRevision: written.roomRevision,
-        expectedSeq: 2,
+        expectedSeq: 3,
         requestId: 'undo-write-1',
         eventId: 'undo-write-1',
       }),
@@ -909,19 +933,20 @@ describe('collaboration teaching authoritative storage', () => {
       command({
         operation: { kind: 'replay-board', actionEventId: 'write-1' },
         expectedRevision: undone.roomRevision,
-        expectedSeq: 3,
+        expectedSeq: 4,
         requestId: 'replay-write-1',
         eventId: 'replay-write-1',
       }),
     );
     expect(replayed.state.board.contents).toHaveLength(1);
+    expect(replayed.state.board.reviewedContents).toEqual(reviewed.state.board.reviewedContents);
 
     // erase 移除已写内容，记录 targetEventId；重复 erase 拒绝。
     const erased = store.collaboration.applyTeaching(
       command({
         operation: { kind: 'erase', actionEventId: 'write-1' },
         expectedRevision: replayed.roomRevision,
-        expectedSeq: 4,
+        expectedSeq: 5,
         requestId: 'erase-write-1',
         eventId: 'erase-write-1',
       }),
@@ -937,7 +962,7 @@ describe('collaboration teaching authoritative storage', () => {
           command({
             operation: { kind: 'erase', actionEventId: 'write-1' },
             expectedRevision: erased.roomRevision,
-            expectedSeq: 5,
+            expectedSeq: 6,
             requestId: 'erase-write-2',
             eventId: 'erase-write-2',
           }),
@@ -950,7 +975,7 @@ describe('collaboration teaching authoritative storage', () => {
           command({
             operation: { kind: 'erase', actionEventId: 'event_not_written' },
             expectedRevision: erased.roomRevision,
-            expectedSeq: 5,
+            expectedSeq: 6,
             requestId: 'erase-missing',
             eventId: 'erase-missing',
           }),
@@ -967,9 +992,10 @@ describe('collaboration teaching authoritative storage', () => {
               kind: 'write',
               statementId: 'statement-unknown',
               content: { kind: 'text', text: '凭空内容' },
+              reviewEventId: 'review-board-1',
             },
             expectedRevision: erased.roomRevision,
-            expectedSeq: 5,
+            expectedSeq: 6,
             requestId: 'write-unknown',
             eventId: 'write-unknown',
           }),
@@ -985,7 +1011,7 @@ describe('collaboration teaching authoritative storage', () => {
       lessonId: 'lesson-1',
       lessonVersion: 1,
       expectedRevision: erased.roomRevision,
-      expectedSeq: 5,
+      expectedSeq: 6,
       eventId: 'move-after-board',
       requestId: 'move-after-board',
     });

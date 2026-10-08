@@ -211,4 +211,27 @@ describe('在线视图与命令的失败语义', () => {
       expect(collabErrorReason(error)).toBe('collab_unreachable');
     }
   });
+
+  it('请求已取消时不发起协作 fetch，并返回可判定的取消错误', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    await expect(
+      collabFetch(
+        'https://collab.example.com',
+        {
+          method: 'POST',
+          path: '/collab/v1/teaching-ai/candidates',
+          token: 'session-token',
+          body: { requestId: 'cancelled-before-send' },
+          signal: controller.signal,
+        },
+        apiResponses.collabTeachingAi,
+      ),
+    ).rejects.toMatchObject({
+      code: 'RUN_TERMINATED',
+      details: { reason: 'request_aborted' },
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });

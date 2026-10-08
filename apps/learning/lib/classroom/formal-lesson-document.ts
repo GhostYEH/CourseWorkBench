@@ -11,6 +11,7 @@
 
 import type {
   InteractiveContent,
+  PBLContent,
   QuizContent,
   Scene,
   SlideContent,
@@ -18,9 +19,14 @@ import type {
   Action,
 } from '@openmaic/dsl';
 import { DSL_VERSION } from '@openmaic/dsl';
-import { formalInteractionSceneId } from '@sew/study-domain';
-import type { EvidenceBundleDto, FormalInteractionDefinitionDto } from '@sew/study-contracts';
+import { formalInteractionSceneId, pblProjectSceneId } from '@sew/study-domain';
+import type {
+  EvidenceBundleDto,
+  FormalInteractionDefinitionDto,
+  PblFrozenDto,
+} from '@sew/study-contracts';
 import type { ClassroomDocument, LessonScene } from './reviewed-lesson';
+import { pblSceneContent } from './pbl-scene-content';
 
 /** 场景编号上限：证据包异常大时按顺序保留前面的陈述，其余显式列为未生成。 */
 export const FORMAL_SCENE_LIMIT = 24;
@@ -34,11 +40,8 @@ export const formalQuestionSceneId = (questionId: string): string => `scene_quiz
 
 export const FORMAL_QUESTION_NOTE_SCENE_ID = 'scene_slide_question_note';
 
-const escapeText = (value: string): string => value
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;');
+const escapeText = (value: string): string =>
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** 单条最长展示文本：超出部分标注截断，不把整段来源原文塞进画布。 */
 const clamp = (value: string, limit: number): string =>
@@ -102,12 +105,13 @@ const slideScene = (input: {
 
 export interface FormalLessonScene {
   sceneId: string;
-  sceneType: 'slide' | 'quiz' | 'interactive';
+  sceneType: 'slide' | 'quiz' | 'interactive' | 'pbl';
   questionId: string | null;
   title: string;
   knowledgeIds: string[];
   /** 该场景依据的证据包陈述编号；题目说明场景没有单条陈述。 */
   statementId: string | null;
+  statementIds?: string[];
 }
 
 export interface FormalLessonSkipped {
@@ -140,20 +144,32 @@ export const buildFormalLessonDocument = (input: {
   statementIds?: string[];
   questionIds?: string[];
   interactions?: FormalInteractionDefinitionDto[];
+  pblDefinition?: PblFrozenDto | null;
 }): FormalLessonPlan => {
   const parsed = Date.parse(input.frozenAt);
   const at = Number.isFinite(parsed) ? parsed : 0;
   const stageId = formalStageId(input.lessonId, input.lessonVersion);
   const scenes: FormalLessonScene[] = [];
-  const dslScenes: Array<Scene<Action, SlideContent | QuizContent | InteractiveContent>> = [];
+  const dslScenes: Array<
+    Scene<Action, SlideContent | QuizContent | InteractiveContent | PBLContent>
+  > = [];
   const skipped: FormalLessonSkipped[] = [];
   const contentLimit = FORMAL_SCENE_LIMIT - (input.interactions?.length ?? 0);
+  const pblDefinition = input.pblDefinition ?? null;
 
-  const statements = input.bundle.statements.filter((item) => !input.statementIds || input.statementIds.includes(item.statementId));
-  const questions = input.bundle.questions.filter((item) => !input.questionIds || input.questionIds.includes(item.questionId));
+  const statements = input.bundle.statements.filter(
+    (item) => !input.statementIds || input.statementIds.includes(item.statementId),
+  );
+  const questions = input.bundle.questions.filter(
+    (item) => !input.questionIds || input.questionIds.includes(item.questionId),
+  );
   statements.forEach((statement, index) => {
     if (dslScenes.length >= contentLimit) {
-      skipped.push({ kind: 'statement', id: statement.statementId, reason: `场景数量达到上限 ${FORMAL_SCENE_LIMIT}，本条陈述未进入课件` });
+      skipped.push({
+        kind: 'statement',
+        id: statement.statementId,
+        reason: `场景数量达到上限 ${FORMAL_SCENE_LIMIT}，本条陈述未进入课件`,
+      });
       return;
     }
     const sceneId = formalStatementSceneId(statement.statementId);
@@ -161,18 +177,54 @@ export const buildFormalLessonDocument = (input: {
       .map((ref) => `${ref.materialId}#${ref.segmentId}@r${ref.revision}（${ref.use}）`)
       .join('、');
     const elements: unknown[] = [
-      textElement(`${sceneId}-title`, 70, 90, `<h1 style="font-size:36px">陈述 ${index + 1}：${escapeText(clamp(statement.text, 60))}</h1>`),
-      textElement(`${sceneId}-body`, 190, 170, `<p style="font-size:24px">${escapeText(clamp(statement.text, 600))}</p>`),
+      textElement(
+        `${sceneId}-title`,
+        70,
+        90,
+        `<h1 style="font-size:36px">陈述 ${index + 1}：${escapeText(clamp(statement.text, 60))}</h1>`,
+      ),
+      textElement(
+        `${sceneId}-body`,
+        190,
+        170,
+        `<p style="font-size:24px">${escapeText(clamp(statement.text, 600))}</p>`,
+      ),
     ];
     if (statement.conditions) {
-      elements.push(textElement(`${sceneId}-conditions`, 360, 90, `<p style="font-size:20px;color:#0f766e">适用条件：${escapeText(clamp(statement.conditions, 300))}</p>`));
+      elements.push(
+        textElement(
+          `${sceneId}-conditions`,
+          360,
+          90,
+          `<p style="font-size:20px;color:#0f766e">适用条件：${escapeText(clamp(statement.conditions, 300))}</p>`,
+        ),
+      );
     }
     elements.push(
-      textElement(`${sceneId}-knowledge`, 450, 50, `<p style="font-size:16px">知识点 ${escapeText(statement.knowledgeId)}</p>`),
-      textElement(`${sceneId}-source`, 500, 70, `<p style="font-size:14px;color:#5a5a5a">来源：${escapeText(clamp(sources, 420))}</p>`),
+      textElement(
+        `${sceneId}-knowledge`,
+        450,
+        50,
+        `<p style="font-size:16px">知识点 ${escapeText(statement.knowledgeId)}</p>`,
+      ),
+      textElement(
+        `${sceneId}-source`,
+        500,
+        70,
+        `<p style="font-size:14px;color:#5a5a5a">来源：${escapeText(clamp(sources, 420))}</p>`,
+      ),
     );
 
-    dslScenes.push(slideScene({ id: sceneId, stageId, order: dslScenes.length, title: `陈述 ${index + 1}`, at, elements }));
+    dslScenes.push(
+      slideScene({
+        id: sceneId,
+        stageId,
+        order: dslScenes.length,
+        title: `陈述 ${index + 1}`,
+        at,
+        elements,
+      }),
+    );
     scenes.push({
       sceneId,
       sceneType: 'slide',
@@ -187,33 +239,134 @@ export const buildFormalLessonDocument = (input: {
     const snapshot = question.snapshot;
     const assessment = snapshot?.assessment;
     if (!snapshot || !assessment) {
-      skipped.push({ kind: 'question', id: question.questionId, reason: '冻结题目未登记题型与评分规则，不生成测验场景（ANSWER-01）' });
+      skipped.push({
+        kind: 'question',
+        id: question.questionId,
+        reason: '冻结题目未登记题型与评分规则，不生成测验场景（ANSWER-01）',
+      });
       continue;
     }
     if (dslScenes.length >= contentLimit) {
-      skipped.push({ kind: 'question', id: question.questionId, reason: `场景数量达到上限 ${FORMAL_SCENE_LIMIT}，本题未进入课件` });
+      skipped.push({
+        kind: 'question',
+        id: question.questionId,
+        reason: `场景数量达到上限 ${FORMAL_SCENE_LIMIT}，本题未进入课件`,
+      });
       continue;
     }
     const sceneId = formalQuestionSceneId(question.questionId);
     dslScenes.push({
-      id: sceneId, stageId, title: `独立测验 ${question.questionId}`, order: dslScenes.length,
-      createdAt: at, updatedAt: at, type: 'quiz',
-      content: { type: 'quiz', questions: [{
-        id: question.questionId, type: assessment.type, question: snapshot.stem,
-        ...(assessment.type === 'short_answer' ? {} : { options: assessment.options }),
-        answer: assessment.correctAnswers, analysis: snapshot.solution, points: assessment.maxScore,
-      }] },
+      id: sceneId,
+      stageId,
+      title: `独立测验 ${question.questionId}`,
+      order: dslScenes.length,
+      createdAt: at,
+      updatedAt: at,
+      type: 'quiz',
+      content: {
+        type: 'quiz',
+        questions: [
+          {
+            id: question.questionId,
+            type: assessment.type,
+            question: snapshot.stem,
+            ...(assessment.type === 'short_answer' ? {} : { options: assessment.options }),
+            answer: assessment.correctAnswers,
+            analysis: snapshot.solution,
+            points: assessment.maxScore,
+          },
+        ],
+      },
     });
-    scenes.push({ sceneId, sceneType: 'quiz', title: `独立测验 ${question.questionId}`,
-      knowledgeIds: question.knowledgeIds, questionId: question.questionId, statementId: null });
+    scenes.push({
+      sceneId,
+      sceneType: 'quiz',
+      title: `独立测验 ${question.questionId}`,
+      knowledgeIds: question.knowledgeIds,
+      questionId: question.questionId,
+      statementId: null,
+    });
   }
 
   for (const definition of input.interactions ?? []) {
     if (dslScenes.length >= FORMAL_SCENE_LIMIT) break;
     const sceneId = formalInteractionSceneId(definition.id);
-    const knowledgeIds = [...new Set(statements.filter(s => definition.statementIds.includes(s.statementId)).map(s => s.knowledgeId))];
-    dslScenes.push({ id: sceneId, stageId, title: definition.title, order: dslScenes.length, createdAt: at, updatedAt: at, type: 'interactive', content: { type: 'interactive', html: '<!doctype html><html><body><p>本人互动由课堂宿主提供。来源与参数范围经人工审核。</p></body></html>' } });
-    scenes.push({ sceneId, sceneType: 'interactive', title: definition.title, knowledgeIds, statementId: null, questionId: null });
+    const knowledgeIds = [
+      ...new Set(
+        statements
+          .filter((s) => definition.statementIds.includes(s.statementId))
+          .map((s) => s.knowledgeId),
+      ),
+    ];
+    dslScenes.push({
+      id: sceneId,
+      stageId,
+      title: definition.title,
+      order: dslScenes.length,
+      createdAt: at,
+      updatedAt: at,
+      type: 'interactive',
+      content: {
+        type: 'interactive',
+        html: '<!doctype html><html><body><p>本人互动由课堂宿主提供。来源与参数范围经人工审核。</p></body></html>',
+      },
+    });
+    scenes.push({
+      sceneId,
+      sceneType: 'interactive',
+      title: definition.title,
+      knowledgeIds,
+      statementId: null,
+      questionId: null,
+    });
+  }
+
+  if (pblDefinition && dslScenes.length < FORMAL_SCENE_LIMIT) {
+    const statementIds = [...pblDefinition.definition.statementIds];
+    const knowledgeIds = [
+      ...new Set(
+        statements
+          .filter((item) => statementIds.includes(item.statementId))
+          .map((item) => item.knowledgeId),
+      ),
+    ];
+    if (
+      knowledgeIds.length === 0 ||
+      statementIds.some((id) => !statements.some((statement) => statement.statementId === id))
+    ) {
+      skipped.push({
+        kind: 'statement',
+        id: pblDefinition.definition.id,
+        reason: 'PBL 定义引用的陈述不在本版本冻结证据包',
+      });
+    } else {
+      const sceneId = pblProjectSceneId(pblDefinition.definition.id);
+      dslScenes.push({
+        id: sceneId,
+        stageId,
+        title: pblDefinition.definition.title,
+        order: dslScenes.length,
+        createdAt: at,
+        updatedAt: at,
+        type: 'pbl',
+        content: pblSceneContent(pblDefinition, input.frozenAt),
+      });
+      scenes.push({
+        sceneId,
+        sceneType: 'pbl',
+        title: pblDefinition.definition.title,
+        knowledgeIds,
+        statementId: null,
+        statementIds,
+        questionId: null,
+      });
+    }
+  } else if (pblDefinition) {
+    skipped.push({
+      kind: 'statement',
+      id: pblDefinition.definition.id,
+      reason: `场景数量达到上限 ${FORMAL_SCENE_LIMIT}，PBL 项目未进入课件`,
+    });
   }
 
   const stage: Stage = {

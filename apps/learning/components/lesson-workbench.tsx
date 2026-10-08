@@ -31,6 +31,7 @@ import { LessonScenePlanEditor } from './lesson-scene-plan-editor';
 import { LessonScenePlanMerge } from './lesson-scene-plan-merge';
 import { LessonSceneRevision } from './lesson-scene-revision';
 import { LessonStatementRevision } from './lesson-statement-revision';
+import { PblProjectAuthor } from './pbl-project-author';
 
 interface StatementRow {
   knowledgeId: string;
@@ -78,6 +79,8 @@ export const LessonWorkbench = ({
   scenePlans = [],
   coursewareCandidates = [],
   reviewedInteractions = new Map(),
+  reviewedPbl = new Map(),
+  learnerUid = '',
   modelConfigured = false,
 }: {
   projectId: string;
@@ -104,6 +107,9 @@ export const LessonWorkbench = ({
   coursewareCandidates?: CoursewareCandidateDto[];
   /** 每个课程版本已审核互动定义派生出的场景编号与标题；默认计划据此与冻结定义一一对应。 */
   reviewedInteractions?: Map<string, Array<{ sceneId: string; title: string }>>;
+  /** Frozen PBL project scene ids/titles, by lesson version. */
+  reviewedPbl?: Map<string, Array<{ sceneId: string; title: string }>>;
+  learnerUid?: string;
   /** 是否已配置模型连接；未配置时改写生成按钮不可用。 */
   modelConfigured?: boolean;
 }): ReactNode => {
@@ -551,6 +557,18 @@ export const LessonWorkbench = ({
                           }
                         />
                       ) : null}
+                      {versionBundle(lesson) &&
+                      lesson.status === 'draft' &&
+                      lesson.statementIds.length > 0 ? (
+                        <PblProjectAuthor
+                          key={`${lesson.lessonId}-v${lesson.version}-pbl-author`}
+                          projectId={projectId}
+                          generation={generation}
+                          lesson={lesson}
+                          learnerUid={learnerUid}
+                          statements={versionBundle(lesson)!.statements}
+                        />
+                      ) : null}
                       {versionBundle(lesson) && lesson.status === 'draft' ? (
                         <LessonStatementRevision
                           key={`${lesson.lessonId}-v${lesson.version}-statement-revision`}
@@ -578,6 +596,9 @@ export const LessonWorkbench = ({
                           }
                           interactions={
                             reviewedInteractions.get(`${lesson.lessonId}:${lesson.version}`) ?? []
+                          }
+                          reviewedPbl={
+                            reviewedPbl.get(`${lesson.lessonId}:${lesson.version}`) ?? []
                           }
                           busy={busy}
                           onSaved={setNote}

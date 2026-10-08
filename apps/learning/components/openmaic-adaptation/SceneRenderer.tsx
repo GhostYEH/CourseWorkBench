@@ -1,12 +1,13 @@
 'use client';
 
 import { SlideCanvas } from '@openmaic/renderer';
-import type { Action, InteractiveContent, QuizContent, Scene, SlideContent } from '@openmaic/dsl';
+import type { Action, InteractiveContent, PBLContent, QuizContent, Scene, SlideContent } from '@openmaic/dsl';
 import type { ClassroomSceneBinding } from '@sew/study-contracts';
 import { QuizSceneView } from './QuizSceneView';
 import { InteractiveSceneView } from './InteractiveSceneView';
+import { FormalPblSceneView } from './FormalPblSceneView';
 
-export type ClassroomScene = Scene<Action, SlideContent | QuizContent | InteractiveContent>;
+export type ClassroomScene = Scene<Action, SlideContent | QuizContent | InteractiveContent | (PBLContent & { definitionId?: string; statementIds?: string[] })>;
 
 /**
  * 上游 SlideCanvas 的 effects 只认画布里真实存在的元素：线型元素没有可框住的矩形，
@@ -59,6 +60,10 @@ export function SceneRenderer({
       return scene.content.type === 'interactive'
         ? <InteractiveSceneView sceneId={scene.id} stageId={scene.stageId} content={scene.content} scope={scope} />
         : <p role="alert">互动场景结构无效。</p>;
+    case 'pbl':
+      return scene.content.type === 'pbl'
+        ? <FormalPblSceneView key={`${scope.projectId}:${scope.generation}:${scene.stageId}:${scene.id}:${scene.content.definitionId ?? ''}`} sceneId={scene.id} stageId={scene.stageId} content={scene.content} scope={scope} />
+        : <p role="alert">PBL 场景结构无效。</p>;
     default:
       return <p role="status">未知场景类型暂不能播放。</p>;
   }

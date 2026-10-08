@@ -261,7 +261,7 @@ const closeNativeProject = async () => {
 
 const run = async () => {
   assert(
-    ['boundary', 'lesson-plan', 'collab-panel', 'learner-profile'].includes(suite),
+    ['boundary', 'lesson-plan', 'collab-panel', 'learner-profile', 'pbl'].includes(suite),
     'unknown Electron smoke suite',
   );
   assert(existsSync(serverEntry), 'learning server entry is missing');
@@ -415,7 +415,7 @@ const run = async () => {
     return;
   }
 
-  if (suite === 'lesson-plan') {
+  if (suite === 'lesson-plan' || suite === 'pbl') {
     markStep('lesson-plan-smoke-started', { servicePid: serviceChild.pid ?? null });
     await require('./smoke-formal-quiz.cjs')({
       window,
@@ -425,7 +425,8 @@ const run = async () => {
       waitForText,
       cover,
       markStep,
-      planOnly: true,
+      planOnly: suite === 'lesson-plan',
+      pblOnly: suite === 'pbl',
     });
     await closeNativeProject();
     return;

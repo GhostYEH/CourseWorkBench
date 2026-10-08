@@ -27,6 +27,7 @@ import {
   collabEventSchema,
   collabSnapshotViewSchema,
   collabTeachingViewSchema,
+  collabTeachingAiReadViewSchema,
   classroomInvitationSchema,
   apiResponses,
   type ClassroomSharedCourseDto,
@@ -48,6 +49,10 @@ import {
   describeCollabError,
   resolveCollabServiceUrl,
 } from './collab-online-client';
+import { assertScope } from './service';
+import { modelConnection } from './model-connection';
+import { generateCollabTeachingAi } from './collab-teaching-ai-model';
+import { readLegacyOnlineCommands } from './collab-command-outbox';
 
 const roomViewSchema = z
   .object({ room: collabRoomSchema.nullable(), members: z.array(collabRoomMemberSchema) })
@@ -133,6 +138,8 @@ const emptyView = (online: CollabOnlineViewDto['online']): CollabOnlineViewDto =
   events: { events: [], tailSeq: 0 },
   snapshot: null,
   teaching: null,
+  teachingAi: null,
+  legacyBoardWrites: [],
 });
 
 /**
@@ -141,7 +148,7 @@ const emptyView = (online: CollabOnlineViewDto['online']): CollabOnlineViewDto =
  * 任一步失败都不伪报成功：`online.authenticated` 为 false 时界面继续显示
  * 「不能联网邀请」，`online.error` 给出可读原因。
  */
-export const readOnlineView = async (
+const readOnlineViewRaw = async (
   session: Session,
   options: { roomId?: string | null; messageAfterSeq?: number; eventAfterSeq?: number } = {},
 ): Promise<CollabOnlineViewDto> => {
@@ -273,7 +280,7 @@ export const readOnlineView = async (
   view.members = roomView.members;
   if (!roomView.room) return view;
   try {
-    const [messages, events, snapshot, teaching] = await Promise.all([
+    const [messages, events, snapshot, teaching, teachingAi] = await Promise.all([
       collabFetch(
         baseUrl,
         {
@@ -304,16 +311,31 @@ export const readOnlineView = async (
         { method: 'GET', path: '/collab/v1/teaching', query: { roomId }, token },
         collabTeachingViewSchema,
       ),
+      collabFetch(
+        baseUrl,
+        { method: 'GET', path: '/collab/v1/teaching-ai', query: { roomId }, token },
+        collabTeachingAiReadViewSchema,
+      ),
     ]);
     view.messages = messages;
     view.events = events;
     view.snapshot = snapshot;
     view.teaching = teaching;
+    view.teachingAi = teachingAi;
   } catch (error) {
     view.online.error = describeCollabError(error);
     if (collabErrorReason(error) === 'collab_unreachable') view.online.connected = false;
   }
   return view;
+};
+
+export const readOnlineView = async (
+  session: Session,
+  options: Parameters<typeof readOnlineViewRaw>[1] = {},
+): Promise<CollabOnlineViewDto> => {
+  const legacy = readLegacyOnlineCommands(session);
+  const view = await readOnlineViewRaw(session, options);
+  return { ...view, legacyBoardWrites: legacy.commands };
 };
 
 /**
@@ -448,6 +470,7 @@ export const revokeOnlineCredential = async (
 export const runOnlineCommand = async (
   session: Session,
   command: CollabOnlineCommand,
+  signal?: AbortSignal,
 ): Promise<unknown> => {
   const baseUrl = requireBaseUrl();
   const credential = requireCredential();
@@ -456,6 +479,87 @@ export const runOnlineCommand = async (
   const uid = session.learnerUid;
 
   switch (command.action) {
+    case 'teaching-ai': {
+      const input = { ...command, actorUid: uid };
+      const { action: _action, ...body } = input;
+      if (
+        command.operation.kind === 'review-ai-candidate' ||
+        command.operation.kind === 'broadcast-ai-candidate'
+      ) {
+        return collabFetch(
+          baseUrl,
+          { method: 'POST', path: '/collab/v1/teaching-ai', token, body },
+          apiResponses.collabTeachingAi,
+        );
+      }
+      const revalidateScope = (): void => {
+        assertScope({ projectId: session.projectId, generation: session.generation });
+        const current = requireCredential();
+        if (
+          resolveCollabServiceUrl() !== baseUrl ||
+          current.credentialId !== credential.credentialId ||
+          current.secret !== credential.secret
+        ) {
+          throw new StudyError('PROJECT_NOT_AUTHORIZED', {
+            reason: 'collab_ai_connection_changed',
+          });
+        }
+      };
+      return generateCollabTeachingAi(
+        {
+          store: session.store,
+          projectId: session.projectId,
+          learnerUid: uid,
+          connection: modelConnection,
+          revalidateScope,
+          readAuthority: async () => {
+            const [room, snapshot, view] = await Promise.all([
+              readRemoteRoom(baseUrl, token, command.roomId),
+              collabFetch(
+                baseUrl,
+                {
+                  method: 'GET',
+                  path: '/collab/v1/snapshot',
+                  query: { roomId: command.roomId },
+                  token,
+                },
+                collabSnapshotViewSchema,
+              ),
+              collabFetch(
+                baseUrl,
+                {
+                  method: 'GET',
+                  path: '/collab/v1/teaching-ai',
+                  query: { roomId: command.roomId },
+                  token,
+                },
+                collabTeachingAiReadViewSchema,
+              ),
+            ]);
+            revalidateScope();
+            if (!room || !snapshot.snapshot)
+              throw new StudyError('NOT_FOUND', { reason: 'collab_ai_snapshot_missing' });
+            return { room, snapshot: snapshot.snapshot, view };
+          },
+          recordCandidate: async (candidate, candidateSignal) => {
+            revalidateScope();
+            return collabFetch(
+              baseUrl,
+              {
+                method: 'POST',
+                path: '/collab/v1/teaching-ai/candidates',
+                token,
+                body: candidate,
+                signal: candidateSignal,
+              },
+              apiResponses.collabTeachingAi,
+            );
+          },
+        },
+        body,
+        signal,
+      );
+    }
     case 'teaching':
       return collabFetch(
         baseUrl,

@@ -37,8 +37,16 @@ writeFileSync(
 
 const { openProjectFromDisk } = await import('../apps/learning/lib/server/service.ts');
 const { getLearnerProfile } = await import('../apps/learning/lib/server/learner-profile.ts');
+const { modelConnection, createModelConnectionRuntime } =
+  await import('../apps/learning/lib/server/model-connection.ts');
 const contracts = await import('@sew/study-contracts');
 const domain = await import('@sew/study-domain');
+const FIXTURE_PROTOCOL_VERSION = 5;
+if (contracts.COLLAB_PROTOCOL_VERSION !== FIXTURE_PROTOCOL_VERSION) {
+  throw new Error(
+    `local-client fixture expects collaboration protocol ${FIXTURE_PROTOCOL_VERSION}`,
+  );
+}
 const session = openProjectFromDisk(projectRoot);
 const uid = getLearnerProfile().uid;
 
@@ -116,6 +124,7 @@ store.savePlanVersion(projectId, 1, 'confirmed', {
   basis: '核对本机材料',
   confirmedTaskKnowledgeIds: [knowledge.knowledgeId],
 });
+store.startPlanRun(projectId);
 const bundle = store.buildLessonBundle(
   projectId,
   [{ knowledgeId: knowledge.knowledgeId, text: '函数值随自变量增大', conditions: '同一区间' }],
@@ -193,8 +202,34 @@ store.attachLessonDocument({
 });
 
 const { GET, POST } = await import('../apps/learning/app/api/study/collab/online/route.ts');
+let modelCalls = 0;
+let privatePromptSeen = false;
 const server = http.createServer(async (incoming, outgoing) => {
   const url = new URL(incoming.url ?? '/', 'http://127.0.0.1');
+  // A loopback-only HTTP provider fixture exercises the real connection runtime; no paid call.
+  if (incoming.method === 'GET' && url.pathname === '/fixture/model-stats') {
+    outgoing.writeHead(200, { 'content-type': 'application/json' });
+    outgoing.end(JSON.stringify({ modelCalls, privatePromptSeen }));
+    return;
+  }
+  if (incoming.method === 'POST' && url.pathname === '/fixture/model/chat/completions') {
+    const chunks = [];
+    for await (const chunk of incoming) chunks.push(chunk);
+    const payload = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    modelCalls += 1;
+    privatePromptSeen ||= /private-(?:answer|rubric|score)-fixture/.test(
+      JSON.stringify(payload.messages),
+    );
+    outgoing.writeHead(200, { 'content-type': 'application/json' });
+    outgoing.end(
+      JSON.stringify({
+        model: 'fixture-public-ai',
+        choices: [{ message: { content: '同一区间内，函数值随自变量增大而增大。' } }],
+        usage: { total_tokens: 42 },
+      }),
+    );
+    return;
+  }
   if (
     !['GET', 'POST'].includes(incoming.method ?? '') ||
     url.pathname !== '/api/study/collab/online'
@@ -231,6 +266,27 @@ const server = http.createServer(async (incoming, outgoing) => {
 
 server.listen(0, '127.0.0.1', () => {
   const address = server.address();
+  // Inject only the fixture transport. Production still requires HTTPS and never accepts HTTP configuration.
+  Object.assign(
+    modelConnection,
+    createModelConnectionRuntime({
+      fetcher: async (input, options) => {
+        const destination = new URL(String(input));
+        if (destination.origin !== 'https://model-fixture.invalid')
+          throw new Error('unexpected fixture provider');
+        return fetch(`http://127.0.0.1:${address.port}${destination.pathname}`, options);
+      },
+    }),
+  );
+  modelConnection.configure(
+    {
+      provider: 'openai-compatible',
+      baseUrl: 'https://model-fixture.invalid/fixture/model',
+      model: 'fixture-public-ai',
+      apiKey: 'isolated-loopback-fixture',
+    },
+    false,
+  );
   process.stdout.write(
     `${JSON.stringify({
       type: 'ready',
@@ -254,7 +310,7 @@ server.listen(0, '127.0.0.1', () => {
         sceneId: scene.id,
         elementIds: scene.content.canvas.elements.map((element) => element.id),
       })),
-      protocolVersion: contracts.COLLAB_PROTOCOL_VERSION,
+      protocolVersion: FIXTURE_PROTOCOL_VERSION,
     })}\n`,
   );
 });

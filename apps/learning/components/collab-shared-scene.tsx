@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { ClassroomSharedCourseDto, CollabTeachingStateDto } from '@sew/study-contracts';
+import { CollabBoardContent } from './collab-board-content';
 
 /** Both members consume the room's frozen public content and authoritative scene pointer. */
 export const CollabSharedScene = ({
@@ -28,21 +29,7 @@ export const CollabSharedScene = ({
           <ul>
             {boardContents.map((item) => (
               <li key={item.eventId} data-collab-shared-board-content={item.eventId}>
-                {item.content.kind === 'text' ? (
-                  <span style={{ whiteSpace: 'pre-wrap' }}>{item.content.text}</span>
-                ) : item.content.kind === 'formula' ? (
-                  <span style={{ whiteSpace: 'pre-wrap' }}>
-                    {item.content.text}
-                    {item.content.latex ? (
-                      <span className="mono"> · {item.content.latex}</span>
-                    ) : null}
-                  </span>
-                ) : (
-                  <span>
-                    简图：{item.content.nodes.map((node) => node.label).join('、')}（
-                    {item.content.edges.length} 条连线）
-                  </span>
-                )}
+                <CollabBoardContent content={item.content} label={`板书 ${item.eventId}`} />
               </li>
             ))}
           </ul>

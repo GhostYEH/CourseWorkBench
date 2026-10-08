@@ -29,6 +29,7 @@ export const initialLessonPlanScenes = (
    * （计划即权威，不会被自动加回），要么是定义在计划之后才冻结（漏装配，装配时会明确报告）。
    */
   interactions: ReadonlyArray<{ sceneId: string; title: string }> = [],
+  pblProjects: ReadonlyArray<{ sceneId: string; title: string }> = [],
 ): PlanSceneDto[] => [
   ...bundle.statements
     .filter((item) => lesson.statementIds.includes(item.statementId))
@@ -58,6 +59,16 @@ export const initialLessonPlanScenes = (
     sceneId: interaction.sceneId.slice(0, 60),
     kind: 'interactive',
     title: interaction.title,
+    statementId: null,
+    questionId: null,
+    knowledgeIds: [],
+    elements: [],
+    note: '',
+  })),
+  ...pblProjects.map((project): PlanSceneDto => ({
+    sceneId: project.sceneId.slice(0, 60),
+    kind: 'pbl',
+    title: project.title,
     statementId: null,
     questionId: null,
     knowledgeIds: [],

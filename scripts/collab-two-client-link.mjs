@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const serverEntry = join(root, 'apps', 'collab-service', 'server.mjs');
 const localClientEntry = join(root, 'scripts', 'collab-local-client.mjs');
-const PROTOCOL_VERSION = 4;
+const PROTOCOL_VERSION = 5;
 
 const results = [];
 const record = (name, ok, detail = '') => {
@@ -387,6 +387,8 @@ try {
   const proxyB = createLocalProxyClient(localB.origin);
   const isolationOk =
     localA.projectId !== localB.projectId &&
+    localA.protocolVersion === PROTOCOL_VERSION &&
+    localB.protocolVersion === PROTOCOL_VERSION &&
     localA.uid !== localB.uid &&
     localA.projectId !== localB.uid &&
     localB.projectId !== localA.uid &&
@@ -568,11 +570,96 @@ try {
     `statement=${Boolean(localStatement)}, HTTP ${localSpeak.status}, retryDedup=${localSpeakRetry.data?.deduplicated}`,
   );
 
-  const localFocus = await proxyA.command('teaching', {
+  const localBoardDraft = { kind: 'text', text: '本地协作板书：增函数定义' };
+  const localUnreviewedWrite = await proxyA.command('teaching', {
     roomId: localRoom,
     sceneId: localCurrentSceneId,
     expectedRevision: localTeachingAfterRetry.data?.view?.teaching?.roomRevision,
     expectedSeq: (localTeachingAfterRetry.data?.view?.teaching?.tailSeq ?? 0) + 1,
+    eventId: 'local-teaching-write-without-review',
+    requestId: 'local-teaching-write-without-review',
+    operation: {
+      kind: 'write',
+      statementId: localStatement?.statementId ?? 'missing',
+      content: localBoardDraft,
+    },
+  });
+  const localAfterUnreviewedWrite = await proxyA.view(localRoom);
+  const localReviewed = await proxyA.command('teaching', {
+    roomId: localRoom,
+    sceneId: localCurrentSceneId,
+    expectedRevision: localAfterUnreviewedWrite.data?.view?.teaching?.roomRevision,
+    expectedSeq: (localAfterUnreviewedWrite.data?.view?.teaching?.tailSeq ?? 0) + 1,
+    eventId: 'local-teaching-review-board-1',
+    requestId: 'local-teaching-review-board-1',
+    operation: {
+      kind: 'review-board-content',
+      statementId: localStatement?.statementId ?? 'missing',
+      content: localBoardDraft,
+      semanticReviewed: true,
+    },
+  });
+  const localReviewEventId =
+    localReviewed.data?.view?.teaching?.state?.board?.reviewedContents?.find(
+      (item) => item.statementId === localStatement?.statementId,
+    )?.eventId;
+  const localWriteIntent = {
+    roomId: localRoom,
+    sceneId: localCurrentSceneId,
+    expectedRevision: localReviewed.data?.view?.teaching?.roomRevision,
+    expectedSeq: (localReviewed.data?.view?.teaching?.tailSeq ?? 0) + 1,
+    eventId: 'local-teaching-write-1',
+    requestId: 'local-teaching-write-1',
+    operation: {
+      kind: 'write',
+      statementId: localStatement?.statementId ?? 'missing',
+      content: localBoardDraft,
+      reviewEventId: localReviewEventId ?? 'missing-review',
+    },
+  };
+  const localWritten = await proxyA.command('teaching', localWriteIntent);
+  const localWriteRetry = await proxyA.command('teaching', localWriteIntent);
+  const localChangedAfterReview = await proxyA.command('teaching', {
+    ...localWriteIntent,
+    expectedRevision: localWritten.data?.view?.teaching?.roomRevision,
+    expectedSeq: (localWritten.data?.view?.teaching?.tailSeq ?? 0) + 1,
+    eventId: 'local-teaching-write-changed',
+    requestId: 'local-teaching-write-changed',
+    operation: {
+      ...localWriteIntent.operation,
+      content: { kind: 'text', text: '本地协作板书：篡改后的内容' },
+    },
+  });
+  const localTeachingAfterBoard = await proxyA.view(localRoom);
+  const localBoardFromB = await proxyB.view(localRoom);
+  record(
+    '本地代理：无回执拒写；保存人审回执后写入；正文编辑拒绝且丢响应重试去重',
+    localUnreviewedWrite.status === 400 &&
+      JSON.stringify(localAfterUnreviewedWrite.data?.view?.teaching?.state) ===
+        JSON.stringify(localTeachingAfterRetry.data?.view?.teaching?.state) &&
+      localReviewed.ok &&
+      localReviewed.data?.view?.teaching?.state?.board?.reviewedContents?.some(
+        (item) => item.eventId === localReviewEventId && item.reviewerUid === localA.uid,
+      ) === true &&
+      localWritten.ok &&
+      localWritten.data?.view?.teaching?.state?.board?.contents?.[0]?.reviewEventId ===
+        localReviewEventId &&
+      localWriteRetry.ok &&
+      localWriteRetry.data?.deduplicated === true &&
+      localWriteRetry.data?.view?.teaching?.tailSeq ===
+        localWritten.data?.view?.teaching?.tailSeq &&
+      localChangedAfterReview.status === 400 &&
+      localChangedAfterReview.error?.details?.reason === 'collab_board_review_receipt_required' &&
+      JSON.stringify(localBoardFromB.data?.view?.teaching?.state) ===
+        JSON.stringify(localWritten.data?.view?.teaching?.state),
+    `unreviewed=${localUnreviewedWrite.status}, review=${localReviewed.status}, write=${localWritten.status}, edit=${localChangedAfterReview.status}/${localChangedAfterReview.error?.details?.reason}, retry=${localWriteRetry.data?.deduplicated}`,
+  );
+
+  const localFocus = await proxyA.command('teaching', {
+    roomId: localRoom,
+    sceneId: localCurrentSceneId,
+    expectedRevision: localTeachingAfterBoard.data?.view?.teaching?.roomRevision,
+    expectedSeq: (localTeachingAfterBoard.data?.view?.teaching?.tailSeq ?? 0) + 1,
     eventId: 'local-teaching-focus-1',
     requestId: 'local-teaching-focus-1',
     operation: { kind: 'focus', elementId: localPublicElement?.elementId ?? 'missing' },
@@ -635,6 +722,125 @@ try {
       localReplayB.data?.view?.teaching?.state?.board?.focusElementId ===
         localPublicElement?.elementId,
     `undo=${localUndo.status}, retry=${localUndoRetry.data?.deduplicated}, replay=${localReplay.status}`,
+  );
+
+  const aiBefore = await proxyA.view(localRoom);
+  const aiIntent = {
+    roomId: localRoom,
+    sceneId: localCurrentSceneId,
+    expectedRevision: aiBefore.data?.view?.room?.revision,
+    expectedSeq: (aiBefore.data?.view?.teachingAi?.tailSeq ?? 0) + 1,
+    eventId: 'local-ai-generate-1',
+    requestId: 'local-ai-generate-1',
+    operation: {
+      kind: 'generate-teacher-explanation',
+      anchorStatementId: localStatement?.statementId ?? 'missing',
+    },
+  };
+  const aiForbiddenRecord = await proxyA.command('teaching-ai', {
+    ...aiIntent,
+    requestId: 'renderer-fake-ai',
+    operation: {
+      kind: 'record-ai-candidate',
+      candidateId: 'fake',
+      anchorStatementId: localStatement?.statementId,
+      senderType: 'teacher_ai',
+      body: '伪造模型产物',
+      model: 'fake',
+    },
+  });
+  const aiGenerated = await proxyA.command('teaching-ai', aiIntent);
+  const aiPendingMember = await proxyB.view(localRoom);
+  const aiRetry = await proxyA.command('teaching-ai', aiIntent);
+  const aiStats = await (await fetch(`${localA.origin}/fixture/model-stats`)).json();
+  const aiState = aiGenerated.data?.view?.teachingAi?.state;
+  const aiCandidate = aiState?.candidates?.[0];
+  record(
+    '本地公共AI：真实受控入口经过 loopback provider，仅owner待核且重试不重复付费',
+    aiForbiddenRecord.status === 400 &&
+      aiGenerated.ok &&
+      aiState.candidates.length === 1 &&
+      aiCandidate.status === 'pending' &&
+      aiState.publicOutputs.length === 0 &&
+      aiPendingMember.data?.view?.teachingAi?.state === null &&
+      aiPendingMember.data?.view?.teachingAi?.publicOutputs?.length === 0 &&
+      aiRetry.ok &&
+      aiRetry.data?.deduplicated === true &&
+      aiStats.modelCalls === 1 &&
+      aiStats.privatePromptSeen === false,
+    `HTTP=${aiGenerated.status}, retry=${aiRetry.status}, calls=${aiStats.modelCalls}`,
+  );
+  const aiReviewBase = await proxyA.view(localRoom);
+  const aiReview = await proxyA.command('teaching-ai', {
+    roomId: localRoom,
+    sceneId: localCurrentSceneId,
+    expectedRevision: aiReviewBase.data?.view?.room?.revision,
+    expectedSeq: (aiReviewBase.data?.view?.teachingAi?.tailSeq ?? 0) + 1,
+    eventId: 'local-ai-review-1',
+    requestId: 'local-ai-review-1',
+    operation: {
+      kind: 'review-ai-candidate',
+      candidateId: aiCandidate?.candidateId ?? 'missing',
+      decision: 'approved',
+      note: 'fixture人工审核动作',
+      semanticReviewed: true,
+    },
+  });
+  const aiBroadcastIntent = {
+    roomId: localRoom,
+    sceneId: localCurrentSceneId,
+    expectedRevision: aiReview.data?.view?.room?.revision,
+    expectedSeq: (aiReview.data?.view?.teachingAi?.tailSeq ?? 0) + 1,
+    eventId: 'local-ai-broadcast-1',
+    requestId: 'local-ai-broadcast-1',
+    operation: {
+      kind: 'broadcast-ai-candidate',
+      candidateId: aiCandidate?.candidateId ?? 'missing',
+    },
+  };
+  const aiBroadcast = await proxyA.command('teaching-ai', aiBroadcastIntent);
+  const aiBroadcastRetry = await proxyA.command('teaching-ai', aiBroadcastIntent);
+  const aiPublicMember = await proxyB.view(localRoom);
+  const aiPublicOwner = aiBroadcast.data?.view?.teachingAi?.publicOutputs;
+  const memberProjection = aiPublicMember.data?.view?.teachingAi;
+  record(
+    '本地公共AI：独立人工审核后明确播报，双端AI白名单相同且广播重试幂等',
+    aiReview.ok &&
+      aiReview.data?.view?.teachingAi?.state?.publicOutputs?.length === 0 &&
+      aiBroadcast.ok &&
+      aiBroadcastRetry.ok &&
+      aiBroadcastRetry.data?.deduplicated === true &&
+      aiPublicOwner?.length === 1 &&
+      aiPublicOwner[0].aiLabel === 'AI' &&
+      memberProjection?.state === null &&
+      JSON.stringify(memberProjection.publicOutputs) === JSON.stringify(aiPublicOwner) &&
+      !JSON.stringify(memberProjection).includes('fixture人工审核动作') &&
+      !JSON.stringify(memberProjection).includes('fixture-public-ai'),
+    `review=${aiReview.status}, broadcast=${aiBroadcast.status}, retry=${aiBroadcastRetry.data?.deduplicated}`,
+  );
+  const aiWaitBase = await proxyA.view(localRoom);
+  const aiWait = await proxyA.command('teaching', {
+    roomId: localRoom,
+    sceneId: localCurrentSceneId,
+    expectedRevision: aiWaitBase.data?.view?.room?.revision,
+    expectedSeq: (aiWaitBase.data?.view?.teachingAi?.tailSeq ?? 0) + 1,
+    eventId: 'local-ai-wait',
+    requestId: 'local-ai-wait',
+    operation: { kind: 'wait', targetUid: LOCAL_UID_B },
+  });
+  const aiWaitingGeneration = await proxyA.command('teaching-ai', {
+    ...aiIntent,
+    expectedRevision: aiWait.data?.view?.room?.revision,
+    expectedSeq: (aiWait.data?.view?.teachingAi?.tailSeq ?? 0) + 1,
+    eventId: 'local-ai-while-waiting',
+    requestId: 'local-ai-while-waiting',
+    operation: { ...aiIntent.operation, instruction: '等待期间不得调用' },
+  });
+  const aiStatsAfterWait = await (await fetch(`${localA.origin}/fixture/model-stats`)).json();
+  record(
+    '本地公共AI：等待本人时provider调用次数不增加',
+    aiWait.ok && !aiWaitingGeneration.ok && aiStatsAfterWait.modelCalls === 1,
+    `wait=${aiWait.status}, blocked=${aiWaitingGeneration.status}, calls=${aiStatsAfterWait.modelCalls}`,
   );
 
   const clientA = createClient(service.origin);
@@ -1088,6 +1294,28 @@ try {
     `laser replay=${laserReplayed.result.status}, repeat=${laserReplayTwice.result.status}, focus replay=${focusReplayed.result.status}, unknown=${missingBoardAction.result.status}/${missingBoardAction.result.error?.details?.reason}`,
   );
 
+  const boardDraft = { kind: 'text', text: '公共板书：一次函数 y=kx+b' };
+  const unreviewedWrite = await submitTeaching(
+    clientA,
+    tokenA,
+    UID_A,
+    { kind: 'write', statementId: 'statement_k1_scene2', content: boardDraft },
+    'write-without-review',
+  );
+  const afterUnreviewedWrite = await clientA.teaching(tokenA, ROOM);
+  const reviewed = await submitTeaching(
+    clientA,
+    tokenA,
+    UID_A,
+    {
+      kind: 'review-board-content',
+      statementId: 'statement_k1_scene2',
+      content: boardDraft,
+      semanticReviewed: true,
+    },
+    'review-board-content',
+  );
+  const reviewEventId = reviewed.result.data?.event?.eventId;
   const written = await submitTeaching(
     clientA,
     tokenA,
@@ -1095,9 +1323,23 @@ try {
     {
       kind: 'write',
       statementId: 'statement_k1_scene2',
-      content: { kind: 'text', text: '公共板书：一次函数 y=kx+b' },
+      content: boardDraft,
+      reviewEventId: reviewEventId ?? 'missing-review',
     },
     'write-text',
+  );
+  const writeRetry = await clientA.applyTeaching(tokenA, written.input);
+  const changedAfterReview = await submitTeaching(
+    clientA,
+    tokenA,
+    UID_A,
+    {
+      kind: 'write',
+      statementId: 'statement_k1_scene2',
+      content: { kind: 'text', text: '公共板书：一次函数 y=200x+b' },
+      reviewEventId: reviewEventId ?? 'missing-review',
+    },
+    'write-changed-after-review',
   );
   const writtenFromB = await clientB.teaching(tokenB, ROOM);
   const writeActionEventId = written.result.data?.event?.eventId;
@@ -1116,14 +1358,28 @@ try {
       kind: 'write',
       statementId: 'statement_k2_scene1',
       content: { kind: 'text', text: '跨场景板书' },
+      reviewEventId: reviewEventId ?? 'missing-review',
     },
     'write-off-scene',
   );
   record(
-    '公共白板内容：write 挂已审核陈述写入并由 B 读回，拒绝未知擦除目标与跨场景陈述',
-    written.result.ok &&
+    '公共白板准入：无回执拒写；人审回执后写入；编辑正文拒绝，重试与双端读回稳定',
+    unreviewedWrite.result.status === 400 &&
+      JSON.stringify(afterUnreviewedWrite.data?.state) ===
+        JSON.stringify(unreviewedWrite.current.data?.state) &&
+      reviewed.result.ok &&
+      reviewed.result.data?.state?.board?.reviewedContents?.some(
+        (item) => item.eventId === reviewEventId && item.reviewerUid === UID_A,
+      ) === true &&
+      written.result.ok &&
+      writeRetry.ok &&
+      writeRetry.data?.deduplicated === true &&
+      writeRetry.data?.event?.seq === written.result.data?.event?.seq &&
+      changedAfterReview.result.status === 400 &&
+      changedAfterReview.result.error?.details?.reason === 'collab_board_review_receipt_required' &&
       written.result.data?.state?.board?.contents?.length === 1 &&
       written.result.data.state.board.contents[0]?.statementId === 'statement_k1_scene2' &&
+      written.result.data.state.board.contents[0]?.reviewEventId === reviewEventId &&
       written.result.data.state.board.contents[0]?.content?.kind === 'text' &&
       written.result.data.state.board.history?.actions?.find(
         (item) => item.eventId === writeActionEventId,
@@ -1133,7 +1389,7 @@ try {
       eraseUnknown.result.error?.details?.reason === 'collab_board_action_not_found' &&
       writeOffScene.result.status === 400 &&
       writeOffScene.result.error?.details?.reason === 'collab_statement_not_in_scene',
-    `write=${written.result.status}, contents=${written.result.data?.state?.board?.contents?.length}, eraseUnknown=${eraseUnknown.result.status}/${eraseUnknown.result.error?.details?.reason}, offScene=${writeOffScene.result.status}/${writeOffScene.result.error?.details?.reason}`,
+    `unreviewed=${unreviewedWrite.result.status}, review=${reviewed.result.status}, write=${written.result.status}, edit=${changedAfterReview.result.status}/${changedAfterReview.result.error?.details?.reason}, retry=${writeRetry.data?.deduplicated}`,
   );
 
   const writeUndone = await submitTeaching(

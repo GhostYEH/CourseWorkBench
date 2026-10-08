@@ -49,6 +49,10 @@ export default function CollabPage(): ReactNode {
         selfUid={session.learnerUid}
         selfDisplayName={profile.displayName}
         lessons={lessons}
+        peerProfiles={session.store
+          .listRoleProfiles('formal')
+          .filter((profile) => profile.kind === 'peer')
+          .map((profile) => ({ roleProfileId: profile.profileId, name: profile.name }))}
       />
     </div>
   );

@@ -9,16 +9,28 @@
  */
 
 import { DSL_VERSION, validateScene, validateStage } from '@openmaic/dsl';
-import { StudyError, type ClassroomSceneBinding, type EvidenceBundleDto, type FormalInteractionDefinitionDto } from '@sew/study-contracts';
-import { assertSceneSourceBindings, classroomDocumentDigest, dslVersionState, normalizeMaterial, stripQuizAnswers, type SceneSourceBinding } from '@sew/study-domain';
+import {
+  StudyError,
+  type ClassroomSceneBinding,
+  type EvidenceBundleDto,
+  type FormalInteractionDefinitionDto,
+  type PblFrozenDto,
+} from '@sew/study-contracts';
+import {
+  assertSceneSourceBindings,
+  classroomDocumentDigest,
+  dslVersionState,
+  normalizeMaterial,
+  pblProjectSceneId,
+  stripQuizAnswers,
+  type SceneSourceBinding,
+} from '@sew/study-domain';
 import type { ClassroomDocumentRow, LessonVersionRow, QuestionRow } from '@sew/study-storage';
 import type { Session } from './service';
 import { ensureReviewedDemoAssets } from './classroom-demo-assets';
 import { readFormalInteractionDefinitions } from './formal-interaction-definition-store';
-import {
-  buildFormalLessonDocument,
-  formalStageId,
-} from '../classroom/formal-lesson-document';
+import { readPblDefinition } from './pbl-definition-store';
+import { buildFormalLessonDocument, formalStageId } from '../classroom/formal-lesson-document';
 import { buildPlannedLessonDocument } from '../classroom/planned-lesson-document';
 import type { ClassroomDocument } from '../classroom/reviewed-lesson';
 import {
@@ -43,7 +55,8 @@ const SCENE_TYPES = ['slide', 'quiz', 'interactive', 'pbl'] as const;
 type SceneType = (typeof SCENE_TYPES)[number];
 
 const sceneTypeOf = (scene: unknown): SceneType => {
-  const value = scene && typeof scene === 'object' ? String((scene as { type?: unknown }).type ?? '') : '';
+  const value =
+    scene && typeof scene === 'object' ? String((scene as { type?: unknown }).type ?? '') : '';
   if (!(SCENE_TYPES as readonly string[]).includes(value)) {
     throw new StudyError('INTERNAL', { reason: 'unknown_scene_type', type: value });
   }
@@ -76,11 +89,17 @@ const ensureMaterial = (session: Session): { materialId: string; revision: numbe
     .listMaterials('demo')
     .find((material) => material.displayName === FIXED_MATERIAL.displayName);
   if (existing) {
-    if (existing.fingerprint !== normalizeMaterial(FIXED_MATERIAL.rawText).fingerprint ||
-        existing.readableLocation !== FIXED_MATERIAL.readableLocation || existing.materialType !== FIXED_MATERIAL.materialType) {
-      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { reason: 'demo_material_identity_conflict' });
+    if (
+      existing.fingerprint !== normalizeMaterial(FIXED_MATERIAL.rawText).fingerprint ||
+      existing.readableLocation !== FIXED_MATERIAL.readableLocation ||
+      existing.materialType !== FIXED_MATERIAL.materialType
+    ) {
+      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+        reason: 'demo_material_identity_conflict',
+      });
     }
-    const revision = session.store.currentRevisions('demo')[existing.materialId] ?? existing.revision;
+    const revision =
+      session.store.currentRevisions('demo')[existing.materialId] ?? existing.revision;
     return { materialId: existing.materialId, revision };
   }
   const { material, segments } = session.store.importMaterial({
@@ -115,7 +134,9 @@ const findSegmentByMarker = (
 
 /** 走真实审核链写入权威知识点（幂等）。 */
 const ensureKnowledge = (session: Session, materialId: string, revision: number): string => {
-  const existing = session.store.listKnowledge('demo').find((point) => point.name === FIXED_KNOWLEDGE.name);
+  const existing = session.store
+    .listKnowledge('demo')
+    .find((point) => point.name === FIXED_KNOWLEDGE.name);
   const conceptSegmentId = findSegmentByMarker(
     session,
     materialId,
@@ -135,12 +156,23 @@ const ensureKnowledge = (session: Session, materialId: string, revision: number)
       { segmentId: conceptSegmentId, use: 'concept_basis' },
       { segmentId: methodSegmentId, use: 'method_basis' },
     ];
-    if (existing.concept !== FIXED_KNOWLEDGE.concept || existing.conditions !== FIXED_KNOWLEDGE.conditions ||
-        existing.evidence.length !== expectedEvidence.length ||
-        !expectedEvidence.every((expected) => existing.evidence.some((evidence) =>
-          evidence.materialId === materialId && evidence.revision === revision &&
-          evidence.segmentId === expected.segmentId && evidence.use === expected.use))) {
-      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { reason: 'demo_knowledge_identity_conflict' });
+    if (
+      existing.concept !== FIXED_KNOWLEDGE.concept ||
+      existing.conditions !== FIXED_KNOWLEDGE.conditions ||
+      existing.evidence.length !== expectedEvidence.length ||
+      !expectedEvidence.every((expected) =>
+        existing.evidence.some(
+          (evidence) =>
+            evidence.materialId === materialId &&
+            evidence.revision === revision &&
+            evidence.segmentId === expected.segmentId &&
+            evidence.use === expected.use,
+        ),
+      )
+    ) {
+      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+        reason: 'demo_knowledge_identity_conflict',
+      });
     }
     return existing.knowledgeId;
   }
@@ -181,11 +213,20 @@ const ensureKnowledge = (session: Session, materialId: string, revision: number)
 
 /** 题目必须由已准入知识点支撑；请求方身份声明不生效。 */
 const ensureQuestion = (session: Session, knowledgeId: string): string => {
-  const existing = session.store.listQuestions('demo').find((question) => question.stem === FIXED_QUESTION.stem);
+  const existing = session.store
+    .listQuestions('demo')
+    .find((question) => question.stem === FIXED_QUESTION.stem);
   if (existing) {
-    if (existing.answer !== FIXED_QUESTION.answer || existing.solution !== FIXED_QUESTION.solution ||
-        existing.knowledgeIds.length !== 1 || existing.knowledgeIds[0] !== knowledgeId || existing.origin !== 'ai_new') {
-      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { reason: 'demo_question_identity_conflict' });
+    if (
+      existing.answer !== FIXED_QUESTION.answer ||
+      existing.solution !== FIXED_QUESTION.solution ||
+      existing.knowledgeIds.length !== 1 ||
+      existing.knowledgeIds[0] !== knowledgeId ||
+      existing.origin !== 'ai_new'
+    ) {
+      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+        reason: 'demo_question_identity_conflict',
+      });
     }
     return existing.questionId;
   }
@@ -208,89 +249,89 @@ const ensureQuestion = (session: Session, knowledgeId: string): string => {
  */
 export const ensureFixedLesson = (session: Session): EnsuredLesson => {
   return session.store.transaction(() => {
-  const material = ensureMaterial(session);
-  const knowledgeId = ensureKnowledge(session, material.materialId, material.revision);
+    const material = ensureMaterial(session);
+    const knowledgeId = ensureKnowledge(session, material.materialId, material.revision);
 
-  const admission = session.store.checkAdmission([knowledgeId], 'demo');
-  if (!admission.allowed) {
-    const first = admission.blocked[0];
-    throw new StudyError('KNOWLEDGE_NOT_VERIFIED', {
-      knowledgeId: first?.knowledgeId,
-      code: first?.code,
-      missing: first?.missing,
-    });
-  }
+    const admission = session.store.checkAdmission([knowledgeId], 'demo');
+    if (!admission.allowed) {
+      const first = admission.blocked[0];
+      throw new StudyError('KNOWLEDGE_NOT_VERIFIED', {
+        knowledgeId: first?.knowledgeId,
+        code: first?.code,
+        missing: first?.missing,
+      });
+    }
 
-  const questionId = ensureQuestion(session, knowledgeId);
+    const questionId = ensureQuestion(session, knowledgeId);
 
-  const document = REVIEWED_FIXED_LESSON.document;
-  // Persist the checked-in image and font only from this explicit confirmation path.
-  ensureReviewedDemoAssets(session, document.stage.id);
-  assertValidDocument(document);
-  const versionState = dslVersionState(document.dslVersion, DSL_VERSION);
-  if (versionState === 'future') {
-    throw new StudyError('VERSION_CONFLICT', {
-      reason: 'dsl_version_future',
-      declared: document.dslVersion,
-      supported: DSL_VERSION,
-    });
-  }
+    const document = REVIEWED_FIXED_LESSON.document;
+    // Persist the checked-in image and font only from this explicit confirmation path.
+    ensureReviewedDemoAssets(session, document.stage.id);
+    assertValidDocument(document);
+    const versionState = dslVersionState(document.dslVersion, DSL_VERSION);
+    if (versionState === 'future') {
+      throw new StudyError('VERSION_CONFLICT', {
+        reason: 'dsl_version_future',
+        declared: document.dslVersion,
+        supported: DSL_VERSION,
+      });
+    }
 
-  const bindings: ClassroomSceneBinding[] = document.scenes.map((scene) => ({
-    sceneId: scene.id,
-    sceneType: sceneTypeOf(scene),
-    knowledgeIds: [knowledgeId],
-    questionId: scene.id === SCENE_QUIZ_ID ? questionId : null,
-    reviewedBy: FIXED_REVIEW.reviewedBy,
-    reviewNote: FIXED_REVIEW.reviewNote,
-  }));
-
-  const bindingMap = new Map<string, SceneSourceBinding>(
-    bindings.map((binding) => [
-      binding.sceneId,
-      {
-        sceneId: binding.sceneId,
-        knowledgeIds: binding.knowledgeIds,
-        questionId: binding.questionId,
-        reviewedBy: binding.reviewedBy,
-        reviewNote: binding.reviewNote,
-      },
-    ]),
-  );
-  assertSceneSourceBindings(
-    document.scenes.map((scene) => scene.id),
-    bindingMap,
-  );
-
-  const digest = classroomDocumentDigest(document);
-  const stored = session.store.getClassroomDocument(session.projectId, document.stage.id);
-  if (!stored || stored.digest !== digest) {
-    session.store.saveClassroomDocument({
-      recordScope: 'demo',
-      projectId: session.projectId,
-      stageId: document.stage.id,
-      lessonId: FIXED_LESSON_ID,
-      dslVersion: document.dslVersion ?? '',
-      document,
-      digest,
-      sceneCount: document.scenes.length,
-      scenes: bindings.map((binding) => ({
-        sceneId: binding.sceneId,
-        knowledgeIds: binding.knowledgeIds,
-        questionId: binding.questionId,
-      })),
+    const bindings: ClassroomSceneBinding[] = document.scenes.map((scene) => ({
+      sceneId: scene.id,
+      sceneType: sceneTypeOf(scene),
+      knowledgeIds: [knowledgeId],
+      questionId: scene.id === SCENE_QUIZ_ID ? questionId : null,
       reviewedBy: FIXED_REVIEW.reviewedBy,
       reviewNote: FIXED_REVIEW.reviewNote,
-    });
-  }
+    }));
 
-  return {
-    stageId: document.stage.id,
-    lessonId: FIXED_LESSON_ID,
-    digest,
-    sceneCount: document.scenes.length,
-    bindings,
-  };
+    const bindingMap = new Map<string, SceneSourceBinding>(
+      bindings.map((binding) => [
+        binding.sceneId,
+        {
+          sceneId: binding.sceneId,
+          knowledgeIds: binding.knowledgeIds,
+          questionId: binding.questionId,
+          reviewedBy: binding.reviewedBy,
+          reviewNote: binding.reviewNote,
+        },
+      ]),
+    );
+    assertSceneSourceBindings(
+      document.scenes.map((scene) => scene.id),
+      bindingMap,
+    );
+
+    const digest = classroomDocumentDigest(document);
+    const stored = session.store.getClassroomDocument(session.projectId, document.stage.id);
+    if (!stored || stored.digest !== digest) {
+      session.store.saveClassroomDocument({
+        recordScope: 'demo',
+        projectId: session.projectId,
+        stageId: document.stage.id,
+        lessonId: FIXED_LESSON_ID,
+        dslVersion: document.dslVersion ?? '',
+        document,
+        digest,
+        sceneCount: document.scenes.length,
+        scenes: bindings.map((binding) => ({
+          sceneId: binding.sceneId,
+          knowledgeIds: binding.knowledgeIds,
+          questionId: binding.questionId,
+        })),
+        reviewedBy: FIXED_REVIEW.reviewedBy,
+        reviewNote: FIXED_REVIEW.reviewNote,
+      });
+    }
+
+    return {
+      stageId: document.stage.id,
+      lessonId: FIXED_LESSON_ID,
+      digest,
+      sceneCount: document.scenes.length,
+      bindings,
+    };
   });
 };
 
@@ -316,10 +357,15 @@ export const loadDemoRenderableDocument = (
   );
   if (!stored) return null;
   if (stored.recordScope !== 'demo') {
-    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { stageId, reason: 'demo_scope_mismatch' });
+    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+      stageId,
+      reason: 'demo_scope_mismatch',
+    });
   }
-  if (stored.digest !== REVIEWED_DOCUMENT_DIGEST ||
-      classroomDocumentDigest(stored.document) !== REVIEWED_DOCUMENT_DIGEST) {
+  if (
+    stored.digest !== REVIEWED_DOCUMENT_DIGEST ||
+    classroomDocumentDigest(stored.document) !== REVIEWED_DOCUMENT_DIGEST
+  ) {
     throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
       stageId,
       reason: 'stored_digest_mismatch',
@@ -329,27 +375,44 @@ export const loadDemoRenderableDocument = (
   const sourceBindings = session.store.listClassroomSceneSources(session.projectId, stageId);
   assertSceneSourceBindings(reviewedLesson.sceneIds, sourceBindings);
   if ([...sourceBindings.values()].some((binding) => binding.recordScope !== stored.recordScope)) {
-    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { stageId, reason: 'scene_record_scope_mismatch' });
+    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+      stageId,
+      reason: 'scene_record_scope_mismatch',
+    });
   }
   for (const scene of reviewedLesson.document.scenes) {
     const binding = sourceBindings.get(scene.id)!;
     if (scene.type !== 'quiz') {
       if (binding.questionId !== null) {
-        throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { reason: 'unexpected_scene_question', sceneId: scene.id });
+        throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+          reason: 'unexpected_scene_question',
+          sceneId: scene.id,
+        });
       }
       continue;
     }
     const question: QuestionRow | null = binding.questionId
       ? session.store.getQuestion(binding.questionId, stored.recordScope)
       : null;
-    if (!question || question.stem !== FIXED_QUESTION.stem || question.answer !== FIXED_QUESTION.answer ||
-        question.solution !== FIXED_QUESTION.solution || question.origin !== 'ai_new' || question.recordScope !== stored.recordScope ||
-        question.knowledgeIds.length !== binding.knowledgeIds.length ||
-        !question.knowledgeIds.every((id: string) => binding.knowledgeIds.includes(id))) {
-      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { reason: 'quiz_question_binding_mismatch', sceneId: scene.id });
+    if (
+      !question ||
+      question.stem !== FIXED_QUESTION.stem ||
+      question.answer !== FIXED_QUESTION.answer ||
+      question.solution !== FIXED_QUESTION.solution ||
+      question.origin !== 'ai_new' ||
+      question.recordScope !== stored.recordScope ||
+      question.knowledgeIds.length !== binding.knowledgeIds.length ||
+      !question.knowledgeIds.every((id: string) => binding.knowledgeIds.includes(id))
+    ) {
+      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+        reason: 'quiz_question_binding_mismatch',
+        sceneId: scene.id,
+      });
     }
   }
-  const knowledgeIds = [...new Set([...sourceBindings.values()].flatMap((binding) => binding.knowledgeIds))];
+  const knowledgeIds = [
+    ...new Set([...sourceBindings.values()].flatMap((binding) => binding.knowledgeIds)),
+  ];
   const admission = session.store.checkAdmission(knowledgeIds, 'demo');
   if (!admission.allowed) {
     throw new StudyError('KNOWLEDGE_NOT_VERIFIED', {
@@ -435,7 +498,9 @@ export interface FormalLessonDocumentSummary extends FormalLessonDocumentInfo {
 
 export interface RenderableFormalDocument extends RenderableDocument, FormalLessonDocumentInfo {}
 
-const documentSceneList = (document: unknown): Array<{ id: string; type: ReturnType<typeof sceneTypeOf>; title: string }> => {
+const documentSceneList = (
+  document: unknown,
+): Array<{ id: string; type: ReturnType<typeof sceneTypeOf>; title: string }> => {
   const scenes = (document as { scenes?: unknown }).scenes;
   if (!Array.isArray(scenes)) return [];
   return scenes.map((scene) => {
@@ -462,25 +527,40 @@ const verifyFormalLessonDocument = (
   const stageId = stored.stageId;
   const expectedStageId = formalStageId(lesson.lessonId, lesson.version);
   if (stored.recordScope !== 'formal') {
-    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { stageId, reason: 'formal_scope_mismatch' });
+    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+      stageId,
+      reason: 'formal_scope_mismatch',
+    });
   }
   if (stored.lessonId !== lesson.lessonId || stageId !== expectedStageId) {
     throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
-      stageId, reason: 'formal_document_identity_mismatch', expectedStageId,
+      stageId,
+      reason: 'formal_document_identity_mismatch',
+      expectedStageId,
     });
   }
   const digest = classroomDocumentDigest(stored.document);
   if (stored.digest !== digest) {
-    throw new StudyError('VERSION_CONFLICT', { stageId, reason: 'formal_digest_mismatch', stored: stored.digest });
+    throw new StudyError('VERSION_CONFLICT', {
+      stageId,
+      reason: 'formal_digest_mismatch',
+      stored: stored.digest,
+    });
   }
   assertValidDocument(stored.document as { stage: unknown; scenes: unknown[] });
   if (dslVersionState(stored.dslVersion, DSL_VERSION) === 'future') {
-    throw new StudyError('VERSION_CONFLICT', { reason: 'dsl_version_future', declared: stored.dslVersion, supported: DSL_VERSION });
+    throw new StudyError('VERSION_CONFLICT', {
+      reason: 'dsl_version_future',
+      declared: stored.dslVersion,
+      supported: DSL_VERSION,
+    });
   }
 
   const bundle = session.store.getEvidenceBundle(session.projectId, lesson.bundleId);
   if (!bundle) throw new StudyError('INTERNAL', { bundleId: lesson.bundleId });
-  const interactions = readFormalInteractionDefinitions(session, lesson.lessonId, lesson.version)?.frozen.definitions;
+  const interactions = readFormalInteractionDefinitions(session, lesson.lessonId, lesson.version)
+    ?.frozen.definitions;
+  const pblDefinition = readPblDefinition(session, lesson.lessonId, lesson.version)?.frozen ?? null;
   const expected = planFormalLessonDocument({
     session,
     lesson,
@@ -488,39 +568,95 @@ const verifyFormalLessonDocument = (
     bundleDigest: bundle.digest,
     frozenAt: bundle.frozenAt,
     interactions,
+    pblDefinition,
   });
-  if (digest !== classroomDocumentDigest(expected.document) || stored.dslVersion !== expected.dslVersion ||
-      stored.sceneCount !== expected.scenes.length) {
-    throw new StudyError('VERSION_CONFLICT', { stageId, reason: 'formal_document_not_frozen_version' });
+  if (
+    digest !== classroomDocumentDigest(expected.document) ||
+    stored.dslVersion !== expected.dslVersion ||
+    stored.sceneCount !== expected.scenes.length
+  ) {
+    throw new StudyError('VERSION_CONFLICT', {
+      stageId,
+      reason: 'formal_document_not_frozen_version',
+    });
   }
   const expectedBindings = new Map(expected.scenes.map((scene) => [scene.sceneId, scene]));
+
+  const rawScenes = (stored.document as { scenes?: unknown[] }).scenes ?? [];
+  for (const expectedScene of expected.scenes.filter((scene) => scene.sceneType === 'pbl')) {
+    const rawScene = rawScenes.find(
+      (item) =>
+        item && typeof item === 'object' && (item as { id?: unknown }).id === expectedScene.sceneId,
+    ) as { content?: Record<string, unknown> } | undefined;
+    const content = rawScene?.content;
+    if (
+      !content ||
+      content['type'] !== 'pbl' ||
+      !pblDefinition ||
+      content['definitionId'] !== pblDefinition.definition.id ||
+      expectedScene.sceneId !== pblProjectSceneId(pblDefinition.definition.id) ||
+      classroomDocumentDigest(content['statementIds']) !==
+        classroomDocumentDigest(expectedScene.statementIds ?? [])
+    ) {
+      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+        stageId,
+        sceneId: expectedScene.sceneId,
+        reason: 'pbl_scene_definition_source_mismatch',
+      });
+    }
+  }
 
   const documentScenes = documentSceneList(stored.document);
   const sceneIds = documentScenes.map((scene) => scene.id);
   const sources = session.store.listClassroomSceneSources(session.projectId, stageId);
   assertSceneSourceBindings(sceneIds, sources);
   if ([...sources.keys()].some((sceneId) => !sceneIds.includes(sceneId))) {
-    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { stageId, reason: 'scene_source_orphan' });
+    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+      stageId,
+      reason: 'scene_source_orphan',
+    });
   }
 
   const knowledgeIds: string[] = [];
   for (const [sceneId, binding] of sources) {
     if (binding.recordScope !== 'formal') {
-      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { stageId, sceneId, reason: 'scene_record_scope_mismatch' });
+      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+        stageId,
+        sceneId,
+        reason: 'scene_record_scope_mismatch',
+      });
     }
     const expectedBinding = expectedBindings.get(sceneId);
-    if (!expectedBinding || binding.questionId !== expectedBinding.questionId ||
-        classroomDocumentDigest(binding.knowledgeIds) !== classroomDocumentDigest(expectedBinding.knowledgeIds)) {
-      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { stageId, sceneId, reason: 'formal_scene_binding_mismatch' });
+    if (
+      !expectedBinding ||
+      binding.questionId !== expectedBinding.questionId ||
+      classroomDocumentDigest(binding.knowledgeIds) !==
+        classroomDocumentDigest(expectedBinding.knowledgeIds)
+    ) {
+      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+        stageId,
+        sceneId,
+        reason: 'formal_scene_binding_mismatch',
+      });
     }
     if (binding.questionId) {
       const frozen = bundle.bundle.questions.find((item) => item.questionId === binding.questionId);
       const current = session.store.getQuestion(binding.questionId, 'formal');
-      if (!frozen?.snapshot || !current || current.revision !== frozen.revision ||
-          current.stem !== frozen.snapshot.stem || current.answer !== frozen.snapshot.answer ||
-          current.solution !== frozen.snapshot.solution ||
-          classroomDocumentDigest(current.assessment) !== classroomDocumentDigest(frozen.snapshot.assessment)) {
-        throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { stageId, sceneId, reason: 'frozen_question_version_mismatch' });
+      if (
+        !frozen?.snapshot ||
+        !current ||
+        current.revision !== frozen.revision ||
+        current.stem !== frozen.snapshot.stem ||
+        current.answer !== frozen.snapshot.answer ||
+        current.solution !== frozen.snapshot.solution ||
+        classroomDocumentDigest(current.assessment) !==
+          classroomDocumentDigest(frozen.snapshot.assessment)
+      ) {
+        throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+          stageId,
+          sceneId,
+          reason: 'frozen_question_version_mismatch',
+        });
       }
     }
     for (const knowledgeId of binding.knowledgeIds) {
@@ -566,14 +702,26 @@ const planFormalLessonDocument = (input: {
   bundleDigest: string;
   frozenAt: string;
   interactions?: FormalInteractionDefinitionDto[];
+  pblDefinition?: PblFrozenDto | null;
 }): {
   stageId: string;
   dslVersion: string;
   document: ClassroomDocument;
-  scenes: Array<{ sceneId: string; sceneType: string; questionId: string | null; knowledgeIds: string[]; statementId?: string | null }>;
+  scenes: Array<{
+    sceneId: string;
+    sceneType: string;
+    questionId: string | null;
+    knowledgeIds: string[];
+    statementId?: string | null;
+    statementIds?: string[];
+  }>;
   skipped: Array<{ kind: string; id: string; reason: string }>;
 } => {
-  const plan = input.session.store.getScenePlan(input.lesson.projectId, input.lesson.lessonId, input.lesson.version);
+  const plan = input.session.store.getScenePlan(
+    input.lesson.projectId,
+    input.lesson.lessonId,
+    input.lesson.version,
+  );
   if (plan) {
     return buildPlannedLessonDocument({
       bundle: input.bundle,
@@ -584,6 +732,7 @@ const planFormalLessonDocument = (input: {
       title: input.lesson.title,
       frozenAt: input.frozenAt,
       interactions: input.interactions,
+      pblDefinition: input.pblDefinition,
     });
   }
   return buildFormalLessonDocument({
@@ -596,6 +745,7 @@ const planFormalLessonDocument = (input: {
     statementIds: input.lesson.statementIds,
     questionIds: input.lesson.questionIds,
     interactions: input.interactions,
+    pblDefinition: input.pblDefinition,
   });
 };
 
@@ -616,14 +766,21 @@ export const attachFormalLessonDocument = (
   const link = session.store.getLessonClassroomLink(lessonId, projectId);
   if (!link || link.status !== 'published' || link.lessonVersion !== version) {
     throw new StudyError('STEP_ALREADY_COMMITTED', {
-      reason: 'lesson_not_currently_published', lessonId, version, linkVersion: link?.lessonVersion ?? null,
+      reason: 'lesson_not_currently_published',
+      lessonId,
+      version,
+      linkVersion: link?.lessonVersion ?? null,
     });
   }
   const lesson = session.store.getLessonVersion(lessonId, version, projectId);
   if (!lesson) throw new StudyError('NOT_FOUND', { lessonId, version });
   const review = session.store.getLessonReview(lessonId, version, projectId);
   if (review?.decision !== 'approved') {
-    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { reason: 'lesson_review_required', lessonId, version });
+    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+      reason: 'lesson_review_required',
+      lessonId,
+      version,
+    });
   }
   session.store.assertLessonClassroomReady(lessonId, projectId);
   const bundle = session.store.getEvidenceBundle(projectId, lesson.bundleId);
@@ -636,6 +793,7 @@ export const attachFormalLessonDocument = (
     bundleDigest: bundle.digest,
     frozenAt: bundle.frozenAt,
     interactions: readFormalInteractionDefinitions(session, lessonId, version)?.frozen.definitions,
+    pblDefinition: readPblDefinition(session, lessonId, version)?.frozen ?? null,
   });
   assertValidDocument(plan.document);
   const digest = classroomDocumentDigest(plan.document);
@@ -662,7 +820,13 @@ export const attachFormalLessonDocument = (
         reviewNote: review.note || '课程版本审核通过，课件由该版本的证据包装配',
       });
     }
-    session.store.attachLessonDocument({ projectId, lessonId, version, stageId: plan.stageId, documentDigest: digest });
+    session.store.attachLessonDocument({
+      projectId,
+      lessonId,
+      version,
+      stageId: plan.stageId,
+      documentDigest: digest,
+    });
     const saved = session.store.getClassroomDocument(projectId, plan.stageId);
     if (!saved) throw new StudyError('INTERNAL', { stageId: plan.stageId });
     verifyFormalLessonDocument(session, lesson, saved);
@@ -691,13 +855,18 @@ export const loadRenderableFormalDocument = (
   if (!ready.link.stageId) return null;
   const stored = session.store.getClassroomDocument(session.projectId, ready.link.stageId);
   if (!stored) {
-    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { stageId: ready.link.stageId, reason: 'lesson_document_missing' });
+    throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+      stageId: ready.link.stageId,
+      reason: 'lesson_document_missing',
+    });
   }
   const info = verifyFormalLessonDocument(session, ready.lesson, stored);
   if (ready.link.documentDigest !== info.digest) {
     throw new StudyError('VERSION_CONFLICT', {
-      reason: 'lesson_link_digest_mismatch', stageId: info.stageId,
-      linked: ready.link.documentDigest, current: info.digest,
+      reason: 'lesson_link_digest_mismatch',
+      stageId: info.stageId,
+      linked: ready.link.documentDigest,
+      current: info.digest,
     });
   }
   const stripped = stripQuizAnswers(stored.document);
@@ -729,7 +898,10 @@ export const loadRenderableDocument = (
   if (stored.recordScope === 'formal') {
     const document = loadRenderableFormalDocument(session, stored.lessonId);
     if (document?.stageId !== stageId) {
-      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { stageId, reason: 'stage_not_current_published_version' });
+      throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
+        stageId,
+        reason: 'stage_not_current_published_version',
+      });
     }
     return document;
   }

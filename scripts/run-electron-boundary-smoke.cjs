@@ -6,7 +6,7 @@ const { join, resolve, sep } = require('node:path');
 
 const root = resolve(__dirname, '..');
 const suites = ['boundary', 'lesson-plan'];
-const optionalSuites = ['collab-panel', 'learner-profile'];
+const optionalSuites = ['collab-panel', 'learner-profile', 'pbl'];
 const args = process.argv.slice(2);
 let suite;
 if (args.length === 0) {
@@ -30,7 +30,7 @@ if (args.length === 0) {
   suite = args[1];
 } else {
   console.error(
-    'FAIL usage: node scripts/run-electron-boundary-smoke.cjs [--suite boundary|lesson-plan|collab-panel|learner-profile]',
+    'FAIL usage: node scripts/run-electron-boundary-smoke.cjs [--suite boundary|lesson-plan|collab-panel|learner-profile|pbl]',
   );
   process.exit(1);
 }

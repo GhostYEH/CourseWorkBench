@@ -24,7 +24,7 @@ import { INTERACTION_SESSION_KIND, INTERACTION_SESSION_PREFIX } from '../../../.
 import { toAttemptDto } from '../../../../../lib/server/dto';
 import type { RuntimeRecordRow, RuntimeSessionRow } from '@sew/study-storage';
 
-const isProtectedInteraction = (kind: string, id: string): boolean => kind === INTERACTION_SESSION_KIND || id.startsWith(INTERACTION_SESSION_PREFIX) || kind === 'formalInteractionDefinition' || kind === 'formalInteractionObservation' || id.startsWith('sew-formal-interaction-');
+const isProtectedInteraction = (kind: string, id: string): boolean => kind === INTERACTION_SESSION_KIND || id.startsWith(INTERACTION_SESSION_PREFIX) || kind === 'formalInteractionDefinition' || kind === 'formalInteractionObservation' || id.startsWith('sew-formal-interaction-') || kind === 'pblDefinition' || kind === 'pblRecords' || id.startsWith('sew-pbl-definition-') || id.startsWith('sew-pbl-record-') || id.startsWith('sew-pbl-simulation-');
 
 export const dynamic = 'force-dynamic';
 

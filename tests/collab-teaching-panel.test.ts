@@ -79,7 +79,7 @@ const snapshot: ClassroomSharedCourseDto = {
         statementId: 'statement-one',
         knowledgeId: 'k-one',
         text: '当前场景已审核陈述',
-        conditions: '',
+        conditions: '在条件甲成立时',
         evidence: [
           { materialId: 'source-a', revision: 3, segmentId: 'segment-a', use: 'concept_basis' },
         ],
@@ -382,7 +382,13 @@ describe('共同课堂教师教学消费', () => {
     expect(ownerMarkup).toContain('data-collab-board-contents');
     expect(ownerMarkup).toContain('data-collab-board-content="write-action"');
     expect(ownerMarkup).toContain('公共板书内容');
-    expect(ownerMarkup).toContain('data-collab-teaching-write');
+    expect(ownerMarkup).toMatch(/data-collab-teaching-write="true" disabled=""/);
+    expect(ownerMarkup).toContain('data-collab-teaching-semantic-reviewed');
+    expect(ownerMarkup).toContain('当前依据陈述（已审核快照）');
+    expect(ownerMarkup).toContain('当前场景已审核陈述');
+    expect(ownerMarkup).toContain('适用条件：在条件甲成立时');
+    expect(ownerMarkup).toContain('source-a@v3/segment-a · 来源材料');
+    expect(ownerMarkup).toContain('data-collab-board-legacy-unreviewed');
     expect(ownerMarkup).toContain('data-collab-board-erase="write-action"');
     expect(ownerMarkup).toContain('data-collab-board-action="write-action"');
     // 普通成员只看内容，没有擦除/写入控制。
@@ -395,12 +401,50 @@ describe('共同课堂教师教学消费', () => {
     expect(parseBoardDiagram('a | 起点\nb | 终点', 'a -> b | 连接')).toEqual({
       kind: 'diagram',
       nodes: [
-        { id: 'a', label: '起点', x: 20, y: 20 },
-        { id: 'b', label: '终点', x: 20, y: 80 },
+        { id: 'a', label: '起点', x: 120, y: 120 },
+        { id: 'b', label: '终点', x: 370, y: 120 },
       ],
       edges: [{ from: 'a', to: 'b', label: '连接' }],
     });
     // 连线引用不存在的节点：解析失败，界面据此禁用写入，而不是提交一个非法形状。
     expect(parseBoardDiagram('a | 起点', 'a -> missing')).toBeNull();
+  });
+
+  it('双方 SSR 都渲染简图实际端点、方向箭头、边标签与关系文字', () => {
+    const diagram = {
+      kind: 'diagram' as const,
+      nodes: [
+        { id: 'cause', label: '原因', x: 100, y: 120 },
+        { id: 'effect', label: '结果', x: 840, y: 120 },
+      ],
+      edges: [{ from: 'cause', to: 'effect', label: '导致' }],
+    };
+    const state: CollabTeachingStateDto = {
+      ...writeState(),
+      board: {
+        ...writeState().board,
+        contents: [
+          { eventId: 'diagram-write', seq: 1, statementId: 'statement-one', content: diagram },
+        ],
+      },
+    };
+    const ownerMarkup = renderToStaticMarkup(
+      createElement(CollabTeachingPanel, {
+        snapshot,
+        sceneId: 'one',
+        selfUid,
+        owner: true,
+        enabled: true,
+        members: [],
+        state,
+        onOperation: () => undefined,
+      }),
+    );
+    expect(ownerMarkup).toContain('data-collab-board-edge="cause-&gt;effect"');
+    expect(ownerMarkup).toContain('x1="128" y1="120" x2="812" y2="120"');
+    expect(ownerMarkup).toContain('data-from-node="cause" data-to-node="effect"');
+    expect(ownerMarkup).toMatch(/marker-end="url\(#collab-board-arrow-[^)]+\)"/);
+    expect(ownerMarkup).toContain('data-collab-board-edge-label="true">导致</text>');
+    expect(ownerMarkup).toContain('原因 → 结果：导致');
   });
 });

@@ -42,6 +42,7 @@ export interface CollabClientRequest {
   token?: string;
   body?: unknown;
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 const REMOTE_CODE_SET: ReadonlySet<string> = new Set<string>(STUDY_ERROR_CODES);
@@ -63,6 +64,8 @@ export const collabFetch = async <S extends z.ZodTypeAny>(
   request: CollabClientRequest,
   schema: S,
 ): Promise<z.infer<S>> => {
+  if (request.signal?.aborted)
+    throw new StudyError('RUN_TERMINATED', { reason: 'request_aborted' });
   const url = new URL(`${baseUrl}${request.path}`);
   for (const [key, value] of Object.entries(request.query ?? {})) {
     url.searchParams.set(key, String(value));
@@ -77,9 +80,13 @@ export const collabFetch = async <S extends z.ZodTypeAny>(
         ...(request.token ? { authorization: `Bearer ${request.token}` } : {}),
       },
       body: request.body === undefined ? undefined : JSON.stringify(request.body),
-      signal: AbortSignal.timeout(request.timeoutMs ?? 8000),
+      signal: request.signal
+        ? AbortSignal.any([request.signal, AbortSignal.timeout(request.timeoutMs ?? 8000)])
+        : AbortSignal.timeout(request.timeoutMs ?? 8000),
     });
   } catch {
+    if (request.signal?.aborted)
+      throw new StudyError('RUN_TERMINATED', { reason: 'request_aborted' });
     throw new StudyError(
       'INTERNAL',
       { reason: 'collab_unreachable' },
@@ -90,6 +97,8 @@ export const collabFetch = async <S extends z.ZodTypeAny>(
   try {
     raw = await response.json();
   } catch {
+    if (request.signal?.aborted)
+      throw new StudyError('RUN_TERMINATED', { reason: 'request_aborted' });
     throw new StudyError(
       'INTERNAL',
       { reason: 'collab_response_invalid' },

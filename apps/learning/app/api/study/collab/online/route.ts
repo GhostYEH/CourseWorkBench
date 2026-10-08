@@ -70,7 +70,7 @@ export const POST = route(async (request: Request) => {
     } else if (body.action === 'revoke-credential') {
       result = await revokeOnlineCredential(session, body.requestId);
     } else {
-      result = await runOnlineCommand(session, body as CollabOnlineCommand);
+      result = await runOnlineCommand(session, body as CollabOnlineCommand, request.signal);
     }
   } catch (error) {
     // Sequence/revision rejection proves no side effect; a fresh scene intent may use the refreshed state.

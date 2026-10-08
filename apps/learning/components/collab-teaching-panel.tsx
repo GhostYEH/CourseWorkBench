@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   classroomBoardPublicContentSchema,
   type ClassroomSharedCourseDto,
@@ -7,6 +7,7 @@ import {
   type CollabTeachingOperation,
   type CollabTeachingStateDto,
 } from '@sew/study-contracts';
+import { CollabBoardContent } from './collab-board-content';
 
 export const collabSceneStatements = (
   snapshot: ClassroomSharedCourseDto | null,
@@ -29,6 +30,19 @@ export const currentSceneTeaching = (
 export const collabBoardContents = (
   teaching: CollabTeachingStateDto | null,
 ): CollabBoardContentDto[] => teaching?.board.contents ?? [];
+
+const collabBoardContentKey = (content: CollabBoardContentDto['content']): string =>
+  content.kind === 'diagram'
+    ? JSON.stringify({
+        kind: content.kind,
+        nodes: content.nodes.map((node) => [node.id, node.label, node.x, node.y]),
+        edges: content.edges.map((edge) => [edge.from, edge.to, edge.label ?? null]),
+      })
+    : JSON.stringify({
+        kind: content.kind,
+        text: content.text,
+        ...(content.kind === 'formula' ? { latex: content.latex } : {}),
+      });
 
 /**
  * 把「每行一条」的简图草稿解析为公共白板内容。
@@ -53,8 +67,8 @@ export const parseBoardDiagram = (
     const [rawId, ...rest] = line.split('|');
     const id = (rawId ?? '').trim();
     const label = rest.join('|').trim() || id;
-    // 纵向均匀排布，避免所有节点重叠；坐标仅为公共白板的示意位置。
-    return { id, label, x: 20, y: 20 + index * 60 };
+    // 四列布局覆盖画布并保持坐标在公共白板允许范围内。
+    return { id, label, x: 120 + (index % 4) * 250, y: 120 + Math.floor(index / 4) * 150 };
   });
   const edges = rows(edgesText).map((line) => {
     const [pair, ...rest] = line.split('|');
@@ -74,6 +88,7 @@ export interface CollabTeachingPanelProps {
   enabled: boolean;
   members: CollabRoomMemberDto[];
   state: CollabTeachingStateDto | null;
+  busy?: boolean;
   onOperation: (operation: CollabTeachingOperation) => void;
 }
 
@@ -86,6 +101,7 @@ export const CollabTeachingPanel = ({
   enabled,
   members,
   state,
+  busy = false,
   onOperation,
 }: CollabTeachingPanelProps): ReactNode => {
   const statements = collabSceneStatements(snapshot, sceneId);
@@ -99,21 +115,36 @@ export const CollabTeachingPanel = ({
   const [boardLatex, setBoardLatex] = useState('');
   const [diagramNodes, setDiagramNodes] = useState('');
   const [diagramEdges, setDiagramEdges] = useState('');
+  const [semanticReviewed, setSemanticReviewed] = useState(false);
+  const [reviewAttempt, setReviewAttempt] = useState<{
+    key: string;
+    priorEventIds: string[];
+  } | null>(null);
+  useEffect(() => {
+    setSemanticReviewed(false);
+    setReviewAttempt(null);
+  }, [sceneId]);
   const statement = statements.find((item) => item.statementId === statementId) ?? statements[0];
   const element = elements.find((item) => item.elementId === elementId) ?? elements[0];
   const waiting = state?.waiting ?? null;
   const hasPendingWait = waiting !== null;
   const boardHistory = state?.board.history;
   const boardActionLimitReached = (boardHistory?.actions.length ?? 0) >= 200;
+  const boardReviewLimitReached = (state?.board.reviewedContents?.length ?? 0) >= 200;
   const selfIsTarget = waiting?.targetUid === selfUid;
   const target = members.find((member) => member.uid === waiting?.targetUid);
   const possibleTargets = members.filter(
     (member) => member.uid !== selfUid && member.readiness !== 'left',
   );
   const contents = collabBoardContents(state);
+  const reviewedContents = state?.board.reviewedContents ?? [];
 
   // 只构造「当前可写入」的内容：不合法时按钮禁用，绝不把半成品发给服务端。
-  const pendingContent: CollabTeachingOperation | null = (() => {
+  const pendingContent: {
+    kind: 'write';
+    statementId: string;
+    content: CollabBoardContentDto['content'];
+  } | null = (() => {
     if (contentKind === 'text') {
       const parsed = classroomBoardPublicContentSchema.safeParse({
         kind: 'text',
@@ -138,6 +169,28 @@ export const CollabTeachingPanel = ({
       ? { kind: 'write', statementId: statement?.statementId ?? '', content: diagram }
       : null;
   })();
+  const draftKey = pendingContent
+    ? JSON.stringify({
+        sceneId,
+        statementId: statement?.statementId,
+        content: collabBoardContentKey(pendingContent.content),
+      })
+    : '';
+  const matchingReview =
+    reviewAttempt?.key === draftKey && owner && statement && pendingContent
+      ? reviewedContents.find(
+          (item) =>
+            !reviewAttempt.priorEventIds.includes(item.eventId) &&
+            item.statementId === statement.statementId &&
+            item.reviewerUid === selfUid &&
+            item.sceneId === sceneId &&
+            collabBoardContentKey(item.content) === collabBoardContentKey(pendingContent.content),
+        )
+      : undefined;
+  const clearDraftReview = (): void => {
+    setSemanticReviewed(false);
+    setReviewAttempt(null);
+  };
 
   return (
     <section className="card card-nested" data-collab-teaching>
@@ -149,8 +202,11 @@ export const CollabTeachingPanel = ({
             <select
               data-collab-teaching-statement
               value={statement?.statementId ?? ''}
-              disabled={!enabled || statements.length === 0}
-              onChange={(event) => setStatementId(event.target.value)}
+              disabled={!enabled || busy || statements.length === 0}
+              onChange={(event) => {
+                setStatementId(event.target.value);
+                clearDraftReview();
+              }}
             >
               {statements.length === 0 ? <option value="">当前场景没有关联陈述</option> : null}
               {statements.map((item) => (
@@ -161,18 +217,36 @@ export const CollabTeachingPanel = ({
             </select>
           </label>
           {statement ? (
-            <p className="hint" data-collab-teaching-source={statement.statementId}>
-              来源标识：
-              {statement.evidence
-                .map((source) => `${source.materialId}@v${source.revision}/${source.segmentId}`)
-                .join('、')}
-            </p>
+            <div className="hint" data-collab-teaching-source={statement.statementId}>
+              <p>
+                <strong>当前依据陈述（已审核快照）</strong>
+              </p>
+              <p style={{ whiteSpace: 'pre-wrap' }}>{statement.text}</p>
+              {statement.conditions ? <p>适用条件：{statement.conditions}</p> : null}
+              <p>
+                来源：
+                {statement.evidence
+                  .map((source) => {
+                    const segment = snapshot?.evidence.segments.find(
+                      (item) =>
+                        item.materialId === source.materialId &&
+                        item.revision === source.revision &&
+                        item.segmentId === source.segmentId,
+                    );
+                    return `${source.materialId}@v${source.revision}/${source.segmentId}${segment ? ` · ${segment.text}` : ''}`;
+                  })
+                  .join('；')}
+              </p>
+              <p className="mono">
+                依据陈述 ID：{statement.statementId}（标识符不代表新板书正文已审）
+              </p>
+            </div>
           ) : null}
           <button
             type="button"
             className="btn"
             data-collab-teaching-speak
-            disabled={!enabled || !statement || hasPendingWait}
+            disabled={!enabled || busy || !statement || hasPendingWait}
             onClick={() => {
               if (statement) onOperation({ kind: 'speak', statementId: statement.statementId });
             }}
@@ -186,10 +260,11 @@ export const CollabTeachingPanel = ({
               <select
                 data-collab-teaching-content-kind
                 value={contentKind}
-                disabled={!enabled}
-                onChange={(event) =>
-                  setContentKind(event.target.value as 'text' | 'formula' | 'diagram')
-                }
+                disabled={!enabled || busy}
+                onChange={(event) => {
+                  setContentKind(event.target.value as 'text' | 'formula' | 'diagram');
+                  clearDraftReview();
+                }}
               >
                 <option value="text">文字</option>
                 <option value="formula">公式</option>
@@ -203,7 +278,10 @@ export const CollabTeachingPanel = ({
                   data-collab-teaching-board-text
                   value={boardText}
                   maxLength={4000}
-                  onChange={(event) => setBoardText(event.target.value)}
+                  onChange={(event) => {
+                    setBoardText(event.target.value);
+                    clearDraftReview();
+                  }}
                 />
               </label>
             ) : null}
@@ -215,7 +293,10 @@ export const CollabTeachingPanel = ({
                   className="mono"
                   value={boardLatex}
                   maxLength={2000}
-                  onChange={(event) => setBoardLatex(event.target.value)}
+                  onChange={(event) => {
+                    setBoardLatex(event.target.value);
+                    clearDraftReview();
+                  }}
                 />
               </label>
             ) : null}
@@ -226,7 +307,10 @@ export const CollabTeachingPanel = ({
                   <textarea
                     data-collab-teaching-board-nodes
                     value={diagramNodes}
-                    onChange={(event) => setDiagramNodes(event.target.value)}
+                    onChange={(event) => {
+                      setDiagramNodes(event.target.value);
+                      clearDraftReview();
+                    }}
                   />
                 </label>
                 <label>
@@ -234,10 +318,80 @@ export const CollabTeachingPanel = ({
                   <textarea
                     data-collab-teaching-board-edges
                     value={diagramEdges}
-                    onChange={(event) => setDiagramEdges(event.target.value)}
+                    onChange={(event) => {
+                      setDiagramEdges(event.target.value);
+                      clearDraftReview();
+                    }}
                   />
                 </label>
               </>
+            ) : null}
+            <label data-collab-teaching-semantic-review>
+              <input
+                type="checkbox"
+                data-collab-teaching-semantic-reviewed
+                checked={semanticReviewed}
+                disabled={
+                  !enabled || busy || !owner || !statement || hasPendingWait || !pendingContent
+                }
+                onChange={(event) => {
+                  setSemanticReviewed(event.target.checked);
+                  setReviewAttempt(null);
+                }}
+              />
+              我已逐字核对上方依据陈述、来源、条件与当前板书草稿，确认其含义一致
+            </label>
+            <button
+              type="button"
+              className="btn"
+              data-collab-teaching-review-board
+              disabled={
+                !enabled ||
+                busy ||
+                !owner ||
+                !statement ||
+                hasPendingWait ||
+                boardReviewLimitReached ||
+                !pendingContent ||
+                !semanticReviewed ||
+                Boolean(matchingReview) ||
+                (reviewAttempt?.key === draftKey && !matchingReview)
+              }
+              onClick={() => {
+                if (
+                  !statement ||
+                  !pendingContent ||
+                  !semanticReviewed ||
+                  !owner ||
+                  !enabled ||
+                  busy ||
+                  hasPendingWait ||
+                  boardReviewLimitReached
+                )
+                  return;
+                setReviewAttempt({
+                  key: draftKey,
+                  priorEventIds: reviewedContents.map((item) => item.eventId),
+                });
+                onOperation({
+                  kind: 'review-board-content',
+                  statementId: statement.statementId,
+                  content: pendingContent.content,
+                  semanticReviewed: true,
+                });
+              }}
+            >
+              审核板书
+            </button>
+            {reviewAttempt?.key === draftKey && !matchingReview ? (
+              <p className="hint" aria-live="polite" data-collab-teaching-review-pending>
+                已提交审核命令，等待服务端审核记录读回；读回与当前草稿完全一致后才可写入。
+              </p>
+            ) : null}
+            {boardReviewLimitReached ? (
+              <p className="hint" data-collab-board-review-limit>
+                当前场景板书审核记录已达 200 项上限。
+              </p>
             ) : null}
             <button
               type="button"
@@ -245,19 +399,31 @@ export const CollabTeachingPanel = ({
               data-collab-teaching-write
               disabled={
                 !enabled ||
+                busy ||
+                !owner ||
                 !statement ||
                 hasPendingWait ||
                 boardActionLimitReached ||
-                !pendingContent
+                !pendingContent ||
+                !matchingReview
               }
               onClick={() => {
-                if (pendingContent) onOperation(pendingContent);
+                if (
+                  pendingContent &&
+                  matchingReview &&
+                  owner &&
+                  enabled &&
+                  !busy &&
+                  !hasPendingWait
+                ) {
+                  onOperation({ ...pendingContent, reviewEventId: matchingReview.eventId });
+                }
               }}
             >
               写入公共白板
             </button>
             <p className="hint">
-              板书内容必须挂在当前场景的已审核陈述上；文字/公式不接受 HTML 或脚本。
+              写入需要与当前草稿、陈述、审核人和场景完全对应的服务端审核回执。旧状态中的板书按历史内容显示，须重新审核后才能再次写入。
             </p>
           </div>
 
@@ -266,7 +432,7 @@ export const CollabTeachingPanel = ({
             <select
               data-collab-teaching-element
               value={element?.elementId ?? ''}
-              disabled={!enabled || elements.length === 0}
+              disabled={!enabled || busy || elements.length === 0}
               onChange={(event) => setElementId(event.target.value)}
             >
               {elements.length === 0 ? <option value="">当前场景没有白板元素</option> : null}
@@ -281,7 +447,9 @@ export const CollabTeachingPanel = ({
             type="button"
             className="btn"
             data-collab-teaching-focus
-            disabled={!enabled || !element || hasPendingWait || boardActionLimitReached}
+            disabled={
+              !enabled || busy || !owner || !element || hasPendingWait || boardActionLimitReached
+            }
             onClick={() => {
               if (element) onOperation({ kind: 'focus', elementId: element.elementId });
             }}
@@ -292,7 +460,9 @@ export const CollabTeachingPanel = ({
             type="button"
             className="btn"
             data-collab-teaching-laser
-            disabled={!enabled || !element || hasPendingWait || boardActionLimitReached}
+            disabled={
+              !enabled || busy || !owner || !element || hasPendingWait || boardActionLimitReached
+            }
             onClick={() => {
               if (element) onOperation({ kind: 'laser', elementId: element.elementId });
             }}
@@ -303,7 +473,7 @@ export const CollabTeachingPanel = ({
             type="button"
             className="btn btn-ghost"
             data-collab-teaching-clear-board
-            disabled={!enabled || boardActionLimitReached}
+            disabled={!enabled || busy || !owner || boardActionLimitReached}
             onClick={() => onOperation({ kind: 'clear-board' })}
           >
             清除白板标记
@@ -322,7 +492,7 @@ export const CollabTeachingPanel = ({
             <select
               data-collab-teaching-target
               value={targetUid}
-              disabled={!enabled || waiting !== null || possibleTargets.length === 0}
+              disabled={!enabled || busy || waiting !== null || possibleTargets.length === 0}
               onChange={(event) => setTargetUid(event.target.value)}
             >
               <option value="">选择同学</option>
@@ -339,6 +509,7 @@ export const CollabTeachingPanel = ({
             data-collab-teaching-wait
             disabled={
               !enabled ||
+              busy ||
               waiting !== null ||
               !possibleTargets.some((item) => item.uid === targetUid)
             }
@@ -361,7 +532,7 @@ export const CollabTeachingPanel = ({
               type="button"
               className="btn"
               data-collab-teaching-acknowledge
-              disabled={!enabled}
+              disabled={!enabled || busy}
               onClick={() => onOperation({ kind: 'acknowledge', waitEventId: waiting.waitEventId })}
             >
               我已确认
@@ -372,7 +543,7 @@ export const CollabTeachingPanel = ({
               type="button"
               className="btn"
               data-collab-teaching-release-wait
-              disabled={!enabled}
+              disabled={!enabled || busy}
               onClick={() =>
                 onOperation({ kind: 'release-wait', waitEventId: waiting.waitEventId })
               }
@@ -385,7 +556,7 @@ export const CollabTeachingPanel = ({
               type="button"
               className="btn btn-ghost"
               data-collab-teaching-cancel-wait
-              disabled={!enabled}
+              disabled={!enabled || busy}
               onClick={() => onOperation({ kind: 'cancel-wait', waitEventId: waiting.waitEventId })}
             >
               取消等待
@@ -398,37 +569,43 @@ export const CollabTeachingPanel = ({
         <section data-collab-board-contents aria-label="公共白板已写内容">
           <h5>公共白板内容</h5>
           <ul>
-            {contents.map((item) => (
-              <li key={item.eventId} data-collab-board-content={item.eventId}>
-                <span className="hint mono">来源 {item.statementId}</span>
-                {item.content.kind === 'text' ? (
-                  <p style={{ whiteSpace: 'pre-wrap' }}>{item.content.text}</p>
-                ) : item.content.kind === 'formula' ? (
-                  <p style={{ whiteSpace: 'pre-wrap' }}>
-                    {item.content.text}
-                    {item.content.latex ? (
-                      <span className="mono"> · {item.content.latex}</span>
-                    ) : null}
-                  </p>
-                ) : (
-                  <p>
-                    简图：{item.content.nodes.map((node) => node.label).join('、')}（
-                    {item.content.edges.length} 条连线）
-                  </p>
-                )}
-                {owner ? (
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    data-collab-board-erase={item.eventId}
-                    disabled={!enabled || hasPendingWait || boardActionLimitReached}
-                    onClick={() => onOperation({ kind: 'erase', actionEventId: item.eventId })}
-                  >
-                    擦除此内容
-                  </button>
-                ) : null}
-              </li>
-            ))}
+            {contents.map((item) => {
+              const itemReview = item.reviewEventId
+                ? reviewedContents.find(
+                    (review) =>
+                      review.eventId === item.reviewEventId &&
+                      review.statementId === item.statementId &&
+                      review.sceneId === sceneId &&
+                      collabBoardContentKey(review.content) === collabBoardContentKey(item.content),
+                  )
+                : undefined;
+              return (
+                <li key={item.eventId} data-collab-board-content={item.eventId}>
+                  <span className="hint mono">来源 {item.statementId}</span>
+                  <CollabBoardContent content={item.content} label={`板书 ${item.eventId}`} />
+                  {itemReview ? (
+                    <p className="hint" data-collab-board-review={itemReview.eventId}>
+                      已语义审核 · {itemReview.reviewerUid} · {itemReview.eventId}
+                    </p>
+                  ) : (
+                    <p className="hint" data-collab-board-legacy-unreviewed>
+                      历史板书：当前状态没有可核验的语义审核记录。陈述 ID 有效不代表这段正文已审核。
+                    </p>
+                  )}
+                  {owner ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      data-collab-board-erase={item.eventId}
+                      disabled={!enabled || busy || hasPendingWait || boardActionLimitReached}
+                      onClick={() => onOperation({ kind: 'erase', actionEventId: item.eventId })}
+                    >
+                      擦除此内容
+                    </button>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         </section>
       ) : null}
@@ -466,7 +643,7 @@ export const CollabTeachingPanel = ({
                           type="button"
                           className="btn btn-ghost"
                           data-collab-board-undo={action.eventId}
-                          disabled={!enabled || hasPendingWait}
+                          disabled={!enabled || busy || hasPendingWait || !owner}
                           onClick={() =>
                             onOperation({ kind: 'undo-board', actionEventId: action.eventId })
                           }
@@ -478,7 +655,7 @@ export const CollabTeachingPanel = ({
                           type="button"
                           className="btn btn-ghost"
                           data-collab-board-replay={action.eventId}
-                          disabled={!enabled || hasPendingWait}
+                          disabled={!enabled || busy || hasPendingWait || !owner}
                           onClick={() =>
                             onOperation({ kind: 'replay-board', actionEventId: action.eventId })
                           }

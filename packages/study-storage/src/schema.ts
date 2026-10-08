@@ -1262,6 +1262,19 @@ CREATE TABLE collab_teaching_states (
 );
 `,
   },
+  {
+    version: 34,
+    name: 'collaboration_teaching_ai_state',
+    sql: `
+CREATE TABLE collab_teaching_ai_states (
+  room_id TEXT PRIMARY KEY REFERENCES collab_rooms(room_id),
+  scene_id TEXT NOT NULL,
+  state_json TEXT NOT NULL,
+  state_digest TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`,
+  },
 ];
 
 // Registration order is part of the upgrade protocol; reject duplicate, skipped, or reordered versions.

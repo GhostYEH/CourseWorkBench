@@ -574,7 +574,13 @@ export const pblRecordSchema = z.discriminatedUnion('kind', [
 export type PblRecordDto = z.infer<typeof pblRecordSchema>;
 
 export const pblReceiptSchema = z
-  .object({ id, createdAt: z.string(), payload: pblRecordSchema })
+  .object({
+    id,
+    createdAt: z.string(),
+    payload: pblRecordSchema,
+    /** Server-derived reference for a deliverable; legacy receipts may omit it. */
+    artifactId: id.nullable().optional(),
+  })
   .strict();
 export type PblReceiptDto = z.infer<typeof pblReceiptSchema>;
 
@@ -1032,6 +1038,10 @@ export const pblProjectStateSchema = z
     tasks: z.array(pblTaskViewSchema),
     milestones: z.array(pblMilestoneEvaluationSchema),
     ownDraft: pblDeliverableDraftSchema.nullable(),
+    /** Latest durable draft for each task; older consumers retain ownDraft. */
+    ownDrafts: z.array(pblDeliverableDraftSchema).max(24).optional(),
+    /** Projection of human acknowledgment records, without rewriting AI authorship. */
+    acknowledgedContributionNonces: z.array(id).optional(),
     ownSubmissions: z.array(pblReceiptSchema),
     contributions: z.array(pblReceiptSchema),
     feedback: z.array(pblReceiptSchema),

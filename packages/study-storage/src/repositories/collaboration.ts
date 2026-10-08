@@ -27,6 +27,15 @@ import {
   collabTeachingStateSchema,
   collabTeachingViewSchema,
   collabTeachingResultSchema,
+  collabTeachingAiCommandSchema,
+  collabTeachingAiStateSchema,
+  collabTeachingAiReadViewSchema,
+  collabTeachingAiResultSchema,
+  createCollabTeachingAiInitialState,
+  type CollabTeachingAiCommandInput,
+  type CollabTeachingAiStateDto,
+  type CollabTeachingAiReadViewDto,
+  type CollabTeachingAiResultDto,
   collabText,
   COLLAB_EVENT_KINDS,
   type ClassroomSharedCourseDto,
@@ -52,6 +61,9 @@ import {
   assertCollabSnapshotUploadable,
   assertCollabTeacherEventAllowed,
   decideCollabTeaching,
+  collabTeachingAiGate,
+  collabTeachingAiPublicProjection,
+  decideCollabTeachingAi,
   assertCollabBoardHistoryConsistent,
   canonicalJson,
   fingerprintOf,
@@ -75,7 +87,9 @@ export type CollabAction =
   | 'event'
   | 'sync-scene'
   | 'snapshot'
-  | 'teaching';
+  | 'teaching'
+  | 'teaching-ai'
+  | 'teaching-ai-candidate';
 
 export interface RegisterInput {
   uid: string;
@@ -1258,6 +1272,13 @@ export class CollaborationRepository {
         },
         now,
       );
+      // Scene transitions reset generation candidates and public output atomically with the
+      // shared teaching state so previous-scene candidates cannot be surfaced after restart.
+      this.writeTeachingAiState(
+        input.roomId,
+        this.emptyTeachingAiState(input.roomId, input.sceneId),
+        now,
+      );
       const result: SyncSceneResult = {
         room: {
           roomId: next.roomId,
@@ -1401,6 +1422,7 @@ export class CollaborationRepository {
         'clear-board': '教师清除白板标记',
         'undo-board': `教师撤销白板动作 ${operation.kind === 'undo-board' ? operation.actionEventId : ''}`,
         'replay-board': `教师重放白板动作 ${operation.kind === 'replay-board' ? operation.actionEventId : ''}`,
+        'review-board-content': `教师审核白板正文 ${operation.kind === 'review-board-content' ? operation.statementId : ''}`,
         erase: `教师擦除白板内容 ${operation.kind === 'erase' ? operation.actionEventId : ''}`,
         wait: '教师等待同学回应',
         acknowledge: '同学确认回应',
@@ -1442,6 +1464,208 @@ export class CollaborationRepository {
       this.receipt(input.requestId, 'teaching', input.actorUid, input, result);
       return result;
     });
+  }
+
+  private emptyTeachingAiState(roomId: string, sceneId: string): CollabTeachingAiStateDto {
+    return createCollabTeachingAiInitialState({ roomId, sceneId });
+  }
+
+  /** Read and verify the persisted AI state against SQL identity and content digest. */
+  private readTeachingAiState(roomId: string, currentSceneId: string): CollabTeachingAiStateDto {
+    const row = this.db
+      .prepare('SELECT * FROM collab_teaching_ai_states WHERE room_id=?')
+      .get(roomId) as Row | undefined;
+    if (!row) return this.emptyTeachingAiState(roomId, currentSceneId);
+    const state = readRequiredJsonColumn(
+      row['state_json'],
+      collabTeachingAiStateSchema,
+      'collab_teaching_ai_states.state_json',
+      { reason: 'collab_teaching_ai_state_corrupt' },
+    );
+    if (
+      state.roomId !== roomId ||
+      state.sceneId !== String(row['scene_id']) ||
+      state.sceneId !== currentSceneId ||
+      fingerprintOf(canonicalJson(state)) !== String(row['state_digest'])
+    ) {
+      throw new StudyError('INTERNAL', {
+        reason: 'collab_teaching_ai_state_identity_or_digest_mismatch',
+      });
+    }
+    return state;
+  }
+
+  private writeTeachingAiState(
+    roomId: string,
+    state: CollabTeachingAiStateDto,
+    updatedAt: string,
+  ): void {
+    const checked = collabTeachingAiStateSchema.parse(state);
+    // Optional object fields may exist with `undefined` after a Zod parse; canonical JSON
+    // intentionally rejects them, so hash the exact JSON value that will be stored.
+    const serialized = encodeJson(checked);
+    const persisted = readRequiredJsonColumn(
+      serialized,
+      collabTeachingAiStateSchema,
+      'collab_teaching_ai_states.state_json',
+      { reason: 'collab_teaching_ai_state_corrupt' },
+    );
+    this.db
+      .prepare(
+        `INSERT INTO collab_teaching_ai_states (room_id, scene_id, state_json, state_digest, updated_at)
+         VALUES (?,?,?,?,?)
+         ON CONFLICT(room_id) DO UPDATE SET scene_id=excluded.scene_id, state_json=excluded.state_json,
+           state_digest=excluded.state_digest, updated_at=excluded.updated_at`,
+      )
+      .run(
+        roomId,
+        persisted.sceneId,
+        serialized,
+        fingerprintOf(canonicalJson(persisted)),
+        updatedAt,
+      );
+  }
+
+  /** Owner-only candidate history; members receive only a strict public whitelist projection. */
+  teachingAiView(roomId: string, actorUid: string): CollabTeachingAiReadViewDto {
+    return this.db.transaction(() => {
+      const room = this.readRoom(roomId);
+      if (!room) throw new StudyError('NOT_FOUND', { reason: 'collab_room_missing' });
+      this.assertCurrentMember(roomId, actorUid);
+      const state = this.readTeachingAiState(roomId, room.currentSceneId);
+      const teaching = this.readTeachingState(roomId, room.currentSceneId);
+      const gate = collabTeachingAiGate({
+        actorIsMember: true,
+        actorIsOwner: actorUid === room.ownerUid,
+        roomActive: room.status === 'active',
+        waiting: teaching.waiting,
+        candidates: state.candidates.length,
+        publicOutputs: state.publicOutputs.length,
+      });
+      return collabTeachingAiReadViewSchema.parse({
+        roomId,
+        sceneId: room.currentSceneId,
+        state: actorUid === room.ownerUid ? state : null,
+        publicOutputs: collabTeachingAiPublicProjection(
+          state,
+          this.readSnapshot(roomId)?.snapshot ?? null,
+        ),
+        roomRevision: room.revision,
+        tailSeq: this.tailSeq('collab_room_events', roomId),
+        gate,
+      });
+    });
+  }
+
+  private applyTeachingAiValidated(
+    input: CollabTeachingAiCommandInput,
+    candidateIngress: boolean,
+  ): CollabTeachingAiResultDto {
+    return this.db.transaction(() => {
+      const room = this.readRoom(input.roomId);
+      if (!room) throw new StudyError('NOT_FOUND', { reason: 'collab_room_missing' });
+      // Membership is always rechecked, including retries, so a former member cannot read receipts.
+      this.assertCurrentMember(input.roomId, input.actorUid);
+      const action = candidateIngress ? 'teaching-ai-candidate' : 'teaching-ai';
+      const prior = this.retry(
+        input.requestId,
+        action,
+        input.actorUid,
+        input,
+        collabTeachingAiResultSchema,
+      );
+      if (prior) return collabTeachingAiResultSchema.parse({ ...prior, deduplicated: true });
+      if (candidateIngress && input.operation.kind !== 'record-ai-candidate') {
+        throw new StudyError('INVALID_ARGUMENT', { reason: 'collab_ai_candidate_ingress_only' });
+      }
+      if (!candidateIngress && input.operation.kind === 'record-ai-candidate') {
+        throw new StudyError('INVALID_ARGUMENT', {
+          reason: 'collab_ai_record_requires_controlled_gateway',
+        });
+      }
+      const state = this.readTeachingAiState(input.roomId, room.currentSceneId);
+      const teaching = this.readTeachingState(input.roomId, room.currentSceneId);
+      const snapshot = this.readSnapshot(input.roomId);
+      if (!snapshot) throw new StudyError('INTERNAL', { reason: 'collab_snapshot_missing' });
+      const tailSeq = this.tailSeq('collab_room_events', input.roomId);
+      const now = new Date().toISOString();
+      const nextState = decideCollabTeachingAi({
+        command: input,
+        state,
+        snapshot: snapshot.snapshot,
+        ownerUid: room.ownerUid,
+        activeMemberUids: this.listMembers(input.roomId)
+          .filter((member) => member.readiness !== 'left')
+          .map((member) => member.uid),
+        roomActive: room.status === 'active',
+        roomRevision: room.revision,
+        expectedTailSeq: tailSeq,
+        nextSeq: tailSeq + 1,
+        now,
+        waiting: teaching.waiting,
+      });
+      const op = input.operation;
+      const event = collabEventSchema.parse({
+        eventId: input.eventId,
+        roomId: input.roomId,
+        seq: tailSeq + 1,
+        kind: op.kind === 'broadcast-ai-candidate' ? 'teacher_output' : 'board_action',
+        actorUid: input.actorUid,
+        summary:
+          op.kind === 'record-ai-candidate'
+            ? 'AI生成候选进入人工审核区（来源为受控网关声明）'
+            : op.kind === 'review-ai-candidate'
+              ? `房主审核 AI 候选：${op.decision}`
+              : op.kind === 'broadcast-ai-candidate'
+                ? '房主播报已审核 AI 候选'
+                : op.kind === 'generate-teacher-explanation'
+                  ? '房主发起生成式教师请求'
+                  : '房主发起 AI 同学发言请求',
+        createdAt: now,
+      });
+      this.db
+        .prepare(
+          'INSERT INTO collab_room_events (room_id, seq, event_id, kind, actor_uid, summary, created_at) VALUES (?,?,?,?,?,?,?)',
+        )
+        .run(
+          event.roomId,
+          event.seq,
+          event.eventId,
+          event.kind,
+          event.actorUid,
+          event.summary,
+          event.createdAt,
+        );
+      this.db
+        .prepare('UPDATE collab_rooms SET revision=revision+1, updated_at=? WHERE room_id=?')
+        .run(now, input.roomId);
+      this.writeTeachingAiState(input.roomId, nextState, now);
+      const result = collabTeachingAiResultSchema.parse({
+        state: nextState,
+        roomRevision: room.revision + 1,
+        event,
+        deduplicated: false,
+      });
+      this.receipt(input.requestId, action, input.actorUid, input, result);
+      return result;
+    });
+  }
+
+  /** Normal service path permits only owner review and broadcast commands. */
+  applyTeachingAi(raw: CollabTeachingAiCommandInput): CollabTeachingAiResultDto {
+    const input = validate(collabTeachingAiCommandSchema, raw);
+    if (
+      input.operation.kind !== 'review-ai-candidate' &&
+      input.operation.kind !== 'broadcast-ai-candidate'
+    ) {
+      throw new StudyError('INVALID_ARGUMENT', { reason: 'collab_ai_review_or_broadcast_only' });
+    }
+    return this.applyTeachingAiValidated(input, false);
+  }
+
+  /** Controlled local model gateway path. It can only create a pending candidate, never broadcast. */
+  recordTeachingAiCandidate(raw: CollabTeachingAiCommandInput): CollabTeachingAiResultDto {
+    return this.applyTeachingAiValidated(validate(collabTeachingAiCommandSchema, raw), true);
   }
 
   // ————————————————— 共享快照（ROOM-01 双端消费者） —————————————————

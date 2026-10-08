@@ -122,7 +122,7 @@ export type {
 } from './model-connection';
 export { apiErrorPayloadSchema, apiEnvelopeSchema, runtimeApiFailureSchema, apiResponses, collabOnlineViewSchema, collabOnlineWriteSchema } from './responses';
 export { collabTeachingOperationSchema, collabTeachingCommandSchema, collabTeachingStateSchema, collabTeachingViewSchema, collabTeachingResultSchema } from './collaboration-teaching';
-export type { CollabTeachingOperation, CollabTeachingCommandInput, CollabTeachingStateDto, CollabTeachingViewDto, CollabTeachingResultDto, CollabBoardContentDto } from './collaboration-teaching';
+export type { CollabTeachingOperation, CollabTeachingCommandInput, CollabTeachingStateDto, CollabTeachingViewDto, CollabTeachingResultDto, CollabBoardContentDto, CollabBoardReviewedContentDto } from './collaboration-teaching';
 export type { CollabOnlineViewDto, CollabOnlineWriteDto } from './responses';
 export {
   THEME_IDS, ACCENT_PRESETS, STATUS_TOKEN_KEYS,
@@ -251,6 +251,8 @@ export type {
 } from './lesson-export';
 
 // PBL 项目制学习（OMA-046~049）
+export { pblMentorCommandSchema } from './pbl-mentor';
+export type { PblMentorCommandInput } from './pbl-mentor';
 export {
   PBL_ROLE_KINDS, PBL_TASK_STATUSES, PBL_REPORTABLE_TASK_STATUSES, PBL_CHECK_KINDS,
   PBL_ARTIFACT_KINDS, PBL_JUDGEMENT_LEVELS, PBL_SIMULATION_OPERATIONS, PBL_WRITE_OPERATIONS,
@@ -306,10 +308,11 @@ export {
   collabTeachingAiCandidateSchema, collabTeachingAiPublicOutputSchema, collabTeachingAiOperationSchema,
   collabTeachingAiCommandSchema, collabTeachingAiStateSchema, collabTeachingAiGateSchema,
   collabTeachingAiViewSchema, collabTeachingAiResultSchema, createCollabTeachingAiInitialState,
+  collabTeachingAiPublicItemSchema, collabTeachingAiReadViewSchema,
 } from './collaboration-teaching-ai';
 export type {
   CollabTeachingAiSenderType, CollabTeachingAiCandidateStatus, CollabTeachingAiGateReason,
   CollabTeachingAiCandidateDto, CollabTeachingAiPublicOutputDto, CollabTeachingAiOperation,
   CollabTeachingAiCommandInput, CollabTeachingAiStateDto, CollabTeachingAiGateDto, CollabTeachingAiViewDto,
-  CollabTeachingAiResultDto,
+  CollabTeachingAiResultDto, CollabTeachingAiPublicItemDto, CollabTeachingAiReadViewDto,
 } from './collaboration-teaching-ai';

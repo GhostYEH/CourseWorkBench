@@ -77,7 +77,9 @@ const isInvitation = (path: string, intent: Record<string, unknown>): boolean =>
 const isScene = (path: string, intent: Record<string, unknown>): boolean =>
   path.endsWith('/events') ||
   (path.endsWith('/collab/online') &&
-    (intent['action'] === 'scene' || intent['action'] === 'teaching'));
+    (intent['action'] === 'scene' ||
+      intent['action'] === 'teaching' ||
+      intent['action'] === 'teaching-ai'));
 
 const logicalIntent = (path: string, input: Record<string, unknown>): Record<string, unknown> => {
   const intent = jsonSnapshot(input);

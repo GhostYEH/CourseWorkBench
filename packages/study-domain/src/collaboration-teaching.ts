@@ -10,6 +10,11 @@ import {
 type Board = CollabTeachingStateDto['board'];
 type BoardHistory = NonNullable<Board['history']>;
 type BoardAction = BoardHistory['actions'][number];
+type BoardReviewedContent = NonNullable<Board['reviewedContents']>[number];
+type BoardWriteContent = Extract<
+  CollabTeachingCommandInput['operation'],
+  { kind: 'write' }
+>['content'];
 /** 生效白板：生效位 + 按序重放得到的内容列表。 */
 interface BoardState {
   focusElementId: string | null;
@@ -41,6 +46,7 @@ const applyBoardAction = (board: BoardState, action: BoardAction): BoardState =>
             seq: action.seq,
             statementId: action.statementId ?? '',
             content: action.content!,
+            ...(action.reviewEventId ? { reviewEventId: action.reviewEventId } : {}),
           },
         ],
       };
@@ -68,22 +74,71 @@ const sameContents = (left: CollabBoardContentDto[], right: CollabBoardContentDt
     return (
       other !== undefined &&
       content.eventId === other.eventId &&
+      content.seq === other.seq &&
       content.statementId === other.statementId &&
-      JSON.stringify(content.content) === JSON.stringify(other.content)
+      content.reviewEventId === other.reviewEventId &&
+      stableJson(content.content) === stableJson(other.content)
     );
   });
 
 /** Validate the materialized shared board against its retained current-scene action history. */
-export const assertCollabBoardHistoryConsistent = (board: Board): void => {
-  if (!board.history) return;
-  const replayed = replayBoardHistory(board.history);
-  if (
-    replayed.focusElementId !== board.focusElementId ||
-    replayed.laserElementId !== board.laserElementId ||
-    !sameContents(replayed.contents, boardContents(board))
-  ) {
-    throw new StudyError('INTERNAL', { reason: 'collab_board_history_state_mismatch' });
+export const assertCollabBoardHistoryConsistent = (
+  board: Board,
+  context?: { sceneId: string; ownerUid: string },
+): void => {
+  if (board.history) {
+    const replayed = replayBoardHistory(board.history);
+    if (
+      replayed.focusElementId !== board.focusElementId ||
+      replayed.laserElementId !== board.laserElementId ||
+      !sameContents(replayed.contents, boardContents(board))
+    ) {
+      throw new StudyError('INTERNAL', { reason: 'collab_board_history_state_mismatch' });
+    }
   }
+  const reviewed = board.reviewedContents ?? [];
+  const reviewedById = new Map(reviewed.map((item) => [item.eventId, item]));
+  if (reviewedById.size !== reviewed.length) {
+    throw new StudyError('INTERNAL', { reason: 'collab_board_review_receipt_duplicate' });
+  }
+  const actionEventIds = new Set((board.history?.actions ?? []).map((item) => item.eventId));
+  const actionSeqs = new Set((board.history?.actions ?? []).map((item) => item.seq));
+  if (reviewed.some((item) => actionEventIds.has(item.eventId) || actionSeqs.has(item.seq))) {
+    throw new StudyError('INTERNAL', { reason: 'collab_board_review_action_identity_collision' });
+  }
+  if (
+    context &&
+    reviewed.some(
+      (item) => item.sceneId !== context.sceneId || item.reviewerUid !== context.ownerUid,
+    )
+  ) {
+    throw new StudyError('INTERNAL', { reason: 'collab_board_review_receipt_scope_mismatch' });
+  }
+  for (const action of board.history?.actions ?? []) {
+    if (action.kind !== 'write' || !action.reviewEventId) continue;
+    const receipt = reviewedById.get(action.reviewEventId);
+    if (
+      !receipt ||
+      (context !== undefined && receipt.sceneId !== context.sceneId) ||
+      (context !== undefined && receipt.reviewerUid !== context.ownerUid) ||
+      receipt.statementId !== action.statementId ||
+      stableJson(receipt.content) !== stableJson(action.content)
+    ) {
+      throw new StudyError('INTERNAL', { reason: 'collab_board_review_receipt_mismatch' });
+    }
+  }
+};
+
+const stableJson = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (typeof value === 'object' && value !== null) {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'undefined';
 };
 
 /** 读取当前场景的动作历史；旧状态没有历史时用当前生效位作基线补一个空历史。 */
@@ -95,6 +150,13 @@ const historyOf = (state: CollabTeachingStateDto): BoardHistory =>
     },
     actions: [],
   };
+
+/** Keep the separately persisted human-review ledger when materializing board history. */
+const boardFromHistory = (state: CollabTeachingStateDto, history: BoardHistory): Board => ({
+  ...replayBoardHistory(history),
+  ...(state.board.reviewedContents ? { reviewedContents: state.board.reviewedContents } : {}),
+  history,
+});
 
 /** Pure authorization and state transition for shared teacher/board actions. */
 export const decideCollabTeaching = (facts: {
@@ -136,7 +198,10 @@ export const decideCollabTeaching = (facts: {
   ) {
     throw new StudyError('VERSION_CONFLICT', { reason: 'collab_teaching_waiting' });
   }
-  assertCollabBoardHistoryConsistent(state.board);
+  assertCollabBoardHistoryConsistent(state.board, {
+    sceneId: state.sceneId,
+    ownerUid: facts.ownerUid,
+  });
 
   /** 只接受当前场景知识点关联的冻结已审核陈述：正文/内容不凭空产生。 */
   const requireSceneStatement = (statementId: string) => {
@@ -147,6 +212,26 @@ export const decideCollabTeaching = (facts: {
       throw new StudyError('INVALID_ARGUMENT', { reason: 'collab_statement_not_in_scene' });
     }
     return statement;
+  };
+
+  const requireReviewReceipt = (
+    reviewEventId: string,
+    statementId: string,
+    content: BoardWriteContent,
+  ): BoardReviewedContent => {
+    const receipt = (state.board.reviewedContents ?? []).find(
+      (item) => item.eventId === reviewEventId,
+    );
+    if (
+      !receipt ||
+      receipt.sceneId !== state.sceneId ||
+      receipt.statementId !== statementId ||
+      receipt.reviewerUid !== facts.ownerUid ||
+      stableJson(receipt.content) !== stableJson(content)
+    ) {
+      throw new StudyError('INVALID_ARGUMENT', { reason: 'collab_board_review_receipt_required' });
+    }
+    return receipt;
   };
 
   let next = state;
@@ -197,7 +282,7 @@ export const decideCollabTeaching = (facts: {
       const nextHistory: BoardHistory = { ...history, actions: [...history.actions, action] };
       next = collabTeachingStateSchema.parse({
         ...state,
-        board: { ...replayBoardHistory(nextHistory), history: nextHistory },
+        board: boardFromHistory(state, nextHistory),
       });
       break;
     }
@@ -220,13 +305,33 @@ export const decideCollabTeaching = (facts: {
       };
       next = collabTeachingStateSchema.parse({
         ...state,
-        board: { ...replayBoardHistory(nextHistory), history: nextHistory },
+        board: boardFromHistory(state, nextHistory),
+      });
+      break;
+    }
+    case 'review-board-content': {
+      requireSceneStatement(operation.statementId);
+      const reviewedContents = state.board.reviewedContents ?? [];
+      if (reviewedContents.length >= 200) {
+        throw new StudyError('VERSION_CONFLICT', { reason: 'collab_board_review_limit' });
+      }
+      const receipt: BoardReviewedContent = {
+        eventId: command.eventId,
+        seq: facts.nextSeq,
+        statementId: operation.statementId,
+        content: operation.content,
+        reviewerUid: command.actorUid,
+        sceneId: state.sceneId,
+      };
+      next = collabTeachingStateSchema.parse({
+        ...state,
+        board: { ...state.board, reviewedContents: [...reviewedContents, receipt] },
       });
       break;
     }
     case 'write': {
-      // 内容必须挂在当前场景的已审核陈述上：公共白板不接受任意正文。
       requireSceneStatement(operation.statementId);
+      requireReviewReceipt(operation.reviewEventId, operation.statementId, operation.content);
       const history = historyOf(state);
       if (history.actions.length >= 200) {
         throw new StudyError('VERSION_CONFLICT', { reason: 'collab_board_action_limit' });
@@ -237,12 +342,13 @@ export const decideCollabTeaching = (facts: {
         kind: 'write',
         statementId: operation.statementId,
         content: operation.content,
+        reviewEventId: operation.reviewEventId,
         applied: true,
       };
       const nextHistory: BoardHistory = { ...history, actions: [...history.actions, action] };
       next = collabTeachingStateSchema.parse({
         ...state,
-        board: { ...replayBoardHistory(nextHistory), history: nextHistory },
+        board: boardFromHistory(state, nextHistory),
       });
       break;
     }
@@ -285,7 +391,7 @@ export const decideCollabTeaching = (facts: {
       };
       next = collabTeachingStateSchema.parse({
         ...state,
-        board: { ...replayBoardHistory(nextHistory), history: nextHistory },
+        board: boardFromHistory(state, nextHistory),
       });
       break;
     }
@@ -312,7 +418,7 @@ export const decideCollabTeaching = (facts: {
       const nextHistory: BoardHistory = { ...history, actions };
       next = collabTeachingStateSchema.parse({
         ...state,
-        board: { ...replayBoardHistory(nextHistory), history: nextHistory },
+        board: boardFromHistory(state, nextHistory),
       });
       break;
     }

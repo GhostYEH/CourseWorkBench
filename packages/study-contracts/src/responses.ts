@@ -2,6 +2,10 @@
 import { z } from 'zod';
 import { collabTeachingViewSchema, collabTeachingResultSchema } from './collaboration-teaching';
 import {
+  collabTeachingAiReadViewSchema,
+  collabTeachingAiResultSchema,
+} from './collaboration-teaching-ai';
+import {
   attemptGradingContextSchema,
   attemptGradeCandidateSchema,
   attemptGradeReviewSchema,
@@ -148,6 +152,20 @@ const reviewedQuizPayloadSchema = z
 export const collabOnlineViewSchema = z
   .object({
     teaching: collabTeachingViewSchema.nullable().default(null),
+    teachingAi: collabTeachingAiReadViewSchema.nullable().default(null),
+    legacyBoardWrites: z
+      .array(
+        z
+          .object({
+            requestId: z.string().min(1).max(200),
+            roomId: z.string().min(1).max(200),
+            sceneId: z.string().min(1).max(200),
+            eventId: z.string().min(1).max(200),
+          })
+          .strict(),
+      )
+      .max(200)
+      .default([]),
     online: z
       .object({
         configured: z.boolean(),
@@ -259,6 +277,7 @@ export const apiResponses = {
   /** 结构化场景同步（SYNC-01 在线部分）：推进后的房间与事务内事件。 */
   collabSceneSync: collabSceneSyncResultSchema,
   collabTeaching: collabTeachingResultSchema,
+  collabTeachingAi: collabTeachingAiResultSchema,
   /** 共享快照上传/下载（ROOM-01 双端消费者）：房间冻结的公共投影。 */
   collabSnapshot: collabSnapshotViewSchema,
   collabSnapshotUpload: z
