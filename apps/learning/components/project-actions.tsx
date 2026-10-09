@@ -8,9 +8,9 @@ import { useEffect, useRef, useState } from 'react';
 type ProjectAction = 'create' | 'open' | 'close';
 
 const LABELS: Record<ProjectAction, string> = {
-  create: '新建项目',
-  open: '打开项目',
-  close: '关闭项目',
+  create: '添加学习空间',
+  open: '导入已有学习空间',
+  close: '退出学习空间',
 };
 
 /** Native project lifecycle controls shared by the empty state and workbench. */
@@ -56,7 +56,8 @@ export const ProjectActions = ({ mode }: { mode: 'choose' | 'manage' }) => {
     }
   };
 
-  const actions: ProjectAction[] = mode === 'choose' ? ['create', 'open'] : ['create', 'open', 'close'];
+  const actions: ProjectAction[] =
+    mode === 'choose' ? ['create', 'open'] : ['create', 'open', 'close'];
 
   return (
     <div>
@@ -75,7 +76,7 @@ export const ProjectActions = ({ mode }: { mode: 'choose' | 'manage' }) => {
       </div>
       {available === false ? (
         <Notice tone="pending" role="status" style={{ marginTop: 'var(--sew-space-3)' }}>
-          当前环境没有桌面项目管理能力，请在桌面应用中创建或打开项目。
+          切换本地学习空间需要使用桌面应用。
         </Notice>
       ) : null}
       {error ? (

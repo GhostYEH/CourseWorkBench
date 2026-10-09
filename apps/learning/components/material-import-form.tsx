@@ -7,17 +7,29 @@ import { Notice } from './ui';
 import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch, describeApiError } from '../lib/client';
+import {
+  materialExtractionPreviewSchema,
+  type MaterialExtractionPreview,
+} from '../lib/material-extraction-contract';
 
 /** 导入材料。文本直接粘贴或从原生选择器授权文件；两条路径走同一套规范化与指纹。 */
-export const MaterialImportForm = ({ projectId, generation }: { projectId: string; generation: number }) => {
+export const MaterialImportForm = ({
+  projectId,
+  generation,
+}: {
+  projectId: string;
+  generation: number;
+}) => {
   const router = useRouter();
   const [displayName, setDisplayName] = useState('');
   const [readableLocation, setReadableLocation] = useState('');
   const [materialType, setMaterialType] = useState<'txt' | 'md'>('md');
   // 导入模式用显式状态表达，不从正文前缀字符串推断。
-  const [mode, setMode] = useState<'file' | 'text'>('text');
+  const [mode, setMode] = useState<'file' | 'text' | 'document'>('text');
   const [sourcePath, setSourcePath] = useState<string | null>(null);
   const [rawText, setRawText] = useState('');
+  const [preview, setPreview] = useState<MaterialExtractionPreview | null>(null);
+  const [previewReviewed, setPreviewReviewed] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -35,15 +47,21 @@ export const MaterialImportForm = ({ projectId, generation }: { projectId: strin
     const file = picked.files[0];
     if (!file) return;
     setDisplayName(file.name);
-    setMaterialType(file.name.endsWith('.md') ? 'md' : 'txt');
+    const extension = file.name.split('.').at(-1)?.toLowerCase() ?? '';
+    const supportedText = extension === 'md' || extension === 'txt';
+    setMaterialType(extension === 'txt' ? 'txt' : 'md');
     setSourcePath(file.path);
-    setMode('file');
+    setMode(supportedText ? 'file' : 'document');
+    setPreview(null);
+    setPreviewReviewed(false);
     setError(null);
   };
 
   const useTextMode = () => {
     setMode('text');
     setSourcePath(null);
+    setPreview(null);
+    setPreviewReviewed(false);
   };
 
   const submit = async () => {
@@ -58,18 +76,58 @@ export const MaterialImportForm = ({ projectId, generation }: { projectId: strin
       setError('材料正文为空，请粘贴实际材料内容。');
       return;
     }
-    if (mode === 'file' && !sourcePath) {
+    if ((mode === 'file' || mode === 'document') && !sourcePath) {
       setError('尚未选择已授权文件，请先点击「从本机选择文件」。');
       return;
     }
     setBusy(true);
     try {
+      if (mode === 'document' && !preview) {
+        const extracted = await apiFetch(
+          '/api/study/materials/extract',
+          materialExtractionPreviewSchema,
+          {
+            method: 'POST',
+            body: JSON.stringify({ scope: { projectId, generation }, sourcePath }),
+          },
+        );
+        setPreview(extracted);
+        setPreviewReviewed(false);
+        setMessage('已提取可识别内容；请逐段核对位置与表格/公式，再明确确认导入。');
+        return;
+      }
       const shared = {
         scope: { projectId, generation },
         displayName,
         type: materialType,
         readableLocation,
       };
+      if (mode === 'document') {
+        if (!preview || !previewReviewed) {
+          setError('请先查看提取预览并勾选确认。');
+          return;
+        }
+        const data = await apiFetch(
+          '/api/study/materials/import-extracted',
+          apiResponses.materialImport,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              scope: { projectId, generation },
+              extractionId: preview.extractionId,
+              displayName,
+              ...(readableLocation ? { readableLocation } : {}),
+            }),
+          },
+        );
+        setMessage(
+          `已导入 ${data.material.displayName} r${data.material.revision}，共 ${data.segments.length} 段；原二进制已归档，可从材料版本查看提取来源。`,
+        );
+        setPreview(null);
+        setPreviewReviewed(false);
+        startTransition(() => router.refresh());
+        return;
+      }
       const body =
         mode === 'file'
           ? { ...shared, mode: 'file' as const, sourcePath: sourcePath ?? '' }
@@ -80,7 +138,9 @@ export const MaterialImportForm = ({ projectId, generation }: { projectId: strin
       });
       setMessage(
         `已导入 ${data.material.displayName} r${data.material.revision}，共 ${data.segments.length} 段` +
-          (data.invalidated.length > 0 ? `；${data.invalidated.length} 个知识点因版本变化转为已失效` : ''),
+          (data.invalidated.length > 0
+            ? `；${data.invalidated.length} 个知识点因版本变化转为已失效`
+            : ''),
       );
       startTransition(() => router.refresh());
     } catch (caught) {
@@ -94,14 +154,19 @@ export const MaterialImportForm = ({ projectId, generation }: { projectId: strin
     <div className="card">
       <h2>导入材料</h2>
       <p className="secondary">
-        首版支持 UTF-8 编码的 txt / md，编码错误或空正文会拒绝导入。程序移除开头 BOM、换行转换为 LF，切分段落并计算 SHA-256 指纹；
-        重新导入同一名称的材料会产生新版本，旧版本保留。
-        从本机选择文件时还会原样归档该文件的字节与 SHA-256，供后续按段落打开原文；粘贴导入没有原文件，会明确标记为未归档。
+        支持 UTF-8 txt / md，以及含文字层的 PDF、DOCX、PPTX、XLSX。Office/PDF 会先生成只读提取预览；
+        请核对段落位置、表格与公式后再确认。PDF 扫描件不做
+        OCR，宏、外部链接、图片、音视频和嵌入对象不会执行或识别。
+        确认后归档原二进制和提取文本，引用段落指向提取文本，并保留页/幻灯片/工作表定位；重新导入同名材料会产生新版本。
       </p>
       <div className="row-inline">
         <div className="field" style={{ flex: '1 1 220px' }}>
           <label htmlFor="material-name">材料名称</label>
-          <input id="material-name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+          <input
+            id="material-name"
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+          />
         </div>
         <div className="field" style={{ flex: '1 1 180px' }}>
           <label htmlFor="material-location">可读位置（章节 / 题号）</label>
@@ -142,9 +207,63 @@ export const MaterialImportForm = ({ projectId, generation }: { projectId: strin
           </div>
         </div>
       ) : null}
+      {mode === 'document' ? (
+        <div className="card" data-material-extraction-preview>
+          <p className="hint">
+            已选择 {sourcePath?.split(/[\\/]/).at(-1)}
+            。点击“提取并预览”后，服务会重新校验原件摘要；尚未确认导入。
+          </p>
+          {preview ? (
+            <>
+              <p className="mono secondary">
+                {preview.source.format.toUpperCase()} · {preview.source.byteLength} 字节 · SHA-256{' '}
+                {preview.source.sha256}
+              </p>
+              {preview.warnings.map((warning) => (
+                <p className="hint" key={warning}>
+                  {warning}
+                </p>
+              ))}
+              <pre
+                className="excerpt"
+                style={{ maxHeight: '28rem', overflow: 'auto', whiteSpace: 'pre-wrap' }}
+              >
+                {preview.extractedText}
+              </pre>
+              <label className="row-inline">
+                <input
+                  type="checkbox"
+                  checked={previewReviewed}
+                  onChange={(event) => setPreviewReviewed(event.target.checked)}
+                />
+                我已核对提取文本与页/slide/sheet 位置，确认作为待审核材料导入
+              </label>
+            </>
+          ) : null}
+        </div>
+      ) : null}
       <div className="row-inline">
-        <button type="button" className="btn btn-primary" data-material-import-submit onClick={submit} disabled={!ready || busy || pending}>
-          {busy ? '导入中…' : '导入并切分段落'}
+        <button
+          type="button"
+          className="btn btn-primary"
+          data-material-import-submit
+          onClick={submit}
+          disabled={
+            !ready ||
+            busy ||
+            pending ||
+            (mode === 'document' && preview !== null && !previewReviewed)
+          }
+        >
+          {busy
+            ? mode === 'document' && !preview
+              ? '提取中…'
+              : '导入中…'
+            : mode === 'document'
+              ? preview
+                ? '确认导入提取内容'
+                : '提取并预览'
+              : '导入并切分段落'}
         </button>
         <button type="button" className="btn" onClick={pickFile}>
           从本机选择文件

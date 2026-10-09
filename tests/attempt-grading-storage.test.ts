@@ -441,7 +441,7 @@ describe('append-only short answer reviews', () => {
     // Reconstruct the historical v16 fixture; later feature tables are absent there.
     const laterTables = MIGRATIONS.filter((migration) => migration.version > 16).flatMap(
       (migration) =>
-        [...migration.sql.matchAll(/CREATE TABLE(?: IF NOT EXISTS)? ([a-z_]+)/g)].map(
+        [...migration.sql.matchAll(/CREATE TABLE(?: IF NOT EXISTS)? ([a-z_][a-z0-9_]*)/g)].map(
           (match) => match[1]!,
         ),
     );
@@ -1100,6 +1100,30 @@ describe('production shared grading budget regressions', () => {
         'DROP TABLE IF EXISTS collab_credentials; DROP TABLE IF EXISTS collab_room_snapshots;',
       );
       db.exec('DROP TABLE IF EXISTS collab_registration_claims;');
+      // v35: media task references and their parent tasks did not exist in v22/v24.
+      db.exec(
+        'DROP TABLE IF EXISTS media_candidate_assets; DROP TABLE IF EXISTS media_generation_tasks;',
+      );
+      db.exec('DROP TABLE IF EXISTS mp4_export_segments; DROP TABLE IF EXISTS mp4_export_jobs;');
+      db.exec('DROP TABLE IF EXISTS material_extraction_originals;');
+      db.exec('DROP TABLE IF EXISTS execution_leases;');
+      db.exec('DROP TABLE IF EXISTS pro_sessions; DROP TABLE IF EXISTS pro_custom_skills;');
+      // v40：受限 AI 场景计划补丁候选与回执（OMA-023），历史库重放迁移时不能撞上已存在的表。
+      db.exec(
+        'DROP TABLE IF EXISTS lesson_scene_patch_candidates; DROP TABLE IF EXISTS lesson_scene_patch_receipts;',
+      );
+      // v41：Pro 外部 token（OMA-017）。
+      db.exec('DROP TABLE IF EXISTS pro_external_tokens;');
+      // v42：场景计划持久编辑草稿（OMA-024）。
+      db.exec('DROP TABLE IF EXISTS lesson_scene_plan_drafts;');
+      // v44：外部 token 管理命令回执（OMA-017）。
+      db.exec('DROP TABLE IF EXISTS pro_external_token_receipts;');
+      // v45/v46：草稿 revision 列随草稿表一并删除；部署访问码表（OMA-083）。
+      db.exec(
+        'DROP TABLE IF EXISTS deployment_access_receipts; DROP TABLE IF EXISTS deployment_access_codes;',
+      );
+      // v47：互动保活快照（OMA-045）。
+      db.exec('DROP TABLE IF EXISTS interactive_snapshots;');
       db.prepare('DELETE FROM schema_migrations WHERE version>?').run(version);
       db.close();
       const reopened = StudyStore.open({ file: f.file });

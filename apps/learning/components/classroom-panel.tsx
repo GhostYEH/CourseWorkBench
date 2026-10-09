@@ -25,6 +25,7 @@ import { apiFetch, describeApiError } from '../lib/client';
 import { ClassroomBoardPanel } from './classroom-board-panel';
 import { ClassroomPeersPanel } from './classroom-peers';
 import { ClassroomRecoveryPanel } from './classroom-recovery-panel';
+import { DirectorPanel } from './director-panel';
 
 const SESSION_LABEL: Record<ClassroomSessionStatus, string> = {
   in_class: '● 上课中',
@@ -96,25 +97,30 @@ const ClassroomPanelContent = ({
     null,
   );
 
-  const refresh = useCallback(async (): Promise<void> => {
-    const version = ++readVersion.current;
-    const controller = new AbortController();
-    requests.current.add(controller);
-    try {
-      const result = await apiFetch(
-        `/api/study/classroom?projectId=${encodeURIComponent(projectId)}&generation=${generation}&lessonId=${encodeURIComponent(lessonId)}${roomId ? `&roomId=${encodeURIComponent(roomId)}` : ''}`,
-        apiResponses.classroomState,
-        { signal: controller.signal },
-      );
-      if (!active.current || controller.signal.aborted || version !== readVersion.current) return;
-      setState(result.state);
-    } catch (caught) {
-      if (active.current && version === readVersion.current && !controller.signal.aborted)
-        setError(describeApiError(caught));
-    } finally {
-      requests.current.delete(controller);
-    }
-  }, [projectId, generation, lessonId, roomId]);
+  const refresh = useCallback(
+    async (syncScene = false): Promise<void> => {
+      const version = ++readVersion.current;
+      const controller = new AbortController();
+      requests.current.add(controller);
+      try {
+        const result = await apiFetch(
+          `/api/study/classroom?projectId=${encodeURIComponent(projectId)}&generation=${generation}&lessonId=${encodeURIComponent(lessonId)}${roomId ? `&roomId=${encodeURIComponent(roomId)}` : ''}`,
+          apiResponses.classroomState,
+          { signal: controller.signal },
+        );
+        if (!active.current || controller.signal.aborted || version !== readVersion.current) return;
+        setState(result.state);
+        if (syncScene && result.state?.session)
+          onSceneChange?.(result.state.session.currentSceneId);
+      } catch (caught) {
+        if (active.current && version === readVersion.current && !controller.signal.aborted)
+          setError(describeApiError(caught));
+      } finally {
+        requests.current.delete(controller);
+      }
+    },
+    [projectId, generation, lessonId, roomId, onSceneChange],
+  );
 
   useEffect(() => {
     active.current = true;
@@ -447,6 +453,16 @@ const ClassroomPanelContent = ({
           playbackDisabled={teachingDisabled}
           onEffectsChange={onBoardEffects}
           onFocusSeqChange={onFocusSeqChange}
+        />
+      ) : null}
+      {session && !roomId && session.stageId ? (
+        <DirectorPanel
+          key={`director-${projectId}-${generation}-${session.sessionId}`}
+          projectId={projectId}
+          generation={generation}
+          sessionId={session.sessionId}
+          initial={null}
+          onChange={() => refresh(true)}
         />
       ) : null}
       {session && state ? (

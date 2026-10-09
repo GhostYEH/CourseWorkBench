@@ -198,7 +198,7 @@ const registerNativeHandlers = ({
       const selectedFor = projects.scopeOf();
       const result = await dialog.showOpenDialog(getWindow(), {
         title: '选择要导入的材料',
-        filters: [{ name: '文本材料', extensions: ['txt', 'md'] }],
+        filters: [{ name: '学习材料', extensions: ['txt', 'md', 'pdf', 'docx', 'pptx', 'xlsx'] }],
         properties: ['openFile', 'multiSelections'],
       });
       if (result.canceled) return { files: [] };

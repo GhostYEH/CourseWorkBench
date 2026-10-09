@@ -59,6 +59,8 @@ const ScenePlanMerge = ({
   const [source, setSource] = useState<string>(sourceVersions[0]?.toString() ?? '');
   const [preview, setPreview] = useState<ScenePlanMergePreviewDto | null>(null);
   const [attempt, setAttempt] = useState<LessonCommandAttempt | null>(null);
+  /** 逐项冲突决议：sceneId → choice。全部冲突都有决议才允许写入。 */
+  const [resolutions, setResolutions] = useState<Record<string, 'current' | 'incoming'>>({});
   const command = useCommand([projectId, generation, lessonId, lessonVersion].join(':'));
   const { error, setError } = command;
   const disabled = busy || command.busy || attempt !== null;
@@ -67,19 +69,36 @@ const ScenePlanMerge = ({
     () => new Set(preview?.conflicts.map((conflict) => conflict.sceneId) ?? []),
     [preview],
   );
+  const allConflictsResolved = useMemo(
+    () =>
+      preview
+        ? preview.conflicts.every((conflict) => resolutions[conflict.sceneId] !== undefined)
+        : false,
+    [preview, resolutions],
+  );
 
-  const loadPreview = async (): Promise<void> => {
+  const loadPreview = async (
+    withResolutions: boolean,
+  ): Promise<ScenePlanMergePreviewDto | null> => {
     const parsed = scenePlanMergeSchema.safeParse({
       scope: { projectId, generation },
       action: 'merge-scene-plans',
       lessonId,
       fromVersion: Number(source),
       toVersion: lessonVersion,
+      resolutions:
+        withResolutions && preview && allConflictsResolved
+          ? preview.conflicts.map((conflict) => ({
+              sceneId: conflict.sceneId,
+              choice: resolutions[conflict.sceneId]!,
+            }))
+          : undefined,
     });
     if (!parsed.success) {
       setError('请选择要合并进来的来源版本。');
-      return;
+      return null;
     }
+    let merged: ScenePlanMergePreviewDto | null = null;
     await command.run(
       ({ signal }) =>
         apiFetch('/api/study/lessons', apiResponses.lessonScenePlanMerge, {
@@ -89,17 +108,28 @@ const ScenePlanMerge = ({
         }),
       {
         onSuccess: (result) => {
+          merged = result.merge;
           setPreview(result.merge);
           setError(null);
         },
         onError: (caught) => setError(describeApiError(caught)),
       },
     );
+    return merged;
   };
 
   /** 把预览出来的合并结果写入本草案版本：仍走 save-scene-plan 的乐观并发与幂等回执。 */
   const apply = async (): Promise<void> => {
     if (!preview || attempt?.state === 'failed') return;
+    if (!allConflictsResolved) {
+      setError('还有未决议的冲突；请为每处冲突选择「保留本版本」或「采用来源版本」后再写入。');
+      return;
+    }
+    // 带冲突决议时先重算一次预览（决议会改变合并结果），再写入重算后的计划。
+    const mergedScenes = preview.conflicts.length
+      ? (await loadPreview(true))?.mergedScenes
+      : preview.mergedScenes;
+    if (!mergedScenes) return;
     let submitted = attempt;
     if (!submitted) {
       const parsed = scenePlanSaveSchema.safeParse({
@@ -109,7 +139,7 @@ const ScenePlanMerge = ({
         lessonId,
         version: lessonVersion,
         baseRevision: planRevision,
-        scenes: preview.mergedScenes,
+        scenes: mergedScenes,
       });
       if (!parsed.success) {
         setError('合并结果不符合计划合同，未写入。请重新预览后再试。');
@@ -163,6 +193,7 @@ const ScenePlanMerge = ({
               onChange={(event) => {
                 setSource(event.target.value);
                 setPreview(null);
+                setResolutions({});
                 setError(null);
               }}
             >
@@ -179,7 +210,7 @@ const ScenePlanMerge = ({
               className="btn"
               disabled={disabled || !source}
               data-plan-merge-preview
-              onClick={() => void loadPreview()}
+              onClick={() => void loadPreview(false)}
             >
               {command.busy ? '正在比较…' : '预览差异与合并结果'}
             </button>
@@ -187,7 +218,7 @@ const ScenePlanMerge = ({
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={disabled}
+                disabled={disabled || !allConflictsResolved}
                 data-plan-merge-apply
                 onClick={() => void apply()}
               >
@@ -260,7 +291,7 @@ const ScenePlanMerge = ({
           ) : null}
           {preview.conflicts.length > 0 ? (
             <Notice tone="pending" data-plan-merge-conflicts>
-              有 {preview.conflicts.length} 处无法自动判定，已保留本版本当前状态（包括删除）：
+              有 {preview.conflicts.length} 处无法自动判定。逐项决议后才能写入：
               <ul className="check-list">
                 {preview.conflicts.map((conflict) => (
                   <li key={conflict.sceneId}>
@@ -269,9 +300,46 @@ const ScenePlanMerge = ({
                       {CONFLICT_LABEL[conflict.reason] ?? conflict.reason}
                       {conflictIds.has(conflict.sceneId) ? '（本版本状态保留）' : ''}
                     </span>
+                    <span className="row-inline">
+                      <label>
+                        <input
+                          type="radio"
+                          name={`merge-resolution-${conflict.sceneId}`}
+                          checked={resolutions[conflict.sceneId] === 'current'}
+                          disabled={disabled}
+                          data-plan-merge-keep={conflict.sceneId}
+                          onChange={() =>
+                            setResolutions((current) => ({
+                              ...current,
+                              [conflict.sceneId]: 'current',
+                            }))
+                          }
+                        />
+                        保留本版本
+                      </label>
+                      <label>
+                        <input
+                          type="radio"
+                          name={`merge-resolution-${conflict.sceneId}`}
+                          checked={resolutions[conflict.sceneId] === 'incoming'}
+                          disabled={disabled}
+                          data-plan-merge-use={conflict.sceneId}
+                          onChange={() =>
+                            setResolutions((current) => ({
+                              ...current,
+                              [conflict.sceneId]: 'incoming',
+                            }))
+                          }
+                        />
+                        采用来源版本
+                      </label>
+                    </span>
                   </li>
                 ))}
               </ul>
+              {!allConflictsResolved ? (
+                <p className="muted">仍有未决议的冲突：请为每处冲突选择一侧后再写入。</p>
+              ) : null}
             </Notice>
           ) : (
             <p className="muted">没有无法自动判定的冲突。</p>

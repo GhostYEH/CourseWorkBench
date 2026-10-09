@@ -16,6 +16,7 @@ import type { RecordScope } from '@sew/study-contracts';
 import { normalizeMaterialWithRawSpans, type MaterialChangeImpact } from '@sew/study-domain';
 import type { SqlDatabase } from '../driver';
 import { evidenceListSchema } from '../json-codec';
+import { MaterialOriginalsRepository } from './material-originals';
 import {
   defaultJsonPolicy,
   mapMaterial,
@@ -55,7 +56,10 @@ const asBytes = (value: unknown): Uint8Array => {
 
 export interface MaterialImportHooks {
   /** 在导入事务内重算并失效受影响知识点；返回影响列表。 */
-  invalidateKnowledge: (currentRevisions: Record<string, number>, scope: RecordScope) => MaterialChangeImpact[];
+  invalidateKnowledge: (
+    currentRevisions: Record<string, number>,
+    scope: RecordScope,
+  ) => MaterialChangeImpact[];
 }
 
 export interface MaterialImportOutcome {
@@ -80,7 +84,11 @@ export class MaterialsRepository {
   importMaterial(input: ImportMaterialInput, hooks: MaterialImportHooks): MaterialImportOutcome {
     const normalized = normalizeMaterialWithRawSpans(input.rawText);
     if (normalized.segments.length === 0) {
-      throw new StudyError('MATERIAL_TYPE_UNSUPPORTED', { reason: 'empty_material' }, '材料内容为空，无法切分段落');
+      throw new StudyError(
+        'MATERIAL_TYPE_UNSUPPORTED',
+        { reason: 'empty_material' },
+        '材料内容为空，无法切分段落',
+      );
     }
 
     const bytes = input.rawBytes ? new Uint8Array(input.rawBytes) : null;
@@ -93,7 +101,9 @@ export class MaterialsRepository {
 
     // 同名材料沿用既有 materialId，重新导入产生新 revision，旧版本保留。
     const matched = this.db
-      .prepare('SELECT material_id, MAX(revision) AS rev FROM source_versions WHERE display_name = ? AND record_scope = ? GROUP BY material_id')
+      .prepare(
+        'SELECT material_id, MAX(revision) AS rev FROM source_versions WHERE display_name = ? AND record_scope = ? GROUP BY material_id',
+      )
       .get(input.displayName, scope) as Row | undefined;
     const materialId = matched ? str(matched['material_id']) : newId<'material'>('mat');
     const revision = matched ? Number(matched['rev']) + 1 : 1;
@@ -129,7 +139,7 @@ export class MaterialsRepository {
           revision,
           bytes ? 'archived' : 'absent',
           bytes ? null : 'text_import',
-          bytes ? input.originalName ?? null : null,
+          bytes ? (input.originalName ?? null) : null,
           bytes ? (input.materialType === 'md' ? 'text/markdown' : 'text/plain') : null,
           sha256,
           bytes ? bytes.byteLength : null,
@@ -156,6 +166,11 @@ export class MaterialsRepository {
         );
       }
 
+      if (input.sourceExtraction && !bytes)
+        throw new StudyError('MATERIAL_RAW_UNVERIFIED', {
+          reason: 'extraction_text_archive_required',
+        });
+      new MaterialOriginalsRepository(this.db).insert(materialId, revision, input, now);
       return hooks.invalidateKnowledge(this.currentRevisions(scope), scope);
     });
 
@@ -182,7 +197,11 @@ export class MaterialsRepository {
     );
   }
 
-  getMaterial(materialId: string, revision?: number, scope: RecordScope = 'formal'): MaterialRow | null {
+  getMaterial(
+    materialId: string,
+    revision?: number,
+    scope: RecordScope = 'formal',
+  ): MaterialRow | null {
     const row = (
       revision === undefined
         ? this.db
@@ -192,7 +211,9 @@ export class MaterialsRepository {
             )
             .get(materialId, scope)
         : this.db
-            .prepare(`${MATERIAL_WITH_ARCHIVE} WHERE source.material_id = ? AND source.revision = ? AND source.record_scope = ?`)
+            .prepare(
+              `${MATERIAL_WITH_ARCHIVE} WHERE source.material_id = ? AND source.revision = ? AND source.record_scope = ?`,
+            )
             .get(materialId, revision, scope)
     ) as Row | undefined;
     if (!row) return null;
@@ -203,13 +224,17 @@ export class MaterialsRepository {
   /** 历史版本只读；范围过滤不能由已知 materialId 绕过。 */
   listMaterialVersions(materialId: string, scope: RecordScope = 'formal'): MaterialRow[] {
     const rows = this.db
-      .prepare(`${MATERIAL_WITH_ARCHIVE} WHERE source.material_id = ? AND source.record_scope = ? ORDER BY source.revision DESC`)
+      .prepare(
+        `${MATERIAL_WITH_ARCHIVE} WHERE source.material_id = ? AND source.record_scope = ? ORDER BY source.revision DESC`,
+      )
       .all(materialId, scope) as Row[];
     const references = this.referenceCounts();
-    return rows.map((row) => mapMaterial({
-      ...row,
-      referenced: references.get(`${materialId}|${num(row['revision'])}`) ?? 0,
-    }));
+    return rows.map((row) =>
+      mapMaterial({
+        ...row,
+        referenced: references.get(`${materialId}|${num(row['revision'])}`) ?? 0,
+      }),
+    );
   }
 
   /**
@@ -255,7 +280,11 @@ export class MaterialsRepository {
    * 未归档时按 `MATERIAL_RAW_ABSENT` 明确失败；读到的字节与登记摘要不符时按
    * `MATERIAL_RAW_UNVERIFIED` 失败，绝不返回无法核对的原文。
    */
-  readMaterialRaw(materialId: string, revision: number, scope: RecordScope = 'formal'): {
+  readMaterialRaw(
+    materialId: string,
+    revision: number,
+    scope: RecordScope = 'formal',
+  ): {
     archive: MaterialRawArchiveRow;
     bytes: Uint8Array;
   } {
@@ -316,14 +345,21 @@ export class MaterialsRepository {
 
   currentRevisions(scope: RecordScope = 'formal'): Record<string, number> {
     const rows = this.db
-      .prepare('SELECT material_id, MAX(revision) AS rev FROM source_versions WHERE record_scope = ? GROUP BY material_id')
+      .prepare(
+        'SELECT material_id, MAX(revision) AS rev FROM source_versions WHERE record_scope = ? GROUP BY material_id',
+      )
       .all(scope) as Row[];
     const result: Record<string, number> = {};
     for (const row of rows) result[str(row['material_id'])] = num(row['rev']);
     return result;
   }
 
-  lookupSegment(materialId: string, revision: number, segmentId: string, scope: RecordScope = 'formal') {
+  lookupSegment(
+    materialId: string,
+    revision: number,
+    segmentId: string,
+    scope: RecordScope = 'formal',
+  ) {
     const row = this.db
       .prepare(
         `SELECT segments.* FROM source_segments AS segments
@@ -351,7 +387,9 @@ export class MaterialsRepository {
     verifiedAt: string;
   } {
     const exists = this.db
-      .prepare("SELECT 1 AS ok FROM source_versions WHERE material_id = ? AND revision = ? AND record_scope = 'formal'")
+      .prepare(
+        "SELECT 1 AS ok FROM source_versions WHERE material_id = ? AND revision = ? AND record_scope = 'formal'",
+      )
       .get(input.materialId, input.revision) as Row | undefined;
     if (!exists) {
       throw new StudyError('NOT_FOUND', { materialId: input.materialId, revision: input.revision });
@@ -372,9 +410,11 @@ export class MaterialsRepository {
 
   isMaterialVerifiedAsExam(materialId: string, revision: number): boolean {
     const row = this.db
-      .prepare(`SELECT 1 AS ok FROM material_exam_verifications AS verification
+      .prepare(
+        `SELECT 1 AS ok FROM material_exam_verifications AS verification
         JOIN source_versions AS source USING (material_id, revision)
-        WHERE material_id = ? AND revision = ? AND source.record_scope = 'formal'`)
+        WHERE material_id = ? AND revision = ? AND source.record_scope = 'formal'`,
+      )
       .get(materialId, revision) as Row | undefined;
     return row !== undefined;
   }

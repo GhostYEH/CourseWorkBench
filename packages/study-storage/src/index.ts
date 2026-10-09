@@ -58,6 +58,19 @@ export { ClassroomBoardRepository } from './repositories/classroom-board';
 export type { CreateClassroomBoardInput, ReviewClassroomBoardInput, PlayClassroomBoardInput } from './repositories/classroom-board';
 export type { StartModelUsageCallInput, SettleModelUsageCallInput } from './repositories/model-usage';
 export type { SaveScenePlanInput, CreateCoursewareCandidateInput } from './repositories/lesson-scene-plan';
+export type {
+  CreateScenePlanPatchCandidateInput,
+  ScenePlanPatchReceipt,
+} from './repositories/scene-plan-patch';
+export { ProExternalTokensRepository } from './repositories/pro-external-tokens';
+export type { CreateProExternalTokenInput } from './repositories/pro-external-tokens';
+export {
+  DeploymentAccessCodeRepository,
+  DEPLOYMENT_ACCESS_TABLES,
+} from './repositories/deployment-access';
+export type { CreateDeploymentAccessCodeInput } from './repositories/deployment-access';
+export { InteractiveSnapshotRepository } from './repositories/interactive-snapshots';
+export type { InteractiveSnapshotRecord } from './repositories/interactive-snapshots';
 export { CollaborationRepository } from './repositories/collaboration';
 export type {
   AppendEventInput,

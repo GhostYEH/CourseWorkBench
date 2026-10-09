@@ -1,5 +1,22 @@
 /** Renderer HTTP responses. Types are inferred only after validating actual JSON. */
 import { z } from 'zod';
+import { mp4TaskSchema } from './mp4-export';
+import { localMediaConfigurationStatusSchema } from './local-media';
+
+export const recordingAssetSchema = z
+  .object({
+    assetId: z.string().min(1),
+    mime: z.literal('audio/wav'),
+    seconds: z.number().min(0.1).max(300),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+    byteLength: z
+      .number()
+      .int()
+      .min(46)
+      .max(16 * 1024 * 1024),
+  })
+  .strict();
+import { mediaTasksViewSchema, mediaTaskSchema } from './media-tasks';
 import { collabTeachingViewSchema, collabTeachingResultSchema } from './collaboration-teaching';
 import {
   collabTeachingAiReadViewSchema,
@@ -69,7 +86,9 @@ import {
   scenePlanReceiptSchema,
   scenePlanMergePreviewSchema,
   coursewareCandidateSchema,
+  scenePlanDraftSchema,
 } from './scene-plan';
+import { scenePlanPatchCandidateSchema, scenePlanPatchPreviewSchema } from './scene-plan-patch';
 import {
   PEER_ENGAGEMENT,
   classroomPeerScheduleSchema,
@@ -202,6 +221,12 @@ export const collabOnlineWriteSchema = z
 export type CollabOnlineWriteDto = z.infer<typeof collabOnlineWriteSchema>;
 
 export const apiResponses = {
+  mp4Tasks: z.object({ tasks: z.array(mp4TaskSchema).max(100) }).strict(),
+  mp4Task: z.object({ task: mp4TaskSchema }).strict(),
+  recordingAsset: recordingAssetSchema,
+  localMediaConfiguration: localMediaConfigurationStatusSchema,
+  mediaTasks: mediaTasksViewSchema,
+  mediaTask: z.object({ task: mediaTaskSchema }).strict(),
   learnerProfile: learnerProfileSchema,
   classroomBoardContext: z
     .object({
@@ -404,6 +429,14 @@ export const apiResponses = {
       merge: scenePlanMergePreviewSchema,
     })
     .strict(),
+  /** 场景计划持久编辑草稿（OMA-024）：工作副本，不参与教学/审核。 */
+  lessonScenePlanDraft: z
+    .object({
+      draft: scenePlanDraftSchema,
+      deduplicated: z.boolean().default(false),
+    })
+    .strict(),
+  lessonScenePlanDraftDiscard: z.object({ discarded: z.literal(true) }).strict(),
   /** 完整课件候选生成（OMA-006）：失败时 candidate 为 null，原因在 generation.message。 */
   lessonCoursewarePropose: z
     .object({
@@ -423,6 +456,33 @@ export const apiResponses = {
       candidate: coursewareCandidateSchema,
       plan: scenePlanSchema.nullable(),
       receipt: scenePlanReceiptSchema,
+      deduplicated: z.boolean(),
+    })
+    .strict(),
+  /** 受限 AI 场景计划补丁候选生成（OMA-023）：失败时 candidate 为 null。 */
+  lessonScenePlanPatchPropose: z
+    .object({
+      candidate: scenePlanPatchCandidateSchema.nullable(),
+      generation: modelGenerationResultSchema,
+      deduplicated: z.boolean(),
+    })
+    .strict(),
+  /** 受限补丁的逐项只读预览（OMA-023）：不写入计划，天然幂等。 */
+  lessonScenePlanPatchPreview: z
+    .object({
+      candidate: scenePlanPatchCandidateSchema,
+      preview: scenePlanPatchPreviewSchema,
+    })
+    .strict(),
+  /**
+   * 受限 AI 场景计划补丁处置：通过时给出写入后的计划与逐项应用结果，拒绝时为 null。
+   * `preview` 是应用（选中的）可应用操作后的计划内容与逐条结论。
+   */
+  lessonScenePlanPatchApply: z
+    .object({
+      candidate: scenePlanPatchCandidateSchema,
+      plan: scenePlanSchema.nullable(),
+      preview: scenePlanPatchPreviewSchema,
       deduplicated: z.boolean(),
     })
     .strict(),

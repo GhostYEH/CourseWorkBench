@@ -3,9 +3,10 @@ import type { ReactNode } from 'react';
 import { ExamSourceVerification } from '../../../components/exam-source-verification';
 import { MaterialImportForm } from '../../../components/material-import-form';
 import { MaterialOriginal } from '../../../components/material-original';
+import { MaterialBinaryOriginal } from '../../../components/material-binary-original';
 import { Empty } from '../../../components/ui';
 import { toMaterialDto } from '../../../lib/server/dto';
-import { assertScope,requireSession } from '../../../lib/server/service';
+import { assertScope, requireSession } from '../../../lib/server/service';
 import { readWorkbenchMaterials } from '../../../lib/server/workbench-data';
 
 export const dynamic = 'force-dynamic';
@@ -26,13 +27,20 @@ export default async function MaterialsPage({ searchParams }: PageProps): Promis
   assertScope({ projectId: session.projectId, generation: session.generation });
   const materials = readWorkbenchMaterials(session);
   const revision = query.revision === undefined ? undefined : Number(query.revision);
-  const invalidRevision = query.revision !== undefined &&
+  const invalidRevision =
+    query.revision !== undefined &&
     (!/^[1-9]\d*$/.test(query.revision) || !Number.isSafeInteger(revision) || !query.materialId);
-  const active = invalidRevision ? null : query.materialId
-    ? session.store.getMaterial(query.materialId, revision)
-    : materials[0] ?? null;
+  const active = invalidRevision
+    ? null
+    : query.materialId
+      ? session.store.getMaterial(query.materialId, revision)
+      : (materials[0] ?? null);
   const versions = active ? session.store.listMaterialVersions(active.materialId) : [];
   const segments = active ? session.store.getSegments(active.materialId, active.revision) : [];
+  const binaryOriginal = active
+    ? (session.store.readMaterialExtractionOriginal(active.materialId, active.revision)?.receipt ??
+      null)
+    : null;
 
   return (
     <div className="page-wide">
@@ -46,6 +54,13 @@ export default async function MaterialsPage({ searchParams }: PageProps): Promis
         </div>
       </div>
 
+      <div className="workflow-guide">
+        <h2>从你的教材开始</h2>
+        <p>
+          导入材料后，<Link href="/workbench/knowledge?tab=candidates">整理知识点</Link>，再
+          <Link href="/workbench/review">对照原文核对</Link>。确认的知识点会用于备考计划和课程。
+        </p>
+      </div>
       <MaterialImportForm projectId={session.projectId} generation={session.generation} />
 
       <div className="card">
@@ -69,7 +84,11 @@ export default async function MaterialsPage({ searchParams }: PageProps): Promis
             <tbody>
               {materials.map((material) => (
                 <tr key={material.materialId}>
-                  <td><Link href={sourceHref(material.materialId, material.revision)}>{material.displayName}</Link></td>
+                  <td>
+                    <Link href={sourceHref(material.materialId, material.revision)}>
+                      {material.displayName}
+                    </Link>
+                  </td>
                   <td className="mono">{material.materialType}</td>
                   <td className="mono">r{material.revision}</td>
                   <td>{material.readableLocation ?? '—'}</td>
@@ -77,7 +96,9 @@ export default async function MaterialsPage({ searchParams }: PageProps): Promis
                   <td className="mono" title={material.fingerprint}>
                     {material.fingerprint.slice(0, 12)}…
                   </td>
-                  <td className="muted mono">{material.importedAt.slice(0, 19).replace('T', ' ')}</td>
+                  <td className="muted mono">
+                    {material.importedAt.slice(0, 19).replace('T', ' ')}
+                  </td>
                   <td className="mono">{material.referencedByKnowledge} 项知识点</td>
                 </tr>
               ))}
@@ -87,7 +108,9 @@ export default async function MaterialsPage({ searchParams }: PageProps): Promis
       </div>
 
       {invalidRevision || (query.materialId && !active) ? (
-        <div className="card"><Empty>指定的材料版本不存在或版本参数无效，请从材料列表重新选择。</Empty></div>
+        <div className="card">
+          <Empty>指定的材料版本不存在或版本参数无效，请从材料列表重新选择。</Empty>
+        </div>
       ) : null}
 
       {active ? (
@@ -99,7 +122,8 @@ export default async function MaterialsPage({ searchParams }: PageProps): Promis
                 href={sourceHref(version.materialId, version.revision)}
                 aria-current={version.revision === active.revision ? 'page' : undefined}
               >
-                r{version.revision}{version.revision === versions[0]?.revision ? '（最新）' : '（历史）'}
+                r{version.revision}
+                {version.revision === versions[0]?.revision ? '（最新）' : '（历史）'}
               </Link>
             ))}
           </nav>
@@ -107,7 +131,11 @@ export default async function MaterialsPage({ searchParams }: PageProps): Promis
             保存的规范化段落 · {active.displayName} r{active.revision}
           </h2>
           <p className="muted">
-            规范化版本 {active.normalizationVersion} · 全文指纹 <span className="mono" style={{ overflowWrap: 'anywhere' }}>{active.fingerprint}</span>。
+            规范化版本 {active.normalizationVersion} · 全文指纹{' '}
+            <span className="mono" style={{ overflowWrap: 'anywhere' }}>
+              {active.fingerprint}
+            </span>
+            。
             {active.rawArchive.state === 'archived'
               ? ` 原始文件已归档：${active.rawArchive.originalName ?? '未登记文件名'} · ${active.rawArchive.byteLength} 字节 · SHA-256 ${active.rawArchive.sha256.slice(0, 12)}…；下方段落与归档原文同属一个版本。`
               : active.rawArchive.reason === 'text_import'
@@ -125,6 +153,14 @@ export default async function MaterialsPage({ searchParams }: PageProps): Promis
             revision={active.revision}
             segmentId={query.segment}
           />
+          {binaryOriginal ? (
+            <MaterialBinaryOriginal
+              key={`${active.materialId}:${active.revision}`}
+              projectId={session.projectId}
+              generation={session.generation}
+              receipt={binaryOriginal}
+            />
+          ) : null}
           <ExamSourceVerification
             key={`${active.materialId}-r${active.revision}-exam`}
             projectId={session.projectId}
@@ -132,10 +168,17 @@ export default async function MaterialsPage({ searchParams }: PageProps): Promis
             material={toMaterialDto(active)}
           />
           {segments.map((segment) => (
-            <div key={segment.segmentId} id={`source-${segment.segmentId}`} style={{ scrollMarginTop: 'var(--sew-space-6)' }}>
+            <div
+              key={segment.segmentId}
+              id={`source-${segment.segmentId}`}
+              style={{ scrollMarginTop: 'var(--sew-space-6)' }}
+            >
               <p className="muted mono">
-                <Link href={sourceHref(active.materialId, active.revision, segment.segmentId)}>{segment.segmentId}</Link>
-                {' · '}<span title={segment.fingerprint}>{segment.fingerprint.slice(0, 12)}…</span>
+                <Link href={sourceHref(active.materialId, active.revision, segment.segmentId)}>
+                  {segment.segmentId}
+                </Link>
+                {' · '}
+                <span title={segment.fingerprint}>{segment.fingerprint.slice(0, 12)}…</span>
                 {segment.rawLineStart !== null && segment.rawLineEnd !== null
                   ? ` · 原文第 ${segment.rawLineStart}–${segment.rawLineEnd} 行`
                   : ''}

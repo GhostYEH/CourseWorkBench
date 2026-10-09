@@ -14,7 +14,13 @@ body {
 body {
   background: var(--sew-surface-app);
   color: var(--sew-text-primary);
-  font-family: system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans SC',
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'Microsoft YaHei',
+    'PingFang SC',
+    'Noto Sans SC',
     sans-serif;
   font-size: var(--sew-ui-font-size);
   line-height: 1.5;
@@ -756,6 +762,67 @@ tbody tr:hover {
   overflow: auto;
 }
 
+.classroom[data-roles-open='false'] .classroom-roles {
+  display: none;
+}
+
+.classroom[data-immersive='true'] {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--sew-surface-app);
+}
+
+.classroom[data-immersive='true'] > .shell-top,
+.classroom[data-immersive='true'] > .shell-status {
+  display: none;
+}
+
+.classroom[data-immersive='true'] .classroom-main {
+  min-height: 0;
+  height: 100%;
+}
+
+.classroom[data-immersive='true'] .classroom-stage {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  padding: clamp(12px, 2vw, 28px);
+}
+
+.classroom[data-immersive='true'] .classroom-roles[data-roles-open='true'] {
+  display: block;
+  position: absolute;
+  z-index: 2;
+  inset: 0 0 0 auto;
+  width: min(360px, 92vw);
+  max-height: 100%;
+  box-shadow: -12px 0 32px rgb(0 0 0 / 20%);
+}
+
+@media (max-width: 720px) {
+  .classroom:not([data-immersive='true']) .classroom-main {
+    flex-direction: column;
+    overflow: auto;
+  }
+
+  .classroom:not([data-immersive='true']) .classroom-roles {
+    width: auto;
+    border-left: 0;
+    border-top: 1px solid var(--sew-border-divider);
+  }
+
+  .classroom[data-immersive='true'] .classroom-roles[data-roles-open='true'] {
+    inset: auto 0 0;
+    width: 100%;
+    max-height: min(70dvh, 680px);
+    box-shadow: 0 -12px 32px rgb(0 0 0 / 20%);
+  }
+}
+
 .role-card {
   border: 1px solid var(--sew-border-divider);
   border-radius: var(--sew-card-radius);
@@ -823,5 +890,212 @@ tbody tr:hover {
   .page,
   .page-wide {
     padding: var(--sew-space-4);
+  }
+}
+
+/* 以备考任务为中心的首页 */
+.study-home {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 40px 40px 32px;
+}
+.study-hero {
+  max-width: 800px;
+  margin: 0 auto 32px;
+}
+.study-hero h1 {
+  font-size: clamp(26px, 3vw, 38px);
+  line-height: 1.3;
+  margin: 12px 0;
+  letter-spacing: -0.025em;
+}
+.study-eyebrow {
+  color: var(--sew-action-accent);
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.study-composer {
+  background: var(--sew-surface-document);
+  border: 1px solid var(--sew-border-divider);
+  border-radius: 16px;
+  padding: 24px;
+  margin-top: 24px;
+}
+.study-composer textarea {
+  width: 100%;
+  resize: vertical;
+}
+.study-composer .row-inline {
+  align-items: end;
+  flex-wrap: wrap;
+}
+.study-composer .row-inline .field {
+  flex: 1 1 140px;
+}
+.study-goal-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding-top: 16px;
+}
+.study-goal-summary p {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 17px;
+}
+.study-next {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--sew-surface-document);
+  border: 1px solid var(--sew-border-divider);
+  border-left: 4px solid var(--sew-action-accent);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+.study-next h2 {
+  margin: 0;
+}
+.study-next p:last-child {
+  margin-bottom: 0;
+}
+.study-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.study-action-card {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  color: var(--sew-text-primary);
+  text-decoration: none;
+  border: 1px solid var(--sew-border-divider);
+  background: var(--sew-surface-document);
+  border-radius: 12px;
+  padding: 24px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.study-action-card:hover {
+  border-color: var(--sew-action-accent);
+}
+.study-action-card > span {
+  color: var(--sew-text-muted);
+  font-size: 12px;
+}
+.study-action-card h2,
+.study-action-card h3 {
+  margin: 16px 0 8px;
+}
+.study-action-card p {
+  margin: 0 0 20px;
+  color: var(--sew-text-secondary);
+  flex: 1;
+}
+.study-action-card strong {
+  color: var(--sew-action-accent);
+  font-size: 13px;
+}
+.study-course-section {
+  margin-top: 32px;
+}
+.study-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+  padding: 20px 0;
+  border-top: 1px solid var(--sew-border-divider);
+}
+.study-space-menu {
+  position: relative;
+}
+.study-space-menu summary {
+  list-style: none;
+}
+.study-space-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: min(420px, 85vw);
+  background: var(--sew-surface-document);
+  border: 1px solid var(--sew-border-divider);
+  border-radius: 8px;
+  padding: 16px;
+  z-index: 20;
+  box-shadow: 0 8px 24px #0002;
+}
+.study-space-popover .row-inline {
+  flex-wrap: wrap;
+}
+.workflow-guide {
+  padding: 16px 24px;
+  border-left: 3px solid var(--sew-action-accent);
+  background: var(--sew-surface-document);
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+.workflow-guide ol {
+  margin-bottom: 0;
+  padding-left: 20px;
+}
+.advanced-tools {
+  margin: 24px 0;
+  border-top: 1px solid var(--sew-border-divider);
+  padding-top: 16px;
+}
+.advanced-tools > summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+@media (max-width: 1000px) {
+  .study-home {
+    padding: 24px;
+  }
+  .study-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .top-actions {
+    gap: 4px;
+  }
+  .top-project {
+    display: none;
+  }
+}
+@media (max-width: 700px) {
+  .shell-top {
+    height: auto;
+    min-height: var(--sew-titlebar-height);
+    flex-wrap: wrap;
+    padding: 8px 12px;
+  }
+  .top-actions {
+    flex-wrap: wrap;
+    margin-left: 0;
+  }
+  .study-home {
+    padding: 20px 16px;
+  }
+  .study-actions {
+    grid-template-columns: 1fr;
+  }
+  .study-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .study-next {
+    flex-direction: column;
+    align-items: start;
+  }
+  .study-composer {
+    padding: 16px;
+  }
+  .study-hero {
+    margin-bottom: 24px;
   }
 }

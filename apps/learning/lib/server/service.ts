@@ -7,14 +7,19 @@
  */
 
 import {
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
+  lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   realpathSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import {
   GENERATED_ID_PATTERN,
   MAX_MATERIAL_BYTES,
@@ -314,6 +319,66 @@ export const readAuthorizedFile = (
       { reason: 'invalid_utf8' },
       '材料不是有效的 UTF-8 文本，请转换编码后重新导入',
     );
+  }
+};
+
+/**
+ * Read an explicitly selected supported document as bounded opaque bytes.
+ * Unlike `readAuthorizedFile`, this does not decode or interpret user content.
+ */
+export const readAuthorizedDocumentBytes = (
+  session: Session,
+  filePath: string,
+): { bytes: Uint8Array; originalName: string; extension: string } => {
+  if (holder.current !== session || holder.current.generation !== session.generation) {
+    throw new StudyError('PROJECT_GENERATION_STALE', {
+      expected: holder.current?.generation ?? null,
+      received: session.generation,
+    });
+  }
+  const canonical = canonicalPath(filePath);
+  const extension = extname(canonical ?? '')
+    .slice(1)
+    .toLowerCase();
+  if (
+    !canonical ||
+    !['pdf', 'docx', 'pptx', 'xlsx'].includes(extension) ||
+    !isAuthorizedPath(canonical)
+  )
+    throw new StudyError('PROJECT_NOT_AUTHORIZED', {
+      reason: 'document_path_not_authorized_or_unsupported',
+    });
+
+  let descriptor: number | null = null;
+  try {
+    const before = lstatSync(/* turbopackIgnore: true */ canonical);
+    if (!before.isFile() || before.isSymbolicLink())
+      throw new StudyError('MATERIAL_NOT_FOUND', { reason: 'not_a_regular_file' });
+    assertMaterialSize(before.size);
+    descriptor = openSync(
+      /* turbopackIgnore: true */ canonical,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+    );
+    const opened = fstatSync(descriptor);
+    const resolvedAfterOpen = canonicalPath(filePath);
+    if (
+      !opened.isFile() ||
+      opened.size !== before.size ||
+      !resolvedAfterOpen ||
+      resolvedAfterOpen !== canonical
+    )
+      throw new StudyError('MATERIAL_NOT_FOUND', { reason: 'document_changed_during_open' });
+    const bytes = readFileSync(descriptor);
+    const afterRead = fstatSync(descriptor);
+    if (bytes.byteLength !== opened.size || afterRead.size !== opened.size)
+      throw new StudyError('MATERIAL_NOT_FOUND', { reason: 'document_changed_during_read' });
+    assertMaterialSize(bytes.byteLength);
+    return { bytes: new Uint8Array(bytes), originalName: basename(canonical), extension };
+  } catch (error) {
+    if (error instanceof StudyError) throw error;
+    throw new StudyError('MATERIAL_NOT_FOUND', { reason: 'document_read_failed' });
+  } finally {
+    if (descriptor !== null) closeSync(descriptor);
   }
 };
 

@@ -252,6 +252,7 @@ export const generateCourseware = async (
       let outcome: ModelGenerateOutcome;
       try {
         outcome = await deps.connection.generate(messages, {
+          route: 'courseware',
           maxTokens: reservation.maxTokens,
           signal: controller.signal,
         });
@@ -467,6 +468,7 @@ export const generateCourseware = async (
         try {
           return store.transaction(() => {
             checkFacts();
+            deps.verifyExecutionLease?.();
             const saved = store.createCoursewareCandidate({
               candidateId: created.candidateId,
               projectId,

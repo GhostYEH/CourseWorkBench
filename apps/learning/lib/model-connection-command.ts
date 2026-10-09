@@ -49,12 +49,13 @@ export const runModelConnectionCommand = async (
     if (!dependencies.isCurrent()) return undefined;
     const observed = await readStatus(dependencies.refresh);
     if (!dependencies.isCurrent()) return undefined;
-    const expectedBaseUrl = normalizeBaseUrl(command.input.baseUrl);
+    const expectedBaseUrl = command.input.baseUrl ? normalizeBaseUrl(command.input.baseUrl) : null;
     const observedBaseUrl = observed?.baseUrl ? normalizeBaseUrl(observed.baseUrl) : null;
     const status =
       observed?.configured &&
-      expectedBaseUrl !== null &&
-      observedBaseUrl === expectedBaseUrl &&
+      (expectedBaseUrl === null
+        ? observed?.provider === command.input.provider
+        : observedBaseUrl === expectedBaseUrl && observed?.provider === command.input.provider) &&
       observed.model === command.input.model
         ? observed
         : null;

@@ -8,6 +8,7 @@ apps/desktop/release/
 *.tsbuildinfo
 .turbo/
 coverage/
+output/
 tmp/
 .playwright-mcp/
 .workbuddy/

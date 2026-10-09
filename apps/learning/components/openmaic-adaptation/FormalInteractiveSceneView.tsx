@@ -22,6 +22,9 @@ function FormalInteractiveSceneContent({
   const [to, setTo] = useState('');
   /** 本人给出的排序（`ordering` 定义）；服务端核验是否与冻结的正确顺序一致。 */
   const [order, setOrder] = useState<string[]>([]);
+  /** 步骤技能（`procedural_skill`）：按执行顺序记录「步骤 + 该步所用工具」。 */
+  const [executed, setExecuted] = useState<Array<{ stepId: string; toolId: string }>>([]);
+  const [stepTool, setStepTool] = useState<Record<string, string>>({});
   const [explanation, setExplanation] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -83,6 +86,15 @@ function FormalInteractiveSceneContent({
               ? values.to
               : (loaded.definition.nodes[0]?.id ?? ''),
           );
+        } else if (loaded.definition.kind === 'procedural_skill') {
+          // 只恢复本人已给出的执行序列与每步工具；候选呈现顺序不自动成为本人答案。
+          const saved = values?.kind === 'procedural_skill' ? values.executed : null;
+          setExecuted(
+            saved ? saved.map((item) => ({ stepId: item.stepId, toolId: item.toolId })) : [],
+          );
+          setStepTool(
+            saved ? Object.fromEntries(saved.map((item) => [item.stepId, item.toolId])) : {},
+          );
         } else {
           // 只恢复本人已给出的排列，候选呈现顺序不自动成为本人答案。
           const saved = values?.kind === 'ordering' ? values.order : null;
@@ -137,13 +149,21 @@ function FormalInteractiveSceneContent({
             }
           : current.kind === 'concept_relation'
             ? { kind: 'concept_relation' as const, edgeId, to, explanation }
-            : { kind: 'ordering' as const, order, explanation };
+            : current.kind === 'procedural_skill'
+              ? { kind: 'procedural_skill' as const, executed, explanation }
+              : { kind: 'ordering' as const, order, explanation };
       if (
         current.kind === 'ordering' &&
         values.kind === 'ordering' &&
         values.order.length !== current.items.length
       )
         throw new Error('请先逐项选择全部候选，给出本人的完整排序。');
+      if (
+        current.kind === 'procedural_skill' &&
+        values.kind === 'procedural_skill' &&
+        values.executed.length !== current.steps.length
+      )
+        throw new Error('请按顺序完成全部步骤并选择每步所用工具后再提交。');
       if (
         values.kind === 'parameter' &&
         (!a.trim() || !x.trim() || !Number.isFinite(values.a) || !Number.isFinite(values.x))
@@ -399,6 +419,113 @@ function FormalInteractiveSceneContent({
                 </button>
               </li>
             ))}
+          </ol>
+        </>
+      ) : definition?.kind === 'procedural_skill' ? (
+        <>
+          <p>
+            任务：{definition.task}（工序类型：{definition.procedureType}
+            ）。请按正确顺序执行步骤，并为每一步选择所用工具。 来源陈述：
+            {definition.statementIds.join('、')}
+          </p>
+          <div data-formal-procedure-candidates>
+            {definition.steps
+              .filter((step) => !executed.some((item) => item.stepId === step.id))
+              .map((step) => (
+                <button
+                  key={step.id}
+                  type="button"
+                  className="btn"
+                  disabled={busy}
+                  data-formal-procedure-add={step.id}
+                  onClick={() =>
+                    setExecuted((current) =>
+                      current.some((item) => item.stepId === step.id)
+                        ? current
+                        : [...current, { stepId: step.id, toolId: stepTool[step.id] ?? '' }],
+                    )
+                  }
+                >
+                  执行：{step.label}
+                </button>
+              ))}
+          </div>
+          <ol className="check-list" data-formal-procedure>
+            {executed.map((item, index) => {
+              const step = definition.steps.find((candidate) => candidate.id === item.stepId)!;
+              return (
+                <li key={item.stepId} data-formal-procedure-step={item.stepId}>
+                  <span>
+                    {index + 1}. {step.label}
+                  </span>
+                  <label>
+                    工具
+                    <select
+                      data-formal-procedure-tool={item.stepId}
+                      value={item.toolId}
+                      disabled={busy}
+                      onChange={(e) =>
+                        setExecuted((current) =>
+                          current.map((entry) =>
+                            entry.stepId === item.stepId
+                              ? { ...entry, toolId: e.target.value }
+                              : entry,
+                          ),
+                        )
+                      }
+                    >
+                      <option value="">请选择工具</option>
+                      {definition.tools.map((tool) => (
+                        <option key={tool.id} value={tool.id}>
+                          {tool.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <span className="muted">判据：{step.successCriteria}</span>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={busy || index === 0}
+                    onClick={() =>
+                      setExecuted((current) => {
+                        const next = [...current];
+                        [next[index - 1], next[index]] = [next[index]!, next[index - 1]!];
+                        return next;
+                      })
+                    }
+                  >
+                    上移
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={busy || index === executed.length - 1}
+                    onClick={() =>
+                      setExecuted((current) => {
+                        const next = [...current];
+                        [next[index], next[index + 1]] = [next[index + 1]!, next[index]!];
+                        return next;
+                      })
+                    }
+                  >
+                    下移
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={busy}
+                    onClick={() =>
+                      setExecuted((current) =>
+                        current.filter((entry) => entry.stepId !== item.stepId),
+                      )
+                    }
+                  >
+                    撤销该步
+                  </button>
+                </li>
+              );
+            })}
           </ol>
         </>
       ) : null}

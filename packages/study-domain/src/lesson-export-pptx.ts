@@ -765,6 +765,8 @@ const buildSlide = (scene: PlanSceneDto, index: number, context: SlideContext): 
       readonly fontSize: number;
       readonly color: string;
       readonly align: 'left' | 'center' | 'right';
+      readonly bold?: boolean;
+      readonly italic?: boolean;
     },
     frame: PptxFrame,
     textRole: PptxTextRole,
@@ -774,8 +776,8 @@ const buildSlide = (scene: PlanSceneDto, index: number, context: SlideContext): 
       sizeCentipoints: pptxCentipointsFromPixels(style.fontSize, context.scale),
       color: style.color,
       fontName: context.theme.fontName,
-      bold: false,
-      italic: false,
+      bold: style.bold ?? false,
+      italic: style.italic ?? false,
     };
     const formula = wholeTextFormula(text);
     if (formula) {
@@ -867,7 +869,10 @@ const buildSlide = (scene: PlanSceneDto, index: number, context: SlideContext): 
 
   if (scene.kind === 'slide') {
     pushTitle();
-    for (const element of scene.elements) {
+    // Empty plan elements are a skeleton: the reviewed document contains its actual frozen body.
+    for (const element of scene.elements.length
+      ? scene.elements
+      : documentSlideElements(context.documentContent)) {
       if (element.kind !== 'image' && richTextToPlainText(element.text).trim().length === 0) {
         // 计划里允许存在空正文元素：它不承载内容，因此既不算丢失也不算未表示。
         continue;
@@ -938,6 +943,8 @@ const buildSlide = (scene: PlanSceneDto, index: number, context: SlideContext): 
           fontSize: element.style.fontSize,
           color: element.style.color,
           align: element.style.align,
+          bold: element.style.bold,
+          italic: element.style.italic,
         },
         frame,
         'body',
@@ -986,12 +993,12 @@ const buildSlide = (scene: PlanSceneDto, index: number, context: SlideContext): 
       reason:
         scene.kind === 'interactive'
           ? '互动场景依赖课堂宿主，PowerPoint 版本不含互动运行'
-          : 'PBL 场景仍为设计态骨架，完整内容生成尚未实现',
+          : 'PBL 公开项目设计为只读投影，PowerPoint 不含提交、导师与评价运行',
     });
     const notice =
       scene.kind === 'interactive'
         ? '（互动场景：请在课堂中打开；本节 PowerPoint 幻灯片不含互动运行内容。）'
-        : '（PBL 场景：内容尚未生成，此为可编辑占位说明。）';
+        : '（PBL 场景：项目设计为只读投影；提交、导师与评价请在课堂中打开。）';
     pushText(
       notice,
       { fontSize: 16, color: context.theme.fontColor, align: 'left' },
@@ -999,6 +1006,25 @@ const buildSlide = (scene: PlanSceneDto, index: number, context: SlideContext): 
       'note',
       null,
     );
+    if (scene.kind === 'pbl') {
+      const content = context.documentContent as {
+        projectV2?: { description?: unknown; learningObjective?: unknown };
+      } | null;
+      const project = content?.projectV2;
+      const text = [project?.description, project?.learningObjective]
+        .filter((value): value is string => typeof value === 'string' && value.length > 0)
+        .join('\n\n');
+      if (text) {
+        sourceChars += richTextToPlainText(text).length;
+        pushText(
+          text,
+          { fontSize: 16, color: context.theme.fontColor, align: 'left' },
+          fractionFrame(0.06, 0.5, 0.88, 0.44),
+          'body',
+          scene.sceneId,
+        );
+      }
+    }
   }
 
   shapes.push(...documentStructures(scene, context, nextShapeId));
@@ -1020,6 +1046,47 @@ const buildSlide = (scene: PlanSceneDto, index: number, context: SlideContext): 
       droppedElements: dropped,
     },
   };
+};
+
+/** Only the reviewed document's public text/image fields become editable body elements. */
+const documentSlideElements = (content: unknown): PlanSceneDto['elements'] => {
+  const elements = (content as { canvas?: { elements?: unknown } } | null)?.canvas?.elements;
+  if (!Array.isArray(elements)) return [];
+  return elements.flatMap((raw, index): PlanSceneDto['elements'] => {
+    if (!raw || typeof raw !== 'object') return [];
+    const item = raw as Record<string, unknown>;
+    if (item['type'] !== 'text' && item['type'] !== 'image') return [];
+    const text =
+      item['type'] === 'text' && typeof item['content'] === 'string' ? item['content'] : '';
+    const css = text.match(/<p\b[^>]*style="([^"]*)"/i)?.[1] ?? '';
+    const number = (key: string, fallback: number): number =>
+      typeof item[key] === 'number' && Number.isFinite(item[key])
+        ? (item[key] as number)
+        : fallback;
+    const align = css.match(/text-align:\s*(left|center|right)/)?.[1];
+    return [
+      {
+        elementId: typeof item['id'] === 'string' ? item['id'] : `document_element_${index}`,
+        kind: item['type'] === 'image' ? 'image' : 'text',
+        text: text
+          .replace(/<p\b[^>]*>/gi, '')
+          .replace(/<\/p>/gi, '\n')
+          .trimEnd(),
+        assetRef: item['type'] === 'image' && typeof item['src'] === 'string' ? item['src'] : null,
+        left: number('left', 0),
+        top: number('top', 0),
+        width: number('width', 200),
+        height: number('height', 100),
+        style: {
+          fontSize: Number(css.match(/font-size:\s*(\d+)px/)?.[1] ?? 20),
+          color: css.match(/color:\s*(#[0-9a-f]{6})/i)?.[1] ?? '#232323',
+          bold: /font-weight:\s*(700|bold)/.test(css),
+          italic: /font-style:\s*italic/.test(css),
+          align: align === 'center' || align === 'right' ? align : 'left',
+        },
+      },
+    ];
+  });
 };
 
 /** 只投影「题干 + 选项文字」：`answer`/`analysis`/`points` 在类型层面就未被读取。 */

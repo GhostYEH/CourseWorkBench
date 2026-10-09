@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { TeachingSettings } from '../../../components/appearance-settings';
 import { AssetReclaim } from '../../../components/asset-reclaim';
+import { DeploymentAccessCodes } from '../../../components/deployment-access-codes';
 import { ModelConnectionSettings } from '../../../components/model-connection-settings';
 import { ModelUsagePanel } from '../../../components/model-usage-panel';
 import { ProjectSettingsForm } from '../../../components/project-settings-form';
@@ -89,6 +90,10 @@ export default function SettingsPage(): ReactNode {
       />
 
       <AssetReclaim projectId={session.projectId} generation={session.generation} />
+
+      <DeploymentAccessCodes
+        scope={{ projectId: session.projectId, generation: session.generation }}
+      />
     </div>
   );
 }

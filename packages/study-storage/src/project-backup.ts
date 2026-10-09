@@ -350,6 +350,29 @@ const inspectDatabase = (
     )) {
       blobDigest(db, 'classroom_assets', 'bytes', Number(row['rowid']), String(row['sha256']));
     }
+    if (tableExists(db, 'mp4_export_segments')) {
+      for (const row of boundedRows(
+        db,
+        'mp4_export_segments',
+        'SELECT rowid,sha256 FROM mp4_export_segments',
+      ))
+        blobDigest(db, 'mp4_export_segments', 'bytes', Number(row['rowid']), String(row['sha256']));
+    }
+    if (tableExists(db, 'material_extraction_originals')) {
+      for (const row of boundedRows(
+        db,
+        'material_extraction_originals',
+        'SELECT rowid,source_sha256,source_byte_length FROM material_extraction_originals',
+      ))
+        blobDigest(
+          db,
+          'material_extraction_originals',
+          'source_bytes',
+          Number(row['rowid']),
+          String(row['source_sha256']),
+          Number(row['source_byte_length']),
+        );
+    }
     if (tableExists(db, 'classroom_rooms')) {
       const roomDigests = new Map<string, { sha256: string; byteLength: number }>();
       for (const room of boundedRows(

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedOn": "2026-10-08",
+  "recordedOn": "2026-10-09",
   "baseline": {
     "root": "F:/file/OpenMAIC-main",
     "version": "1.1.1",
@@ -24,11 +24,7 @@
       "required": true,
       "status": "partial",
       "phase": "F",
-      "upstreamPaths": [
-        "app/api/stages",
-        "app/api/folders",
-        "lib/persistence/library.ts"
-      ],
+      "upstreamPaths": ["app/api/stages", "app/api/folders", "lib/persistence/library.ts"],
       "acceptance": "可列出并打开项目课程，显示真实场景和资源状态",
       "evidence": [
         "课程库浏览已落地（OMA-001）：apps/learning/app/workbench/library/page.tsx 读取项目分区权威存储（store.listClassroomDocuments + listClassroomSceneSources + listClassroomAssetBindings），列出文档名称/编号、正式或演示范围、场景数与来源/资源绑定数，并可从文档进入已发布课堂；搜索/筛选按名称/描述/编号缩小列表（apps/learning/lib/document-library.ts 的 groupLibraryDocuments/filterLibraryGroups 为纯函数）。tests/lesson-library-page.test.ts 覆盖分组/筛选与页面呈现；页面读取不产生组织写入。仍缺跨项目/全局课程库与发布访问状态（OMA-003），故为 partial。"
@@ -41,11 +37,7 @@
       "required": true,
       "status": "partial",
       "phase": "F",
-      "upstreamPaths": [
-        "app/api/stages",
-        "app/api/folders",
-        "lib/persistence/library.ts"
-      ],
+      "upstreamPaths": ["app/api/stages", "app/api/folders", "lib/persistence/library.ts"],
       "acceptance": "文件夹创建重命名删除、课程归档和空文件夹可重启读回",
       "evidence": [
         "SQLite schema v8 和 /api/folders 支持项目分区创建、重命名、成员归组/取消分组与 ungroup 删除，tests/classroom-document-organization.test.ts 回归通过；remove 级联删除明确拒绝。",
@@ -57,22 +49,20 @@
       "category": "library",
       "name": "课程发布/撤回与访问状态",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "F",
-      "upstreamPaths": [
-        "app/api/stages",
-        "app/api/folders",
-        "lib/persistence/library.ts"
-      ],
+      "upstreamPaths": ["app/api/stages", "app/api/folders", "lib/persistence/library.ts"],
       "acceptance": "发布版本冻结，撤回后访问规则生效且保留历史",
-      "evidence": []
+      "evidence": [
+        "源码核对已存在项目内课程发布/撤回与 published/withdrawn 状态；仍缺完整成员/访问及跨项目状态，纠正原 planned 为 partial。"
+      ]
     },
     {
       "id": "OMA-004",
       "category": "generation",
       "name": "主题与资料创建课程",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "B",
       "upstreamPaths": [
         "app/api/generate-classroom",
@@ -80,7 +70,9 @@
         "lib/server/scene-generation.ts"
       ],
       "acceptance": "相同来源包生成可追踪草案，缺资料明确阻断",
-      "evidence": []
+      "evidence": [
+        "2026-10-08 交接核对：课程页接入 generation-pipeline-panel 和 lesson-generation-pipeline 服务：冻结证据包来源门禁、内容草案待核、人工创建课程、大纲、课件及教学配置分阶段执行。仍需全流程产品/恢复与真实provider验收。"
+      ]
     },
     {
       "id": "OMA-005",
@@ -100,7 +92,8 @@
         "陈述正文级改写闭环已落地（LESSON-02）：模型候选经 apps/learning/lib/server/lesson-revision-model.ts 复用来源/run/预算/取消守卫生成，只落待核区（lesson_statement_revisions）；人工通过后 store.applyStatementRevision 在事务内按知识点已批准证据重新冻结证据包并追加新草案版本，来源与知识点沿用原陈述、正文变化得到新 statementId，且只替换目标场景、不回加基线已排除的场景；旧版本与旧证据包保持不变（tests/lesson-statement-revision.test.ts、tests/lesson-revision-http.test.ts、tests/lesson-review-page.test.ts）。候选生成与课程派生都按 requestId 幂等。",
         "模型完整课件计划生成已落地（LESSON-02 / OMA-006）：apps/learning/lib/server/lesson-courseware-model.ts 复用来源/run/预算/取消守卫生成整份场景计划，只落待核区（lesson_courseware_candidates）；人工通过才写成该草案版本的场景计划（lesson_scene_plans），场景编号、知识点与来源由服务端从冻结证据包沿用并复验（tests/lesson-courseware-model.test.ts、tests/lesson-scene-plan-http.test.ts）。",
         "仍待做的是更完整的课件编辑（元素属性/样式/富文本的完整可视化编辑器与局部模型重生成）与资产生成，故为 partial 而不是完成（OMA-021/022）。",
-        "跨版本计划差异与合并预览已落地（LESSON-02 / OMA-005、OMA-022）：packages/study-domain/src/scene-plan.ts 的 diffScenePlans 按稳定 sceneId 分类增/删/改/序，mergeScenePlans 做三向合并（只安全应用「来源改了、目标没动」的改动，两侧都改/换种类/删改冲突一律保留目标内容并如实报告），outlineOrderedScenes 按整课大纲对齐并报告缺口。apps/learning/lib/server/lesson-service.ts 的 merge-scene-plans 是**只读**预览（不写入计划、天然幂等），写回仍走 save-scene-plan（乐观并发 + 事务内回执），界面入口 apps/learning/components/lesson-scene-plan-merge.tsx。tests/lesson-scene-plan-merge.test.ts 10 项覆盖纯函数分类、冲突保留目标、预览不写库与写回重放。"
+        "跨版本计划差异与合并预览已落地（LESSON-02 / OMA-005、OMA-022）：packages/study-domain/src/scene-plan.ts 的 diffScenePlans 按稳定 sceneId 分类增/删/改/序，mergeScenePlans 做三向合并（只安全应用「来源改了、目标没动」的改动，两侧都改/换种类/删改冲突一律保留目标内容并如实报告），outlineOrderedScenes 按整课大纲对齐并报告缺口。apps/learning/lib/server/lesson-service.ts 的 merge-scene-plans 是**只读**预览（不写入计划、天然幂等），写回仍走 save-scene-plan（乐观并发 + 事务内回执），界面入口 apps/learning/components/lesson-scene-plan-merge.tsx。tests/lesson-scene-plan-merge.test.ts 10 项覆盖纯函数分类、冲突保留目标、预览不写库与写回重放。",
+        "2026-10-08 交接核对：大纲候选使用严格JSON及冻结source IDs，人工采用通过scene-plan revision/nonce保存；课程内容草案需审核才创建版本。仍需完整阶段消费者/断点矩阵。"
       ]
     },
     {
@@ -119,7 +112,8 @@
       "evidence": [
         "ANSWER-01 子包已从课程版本选中的冻结证据装配幻灯片及单选/多选/简答测验，真实 DSL 校验、24 场景上限及来源绑定由 tests/formal-quiz-submission.test.ts 覆盖。",
         "模型完整课件计划生成已落地（LESSON-02 / OMA-006）：apps/learning/lib/server/lesson-courseware-model.ts 复用来源/run/预算/取消守卫，模型只决定讲哪些已选陈述/题目、按什么顺序、每个场景怎么写；场景编号、知识点与来源由服务端从冻结证据包沿用并在落库前用 assertPlanGrounded 复验，产物只落待核区（lesson_courseware_candidates），人工通过才写成场景计划（lesson_scene_plans）。apps/learning/lib/classroom/planned-lesson-document.ts 按计划装配幻灯片/测验/互动/PBL 四类场景并通过真实 DSL 校验，同一份（证据包+计划）得到同一指纹（tests/lesson-courseware-model.test.ts、tests/lesson-scene-plan.test.ts、tests/lesson-scene-plan-http.test.ts）。",
-        "仍缺资产生成（图片/媒体由模型产出并落库）与互动/PBL 的完整内容生成，故为 partial 而不是完成（PBL 执行另由 OMA-046…049 跟踪）。"
+        "仍缺资产生成（图片/媒体由模型产出并落库）与互动/PBL 的完整内容生成，故为 partial 而不是完成（PBL 执行另由 OMA-046…049 跟踪）。",
+        "2026-10-08 交接核对：完整课件候选复用既有 guarded courseware 模型与人工审核；阶段持久任务不会自动发布。仍需全部对象/资源与批量渐进生成产品。"
       ]
     },
     {
@@ -127,7 +121,7 @@
       "category": "generation",
       "name": "授课动作和角色档案生成",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "B",
       "upstreamPaths": [
         "app/api/generate-classroom",
@@ -135,14 +129,16 @@
         "lib/server/scene-generation.ts"
       ],
       "acceptance": "动作与角色真实产生且受权限/证据检查",
-      "evidence": []
+      "evidence": [
+        "2026-10-08 交接核对：教师/同学角色与教学配置作为待核候选，人工采用事务内复验roleConfigDigest/preferenceVersion并派生权限，动作仅作有界提示文本。尚非完整运行时动作生成。"
+      ]
     },
     {
       "id": "OMA-008",
       "category": "generation",
       "name": "渐进生成、停止、局部重试与继续",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "B",
       "upstreamPaths": [
         "app/api/generate-classroom",
@@ -150,14 +146,16 @@
         "lib/server/scene-generation.ts"
       ],
       "acceptance": "失败重试不重复文档/资产，停止后无新提交",
-      "evidence": []
+      "evidence": [
+        "2026-10-08 交接核对：冻结材料的生成pipeline已有独立阶段、显式继续/停止/新nonce重试；恢复与停止读写在SQLite事务内，lease fencing约束晚响应。仍需全部阶段渐进消费者和完整故障矩阵。"
+      ]
     },
     {
       "id": "OMA-009",
       "category": "generation",
       "name": "图片/视频/音频媒体任务编排",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "B",
       "upstreamPaths": [
         "app/api/generate-classroom",
@@ -165,14 +163,16 @@
         "lib/server/scene-generation.ts"
       ],
       "acceptance": "进度来自真实任务，错误可见，资源完成后持久绑定",
-      "evidence": []
+      "evidence": [
+        "media-generation-panel、media-service 与 model-connection 已有真实图像/视频/TTS/ASR 请求、持久候选及审核消费；本地 ComfyUI/Whisper/FunASR 已接线，专项测试38项通过，真实本地引擎及完整 provider/音色/同步未验收。"
+      ]
     },
     {
       "id": "OMA-010",
       "category": "pro_runtime",
       "name": "Pro对话式课程规划与修改",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "D",
       "upstreamPaths": [
         "lib/server/agent-runtime",
@@ -181,14 +181,16 @@
         "skills/agent-runtime"
       ],
       "acceptance": "多轮会话能建立、修订课程并展示真实结果",
-      "evidence": []
+      "evidence": [
+        "2026-10-08 交接核对：Pro 本机同源页面/路由和owner-private SQLite持久消息已接通；成功多轮、nonce replay、实际台账和取消late响应有 controlled-provider service测试。尚缺完整后台任务/外部权限和产品恢复。"
+      ]
     },
     {
       "id": "OMA-011",
       "category": "pro_runtime",
       "name": "工作台直接挂载真实课堂",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "D",
       "upstreamPaths": [
         "lib/server/agent-runtime",
@@ -197,14 +199,18 @@
         "skills/agent-runtime"
       ],
       "acceptance": "使用同一ClassroomSurface，不以预览图替代",
-      "evidence": []
+      "evidence": [
+        "Pro 工作台已直接挂载真实课堂（OMA-011）：apps/learning/components/pro-classroom-mount.tsx 复用与课堂宿主路由**同一个** ClassroomSurface（真实上游 Stage/PlaybackEngine），不是预览图或缩略视图；只挂载已发布且有课件文档（stage/scenes）的版本，未就绪时给出明确指引，不降级。apps/learning/app/workbench/pro/page.tsx 通过查询参数选择已发布版本并挂载。",
+        "准入与课堂页一致：走 loadRenderableFormalDocument 的统一复核（来源/审核/课件指纹），并沿用 readClassroomState 的持久播放位置恢复。",
+        "边界：安装态与真实设备验收未执行；仍为 partial。"
+      ]
     },
     {
       "id": "OMA-012",
       "category": "pro_runtime",
       "name": "持久会话、消息、事件与历史",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "D",
       "upstreamPaths": [
         "lib/server/agent-runtime",
@@ -213,14 +219,16 @@
         "skills/agent-runtime"
       ],
       "acceptance": "重启读回会话，事件顺序稳定，历史属于当前项目",
-      "evidence": []
+      "evidence": [
+        "2026-10-08 交接核对：Pro持久会话、严格序列事件、owner/project分区、修订CAS、append-only历史/soft-delete仓库已经实现并有独立SQLite持久化测试；完整会话管理和恢复仍待补齐。"
+      ]
     },
     {
       "id": "OMA-013",
       "category": "pro_runtime",
       "name": "取消、继续、干预与任务接管",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "D",
       "upstreamPaths": [
         "lib/server/agent-runtime",
@@ -229,14 +237,16 @@
         "skills/agent-runtime"
       ],
       "acceptance": "租约/取消/重启接管可验证，无重复业务动作",
-      "evidence": []
+      "evidence": [
+        "2026-10-08 交接核对：Pro已保留unknown请求不自动重派并提供控制合同/同源API；实际接管恢复/队列执行与完整故障矩阵尚未完成。"
+      ]
     },
     {
       "id": "OMA-014",
       "category": "pro_runtime",
       "name": "会话材料上传/引用/提取",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "D",
       "upstreamPaths": [
         "lib/server/agent-runtime",
@@ -245,14 +255,16 @@
         "skills/agent-runtime"
       ],
       "acceptance": "材料状态与解析结果持久，原件和出处可打开",
-      "evidence": []
+      "evidence": [
+        "2026-10-08 交接核对：Pro对话可引用正式冻结材料包并经source admission guard；尚缺会话材料上传/提取完整产品路径，partial。"
+      ]
     },
     {
       "id": "OMA-015",
       "category": "pro_runtime",
       "name": "课程工具与24个内置教学skill",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "D",
       "upstreamPaths": [
         "lib/server/agent-runtime",
@@ -261,14 +273,16 @@
         "skills/agent-runtime"
       ],
       "acceptance": "24技能可加载并调用受控工具，有固定版本",
-      "evidence": []
+      "evidence": [
+        "2026-10-08 交接核对：Pro固定4个受控工具：materials.read/courses.draft/courses.scene-plan.propose/courses.candidate.list；明确工具确认，课程/课件生成复用来源预算guard并待核。全工具产品/参数预览/端到端审批矩阵尚未完成。 复制固定OpenMAIC v1.1.1的24内置技能及参考/约束/MIT，逐文件真实长度SHA与固定receipt校验；技能仅有界惰性上下文，不等于24技能产品消费者全部完成。"
+      ]
     },
     {
       "id": "OMA-016",
       "category": "pro_runtime",
       "name": "自定义skill创建、导入、管理与导出",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "D",
       "upstreamPaths": [
         "lib/server/agent-runtime",
@@ -277,14 +291,16 @@
         "skills/agent-runtime"
       ],
       "acceptance": "技能可重启恢复，用户文本不能越权",
-      "evidence": []
+      "evidence": [
+        "2026-10-08 交接核对：自定义技能strict bounded UTF8内容、owner-private存储、会话启用、导出和删除路由/UI已接入；完整编辑/导入体验/旧快照恢复仍需实现。"
+      ]
     },
     {
       "id": "OMA-017",
       "category": "pro_runtime",
       "name": "外部工作台skill与生成任务API",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "D",
       "upstreamPaths": [
         "lib/server/agent-runtime",
@@ -293,7 +309,14 @@
         "skills/agent-runtime"
       ],
       "acceptance": "技能包与任务API实际可用，凭据和项目授权生效",
-      "evidence": []
+      "evidence": [
+        "外部任务 bearer 认证已落地（OMA-017）：packages/study-contracts/src/pro-external.ts 定义 token 公开元数据（不含 secret/哈希）、一次性明文返回、最小 scopes(read/create/send)、有效期与撤销/轮换命令；packages/study-domain/src/pro-external.ts 的 assertProExternalTokenUsable 按 存在→未撤销→未过期→项目归属→scope 顺序判定，凭据按唯一哈希列等值反查。",
+        "数据库只保存 SHA-256 哈希（schema41 的 pro_external_tokens，secret_hash UNIQUE），明文仅在创建/轮换时返回一次；列表/读取永不回显 secret 或哈希（packages/study-storage/src/repositories/pro-external-tokens.ts）。",
+        "独立 exact-path 入口：apps/learning/app/api/pro/external/route.ts 只接受 `Authorization: Bearer sewpro_…`，命令**不携带 scope**，项目身份与 owner 从 token 解析后与当前打开项目核对；动作被收口到 read/create/send（工具执行/审核/接管不在合同里）。apps/learning/server.mjs 仅对精确路径 `/api/pro/external` 绕过桌面 session，Host 校验与其余 `/api`、control 路由不变（tests/desktop-http-boundary.test.ts 断言父路径/近似路径仍 401 SESSION_REQUIRED）。",
+        "token 管理入口 apps/learning/app/api/study/pro/tokens/route.ts 只接受本机 session（`x-sew-session` 保护）；管理命令按 requestId 幂等（schema44 pro_external_token_receipts，同请求重发不重复创建/轮换/撤销）。界面 apps/learning/components/pro-external-tokens.tsx 创建/轮换显示一次性明文、撤销/轮换可用。tests/pro-external-token.test.ts 8 项覆盖生命周期、认证、scope 最小化、撤销/轮换失效、管理命令幂等、代次边界与一次性明文不回显。",
+        "边界：外部命令复用既有 Pro 会话仓库与模型 guard；真实外部部署与网络矩阵未验收，仍为 partial。",
+        "2026-10-09 GitHub源码收尾：在途撤销/轮换/到期复验及任务/账务边界有定向回归；长requestId使用完整摘要映射，已有旧截断回执则拒绝再次执行并要求核对，防止重复派发。"
+      ]
     },
     {
       "id": "OMA-018",
@@ -340,7 +363,7 @@
       "category": "slides_editing",
       "name": "Pro画布拖动/缩放/旋转/多选",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "B",
       "upstreamPaths": [
         "packages/@openmaic/dsl",
@@ -350,7 +373,9 @@
         "lib/edit"
       ],
       "acceptance": "真实交互编辑，重开几何与样式正确",
-      "evidence": []
+      "evidence": [
+        "lesson-visual-canvas 接入 scene plan editor，拖动/缩放/旋转/多选/图层及保存已有消费者；scene plan与canvas 37项测试通过。完整 Pro 对象及冲突/历史仍待闭合。"
+      ]
     },
     {
       "id": "OMA-021",
@@ -389,7 +414,8 @@
       "acceptance": "场景稳定ID，发布历史不被原地改写",
       "evidence": [
         "场景增删、排序、复制与局部重生成已落地（LESSON-02 / OMA-022）：场景用稳定 sceneId（不靠序号映射），增删/排序/复制/局部重生成都不改已有场景身份；计划只挂在草案版本上，发布后不再改写（store.saveScenePlan 的 plan_base_not_draft），乐观并发按 revision 拒绝旧提交。apps/learning/components/lesson-scene-plan-state.ts 提供 move/duplicate/remove/replace 与撤销恢复；apps/learning/lib/classroom/planned-lesson-document.ts 按计划装配文档。tests/lesson-scene-plan.test.ts（含「场景编号稳定」「局部重生成只替换目标场景」「已发布版本计划不可改写」）与 tests/lesson-scene-plan-http.test.ts 覆盖。",
-        "已补跨版本计划的差异/合并预览与按整课大纲对齐（diffScenePlans/mergeScenePlans/outlineOrderedScenes，见 OMA-005 证据）；仍缺「按整课大纲批量重生成」与完整可视化画布编辑，故为 partial。"
+        "已补跨版本计划的差异/合并预览与按整课大纲对齐（diffScenePlans/mergeScenePlans/outlineOrderedScenes，见 OMA-005 证据）；仍缺「按整课大纲批量重生成」与完整可视化画布编辑，故为 partial。",
+        "逐项合并冲突决议已落地（OMA-022）：packages/study-domain/src/scene-plan.ts 的 applyMergeResolutions 让用户对每处冲突显式选择 current/incoming/manual，全部冲突都有决议才改变合并结果，否则抛 merge_conflicts_unresolved；merge-scene-plans 命令接受可选 resolutions。界面 apps/learning/components/lesson-scene-plan-merge.tsx 提供逐项单选并在全部决议前禁用写入。tests/lesson-scene-plan-merge.test.ts 覆盖默认保留目标、采用来源、保留本版本与非冲突决议被拒。仍缺「按整课大纲批量重生成」与完整可视化画布编辑，故为 partial。"
       ]
     },
     {
@@ -397,7 +423,7 @@
       "category": "slides_editing",
       "name": "AI编辑及校验后的JSON Patch",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "B",
       "upstreamPaths": [
         "packages/@openmaic/dsl",
@@ -407,14 +433,21 @@
         "lib/edit"
       ],
       "acceptance": "非法修改拒绝，合法修改形成新草案与审阅记录",
-      "evidence": []
+      "evidence": [
+        "受限 AI 场景计划补丁已落地（LESSON-02 / OMA-023）：packages/study-contracts/src/scene-plan-patch.ts 用判别联合把操作收口为 replace-scene/replace-element/add-element/remove-element，字段是枚举白名单（只允许场景标题/备注、元素正文/几何/样式）；来源绑定(statementId/questionId)、知识点、场景身份(sceneId/kind)与计划元数据根本不在合同里，模型无处表达——因此不存在「先写进来再拒绝」的窗口。越界/未知字段被 zod strict 直接拒绝（tests/scene-plan-patch.test.ts）。",
+        "领域层逐条判定：packages/study-domain/src/scene-plan-patch.ts 的 applyScenePlanPatch 对每条操作给出可应用/被拒绝 + 机器可判定的原因；越界几何、未知场景/元素、空标题、脚本正文（复用 assertRichTextSafe 白名单）、未审核图片引用一律被拒绝且不静默裁剪。生成、只读预览与人工处置三处共用同一份判定（tests/scene-plan-patch.test.ts）。",
+        "受 guard 约束的生成：apps/learning/lib/server/scene-plan-patch-model.ts 复用 assertModelCallAdmitted（来源/run/预算/取消）、reserveSharedModelTokens 与共享 deadline，产物只落待核候选（lesson_scene_patch_candidates，schema40），不写入任何计划；同一 requestId 重试不重发 provider，未知结果保留预占。路由 apps/learning/app/api/study/lessons/patch/route.ts。",
+        "逐项审核与写回：save-scene-plan 侧新增 preview-scene-plan-patch（只读、幂等、逐条判定）与 apply-scene-plan-patch（可逐项 selectedOpIndexes 选择、事务内回执、乐观并发 baseRevision、计划已推进需显式 override）。通过时经 groundScenes 复验来源/知识点后按 save-scene-plan 写入并推进 revision，内容一变旧审核即失效、新版本须重审。界面 apps/learning/components/lesson-scene-plan-patch.tsx 接入课程工作台。tests/lesson-scene-plan-http.test.ts 覆盖只读预览、通过写入、requestId 幂等、旧基线拒绝与显式覆盖。",
+        "边界：真实 provider 的补丁质量与 Office/WPS 人工验收未执行；仍为 partial。",
+        "2026-10-09 GitHub源码收尾：覆盖确认绑定客户端实际expectedPlanRevision；选择子集预览与appliedCount一致；计划保存事务内清草稿，未知结果沿用原requestId。"
+      ]
     },
     {
       "id": "OMA-024",
       "category": "slides_editing",
       "name": "编辑历史与多会话修改记录",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "B",
       "upstreamPaths": [
         "packages/@openmaic/dsl",
@@ -424,7 +457,13 @@
         "lib/edit"
       ],
       "acceptance": "修改可追踪，切会话不混淆文档版本",
-      "evidence": []
+      "evidence": [
+        "持久编辑草稿已落地（LESSON-02 / OMA-024）：packages/study-contracts/src/scene-plan.ts 的 scenePlanDraftSchema 绑定 project/lesson/version 与编辑基线（baseRevision/baseDigest）；packages/study-storage 的 schema42 lesson_scene_plan_drafts 按 (project,lesson,version) 一对一保存工作副本，跨桌面端口/重启恢复（不再仅靠组件内存）。",
+        "草稿是工作副本不是权威计划：不参与教学/审核、不驱动课堂文档；基线过期（服务端计划已推进）时拒绝写入，避免把旧编辑盖到新 revision 上。保存计划（save-scene-plan）成功或显式载入最新后清草稿并更新基线。",
+        "命令入口 save-scene-plan-draft / discard-scene-plan-draft 经 lesson-service 复用 groundScenes 复验来源/知识点；界面 lesson-scene-plan-editor.tsx 在编辑后防抖持久化草稿、恢复时显示提示、保存/载入最新时丢弃草稿。tests/lesson-scene-plan-http.test.ts 覆盖保存/恢复/丢弃、基线过期被拒与清草稿；schema43 放宽回执 action CHECK 以兼容。",
+        "边界：草稿是单版本工作副本；「多会话修改记录」（跨会话修改追踪）与完整版本时间线仍未闭合，故为 partial。",
+        "2026-10-09 GitHub源码收尾：schema45草稿级CAS与串行队列，冲突保留本地内容并停止自动覆盖；reset隔离迟到回调；显式载入最新先排空旧请求再清草稿。完整跨会话历史及真实离开/关闭故障矩阵仍未签核。"
+      ]
     },
     {
       "id": "OMA-025",
@@ -444,9 +483,10 @@
       "acceptance": "ClassroomSurface实际运行，slide/quiz/interactive/pbl可进入",
       "evidence": [
         "apps/learning/components/classroom-surface.tsx 以 @openmaic/storage 的 HttpDocumentStore 读文档并按 order 导航 slide/quiz/interactive",
-        "固定课堂采用上游 PlaybackEngine/游标/导航/时序代码、SlideCanvas 和 HttpRuntimeStore；原 ClassroomSurface 的页面加载、重试、effect/退出取消及 progressive 显示策略实际复制到 useOpenMaicClassroomLoad/classroom-host-load，服务准入与资产释放端口实际接线。tests/classroom-upstream-adaptation.test.ts 17 项通过；Stage 视图仍是窄适配，教师/白板/Director/PBL未接入，不证明全部四类场景。",
+        "固定课堂采用上游 PlaybackEngine/游标/导航/时序代码、SlideCanvas 和 HttpRuntimeStore；原 ClassroomSurface 的页面加载、重试、effect/退出取消及 progressive 显示策略实际复制到 useOpenMaicClassroomLoad/classroom-host-load，服务准入与资产释放端口实际接线。tests/classroom-upstream-adaptation.test.ts 17 项通过；Stage 视图仍是窄适配，后续教师/白板与个人 PBL 已接入；完整 Director 与全部四类场景最终验收仍保留。",
         "实际目录包 UI 验收已覆盖原生选择器、鼠标作答、离线失败/手动重试、答案与过程整应用重启读回、iframe 无 Node/preload、服务崩溃恢复和凭据轮换；独立干净 Windows 验收仍待完成。",
-        "tests/classroom-read-guards.test.ts：页面读取无权威写入；演示导入需明确确认；下发前重算内容摘要、复验来源；来源失效保留历史并拒绝下发。"
+        "tests/classroom-read-guards.test.ts：页面读取无权威写入；演示导入需明确确认；下发前重算内容摘要、复验来源；来源失效保留历史并拒绝下发。",
+        "2026-10-08 交接核对：既有课堂真实加载与场景导航继续保留；本轮沉浸/键盘改动由OMA-027跟踪，四类场景全覆盖仍未完成。"
       ]
     },
     {
@@ -466,7 +506,8 @@
       ],
       "acceptance": "播放动作与控制生效且恢复位置准确",
       "evidence": [
-        "openmaic-adaptation 直接适配上游 PlaybackEngine、类型、动作导航与时序，tests/classroom-upstream-adaptation.test.ts 覆盖 pause/resume/cancel/complete。固定课件无教师动作，未支持动作明确拒绝；真实教师/白板及动作级恢复仍待接入。"
+        "openmaic-adaptation 直接适配上游 PlaybackEngine、类型、动作导航与时序，tests/classroom-upstream-adaptation.test.ts 覆盖 pause/resume/cancel/complete。固定课件无教师动作，未支持动作明确拒绝；真实教师/白板及动作级恢复仍待接入。",
+        "2026-10-08 交接核对：实际播放/暂停引擎已保留并通过Space接入；速度/完整动作级导航仍未补齐，partial。"
       ]
     },
     {
@@ -474,7 +515,7 @@
       "category": "classroom",
       "name": "沉浸模式与键盘操作",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "C",
       "upstreamPaths": [
         "components/classroom/ClassroomSurface.tsx",
@@ -485,14 +526,16 @@
         "lib/whiteboard"
       ],
       "acceptance": "键盘控制、退出和窗口缩放可走查",
-      "evidence": []
+      "evidence": [
+        "2026-10-08 交接核对：课堂新增显式fullscreen/退出/角色面板隐藏、焦点恢复、arrow/Page/Home/End持久导航和Space播放；输入/控件/iframe/IME修饰键不劫持。真实Electron设备/DPI与完整键盘路径尚未验收。"
+      ]
     },
     {
       "id": "OMA-028",
       "category": "classroom",
       "name": "多角色教师/同学档案与配置",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "C",
       "upstreamPaths": [
         "components/classroom/ClassroomSurface.tsx",
@@ -503,7 +546,9 @@
         "lib/whiteboard"
       ],
       "acceptance": "角色身份持续显示，可配置参与者并关闭同学",
-      "evidence": []
+      "evidence": [
+        "2026-10-08 交接核对：教师/同学角色与教学配置作为待核候选，人工采用事务内复验roleConfigDigest/preferenceVersion并派生权限，动作仅作有界提示文本。尚非完整运行时动作生成。"
+      ]
     },
     {
       "id": "OMA-029",
@@ -523,7 +568,8 @@
       "acceptance": "真实模型/已审讲解执行，等待本人时不空转",
       "evidence": [
         "公共教学子集已接通（SYNC-01 / CHAT-01，协议 3/4）：apps/learning/components/collab-teaching-panel.tsx 通过受控在线命令选择冻结已审核 statementId，协作服务从共享快照读取正文和适用条件，拒绝任意正文/跨场景知识引用；双方显示教师（已审核课程）及来源。按目标 UID 等待、本人确认、房主显式释放或取消，等待期间服务端阻断推进。tests/collaboration-teaching-storage.test.ts 与 scripts/collab-two-client-link.mjs 覆盖权限、幂等及恢复。生成式教师、自由问答、AI 同学公共讨论与真人双设备仍未验收，故为 partial。",
-        "生成式教师/AI 同学公共输出的合同与领域已落地（协议 4 之上新增通道）：packages/study-contracts/src/collaboration-teaching-ai.ts 定义候选(≤50)与公共输出(≤200)状态、gate、命令；packages/study-domain/src/collaboration-teaching-ai.ts 的 collabTeachingAiGate 在等待本人期间于调用模型之前即拒绝(不空转)、record-ai-candidate 只落待核区、broadcast-ai-candidate 只引用 candidateId 且正文从已核候选读出、公共投影白名单剔除模型/审核/私人字段并写死 AI 标注。tests/collaboration-teaching-ai.test.ts 27 项覆盖。存储/路由/面板接入与真实 provider 仍待完成，故仍为 partial。"
+        "生成式教师/AI 同学公共输出的合同与领域已落地（协议 4 之上新增通道）：packages/study-contracts/src/collaboration-teaching-ai.ts 定义候选(≤50)与公共输出(≤200)状态、gate、命令；packages/study-domain/src/collaboration-teaching-ai.ts 的 collabTeachingAiGate 在等待本人期间于调用模型之前即拒绝(不空转)、record-ai-candidate 只落待核区、broadcast-ai-candidate 只引用 candidateId 且正文从已核候选读出、公共投影白名单剔除模型/审核/私人字段并写死 AI 标注。tests/collaboration-teaching-ai.test.ts 27 项覆盖。存储/路由/面板接入与真实 provider 仍待完成，故仍为 partial。",
+        "2026-10-08 本地正式课堂已接入受审核逐场景 Director 队列：绑定课程/文档/证据/run/身份/角色摘要，teacher 复用 guarded provider 与共享额度，候选人工审核后显式继续播放；模拟同学只复述冻结内容且属于 simulation，测验/互动/PBL 交还本人。SQLite KV 专属分区持久保存状态与原请求回执，副作用与回执同事务，等待/暂停/停止/重启/未知不重派。14 项服务/HTTP/隔离回归与 2 项响应顺序回归通过。完整公共房间、多个真实模型代理、自由问答/圆桌及真实 provider/安装验收仍保留。"
       ]
     },
     {
@@ -590,7 +636,7 @@
       "category": "classroom",
       "name": "课程完成页与学习反馈",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "C",
       "upstreamPaths": [
         "components/classroom/ClassroomSurface.tsx",
@@ -601,7 +647,12 @@
         "lib/whiteboard"
       ],
       "acceptance": "状态依据本人提交，未作答不自动标完成",
-      "evidence": []
+      "evidence": [
+        "课程完成页与学习反馈已落地（OMA-033）：packages/study-contracts/src/course-completion.ts 定义完成度合同（逐知识点 status=not_started/in_progress/completed 与整课状态）；packages/study-domain/src/course-completion.ts 的 computeCourseCompletion 只统计 kind==='real' 且 actorType==='human_learner' 的提交（AI/模拟/教师分区不计入），一个知识点只有全部绑定题目都提交才算 completed，简答待判分计入已作答并标记 pendingReview。",
+        "只读消费者：apps/learning/lib/server/course-completion-service.ts 从冻结证据包（本版本引用的陈述/题目）与本人真实作答计算完成度，不写任何事实、不更新掌握；路由 apps/learning/app/api/study/lessons/completion/route.ts（GET，扁平 projectId/generation/lessonId/version 查询）复验打开代次；界面 apps/learning/components/course-completion-panel.tsx 挂在课程工作台已发布版本下。tests/course-completion.test.ts 3 项覆盖本人/模拟/AI 分区过滤、未作答不自动完成、简答待判分、只读不写事实与 HTTP 边界。",
+        "边界：完成页目前基于「计划绑定的题目」统计；尚未接入真实科目题库的完成度校准与真人验收；故保持 partial 而非 done。",
+        "2026-10-09 GitHub源码收尾：整课题目/作答总数按题号去重；本人历史作答按时间正序选最新。当前读取本版本引用题目在项目中的本人正式作答，不代表按课内会话独立签核或掌握结论。"
+      ]
     },
     {
       "id": "OMA-034",
@@ -794,7 +845,7 @@
       "category": "interactive",
       "name": "互动保活与可支持的快照恢复",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "C",
       "upstreamPaths": [
         "components/scene-renderers/interactive-renderer.tsx",
@@ -803,7 +854,12 @@
         "skills/agent-runtime/deep-interactive"
       ],
       "acceptance": "可支持组件恢复；其他明确重置而保留本人记录",
-      "evidence": []
+      "evidence": [
+        "互动保活与快照恢复已落地（OMA-045）：packages/study-contracts/src/interactive-snapshot.ts 定义快照合同（白名单标量 data、组件版本、读取/写入/清除命令）；packages/study-domain/src/interactive-snapshot.ts 的 decideInteractiveSnapshot 只在组件版本一致时恢复，版本变化或无快照则明确重置并给出机器可读原因。",
+        "持久化与消费者：schema47 interactive_snapshots 按 (项目, stage, 场景, 本人) 一对一保存；apps/learning/lib/server/interactive-snapshot-service.ts 以**当前文档摘要**作为组件版本（客户端不能自报版本绕过重置）；路由 apps/learning/app/api/study/interactive-snapshots/route.ts；演示互动组件 apps/learning/components/openmaic-adaptation/InteractiveSceneView.tsx 在进入场景读取快照、参数变化时上报保活。快照不写本人已提交记录、不更新掌握。tests/interactive-snapshot.test.ts 2 项覆盖版本一致恢复/版本变化重置/无快照、写入-读回-清除、改库组件版本后明确重置。",
+        "边界：目前只有可支持组件（演示参数实验）接入保活；通用互动组件的现场恢复与安装态验收未完成；故保持 partial 而非 done。",
+        "2026-10-09 GitHub源码收尾：快照写入拒绝不存在的场景及非互动场景，保持项目/本人分区。通用组件和安装态恢复仍未完成。"
+      ]
     },
     {
       "id": "OMA-046",
@@ -903,7 +959,7 @@
       "category": "materials_search",
       "name": "PDF、OCR、表格与公式解析",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "B",
       "upstreamPaths": [
         "lib/document",
@@ -915,7 +971,9 @@
         "app/api/parse-pdf"
       ],
       "acceptance": "本地/云解析可切换，错误与资源限制可见",
-      "evidence": []
+      "evidence": [
+        "2026-10-08 交接核对：PDF.js内存文本提取、Office ZIP/XML真实解析、预览/一次性确认token、原二进制与提取文本分开事务归档及SHA核验下载已实现。仍缺OCR/媒体时序/可编辑PPTX导入，不能把文本提取视为全导入完成。"
+      ]
     },
     {
       "id": "OMA-052",
@@ -1010,7 +1068,8 @@
       ],
       "acceptance": "固定基线各provider可配置/检测，不假称所有联网测试通过",
       "evidence": [
-        "用户指定 HTTPS OpenAI-compatible 接口已配置/实际调用：muse-spark-1.3 请求收到有效文本，网关返回 muse-spark-1.3-contributor。Electron 加密凭据重启恢复、无 renderer 密钥回显、主进程控制接口、固定诊断的 deadline/限次/token 上限/取消有回归；报告 apps/desktop/release/model-connection-live-2026-10-05.json 9 项通过。只覆盖该兼容接口连接诊断，完整 provider 注册表、教学/生成调用与其他联网后端未完成。"
+        "用户指定 HTTPS OpenAI-compatible 接口已配置/实际调用：muse-spark-1.3 请求收到有效文本，网关返回 muse-spark-1.3-contributor。Electron 加密凭据重启恢复、无 renderer 密钥回显、主进程控制接口、固定诊断的 deadline/限次/token 上限/取消有回归；报告 apps/desktop/release/model-connection-live-2026-10-05.json 9 项通过。只覆盖该兼容接口连接诊断，完整 provider 注册表、教学/生成调用与其他联网后端未完成。",
+        "2026-10-08 交接核对：固定provider registry和OpenAI兼容/Anthropic/Google/Azure/Bedrock协议真实adapter已接配置，受控SDK transport/usageunknown/redirect与byteslimits有测试；真实provider/全能力覆盖仍待验收。"
       ]
     },
     {
@@ -1018,7 +1077,7 @@
       "category": "providers_media",
       "name": "本地模型与Lemonade/Ollama连接",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "E",
       "upstreamPaths": [
         "lib/ai/providers.ts",
@@ -1029,14 +1088,16 @@
         "lib/config/token-plan-presets.ts"
       ],
       "acceptance": "显式本地endpoint授权，连接失败可见",
-      "evidence": []
+      "evidence": [
+        "2026-10-08 交接核对：Ollama/Lemonade及loopback HTTP模型路径进入固定注册与配置校验；没有真实安装本机模型验收。"
+      ]
     },
     {
       "id": "OMA-058",
       "category": "providers_media",
       "name": "模型发现、思考配置与分阶段路由",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "E",
       "upstreamPaths": [
         "lib/ai/providers.ts",
@@ -1047,7 +1108,9 @@
         "lib/config/token-plan-presets.ts"
       ],
       "acceptance": "阶段路由生效并记录实际provider/model/config版本",
-      "evidence": []
+      "evidence": [
+        "2026-10-08 交接核对：模型发现按显式用户POST/currentsession/currentconfig触发，严格有界结果、不接renderer自报秘密、不缓存；Bedrock只覆盖按需文本基础模型而非全部profile。"
+      ]
     },
     {
       "id": "OMA-059",
@@ -1065,14 +1128,16 @@
         "lib/config/token-plan-presets.ts"
       ],
       "acceptance": "密钥受保护，测试执行真实请求且可取消",
-      "evidence": []
+      "evidence": [
+        "2026-10-08 交接核对：固定模型预设、推理参数、阶段routeModels和真实课程/教学/反馈/判分/PBL/Pro调用选择已接；完整多provider profile/version恢复与真实服务推理差异尚待补齐。"
+      ]
     },
     {
       "id": "OMA-060",
       "category": "providers_media",
       "name": "多provider图像生成与ComfyUI工作流",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "E",
       "upstreamPaths": [
         "lib/ai/providers.ts",
@@ -1084,7 +1149,8 @@
       ],
       "acceptance": "真实任务与产物落盘，生成失败不计成功",
       "evidence": [
-        "媒体生成图像合同与领域已落地：packages/study-contracts/src/media-generation.ts 定义 imageGenerationCommandSchema（prompt≤8k、count≤16）与 mediaProductRefSchema（sha256+byteLength+项目内相对路径，reviewStatus 恒 pending_review、authority 恒 false）；packages/study-domain/src/media-generation.ts 的 assertMediaGenerationAdmitted（缺 provider/断网→派发前 StudyError；本机 ComfyUI 允许离线）、settleMediaTask（provider 报成功但产物缺失按 failed；failed/cancel 拒绝任何产物；终态不可二次结算）。tests/media-generation.test.ts 覆盖。真实落盘与 ComfyUI 调用、路由/存储仍待接入。"
+        "媒体生成图像合同与领域已落地：packages/study-contracts/src/media-generation.ts 定义 imageGenerationCommandSchema（prompt≤8k、count≤16）与 mediaProductRefSchema（sha256+byteLength+项目内相对路径，reviewStatus 恒 pending_review、authority 恒 false）；packages/study-domain/src/media-generation.ts 的 assertMediaGenerationAdmitted（缺 provider/断网→派发前 StudyError；本机 ComfyUI 允许离线）、settleMediaTask（provider 报成功但产物缺失按 failed；failed/cancel 拒绝任何产物；终态不可二次结算）。tests/media-generation.test.ts 覆盖。上述为早期合同/领域基线；当前实际消费者与保留范围见后续 2026-10-08 记录。",
+        "2026-10-08 实际消费者：兼容 HTTPS images/generations 返回受控 base64 图片；校验完整媒体字节，按原请求标识持久保存任务、SQLite 资产和 .study/assets 文件及 SHA-256。共享预算、作用域/凭据变化取消、人工审核、下载与读回已接入 /workbench/media；已审核图片可加入相同课程证据包的新草案，重新审核发布后进入正式课堂与 PPTX。ComfyUI、本地引擎、多 provider、真实付费服务与安装态验收仍未完成。"
       ]
     },
     {
@@ -1092,7 +1158,7 @@
       "category": "providers_media",
       "name": "多provider视频生成与轮询任务",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "E",
       "upstreamPaths": [
         "lib/ai/providers.ts",
@@ -1104,7 +1170,8 @@
       ],
       "acceptance": "真实轮询/取消/超时，视频资源可重新播放",
       "evidence": [
-        "媒体生成视频合同与领域已落地：videoGenerationCommandSchema + 轮询/取消/超时判定 mediaPollDecision（顺序取消>超时>次数，末次间隔压进剩余墙钟）、mediaPollOutcome、cancelMediaTask、mediaResumePolicy；失败不伪造产物与进度。tests/media-generation.test.ts 覆盖。真实轮询 provider 与视频落盘仍待接入。"
+        "媒体生成视频合同与领域已落地：videoGenerationCommandSchema + 轮询/取消/超时判定 mediaPollDecision（顺序取消>超时>次数，末次间隔压进剩余墙钟）、mediaPollOutcome、cancelMediaTask、mediaResumePolicy；失败不伪造产物与进度。tests/media-generation.test.ts 覆盖。上述为早期合同/领域基线；当前实际消费者与保留范围见后续 2026-10-08 记录。",
+        "2026-10-08 实际消费者：兼容 Videos 服务创建、受截止时间/取消控制的轮询和 content 下载已接入；MP4 完整 box/视频轨道与非空样本校验，产物真实落盘并读回。官方 OpenAI 视频地址派发前明确拒绝（服务已停用）；远端任务可能在本地取消后继续。多 provider 与真实服务验收、远端恢复/取消结算仍保留。"
       ]
     },
     {
@@ -1112,7 +1179,7 @@
       "category": "providers_media",
       "name": "教师讲解与讨论TTS、播放速度",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "E",
       "upstreamPaths": [
         "lib/ai/providers.ts",
@@ -1124,7 +1191,8 @@
       ],
       "acceptance": "文本与音频同步，多个角色音色可区分",
       "evidence": [
-        "TTS 生成合同与领域已落地：ttsGenerationCommandSchema（text≤20k、playbackRate 0.5–2、voiceProfile 引用）与 mediaVoiceProfileSchema（preset/design/clone + 参考音频资产/摘要）。领域判定保证合成产物只进待核候选、缺 provider 明确失败。tests/media-generation.test.ts 覆盖。真实 TTS provider 合成与音频落盘仍待接入。"
+        "TTS 生成合同与领域已落地：ttsGenerationCommandSchema（text≤20k、playbackRate 0.5–2、voiceProfile 引用）与 mediaVoiceProfileSchema（preset/design/clone + 参考音频资产/摘要）。领域判定保证合成产物只进待核候选、缺 provider 明确失败。tests/media-generation.test.ts 覆盖。上述为早期合同/领域基线；当前实际消费者与保留范围见后续 2026-10-08 记录。",
+        "2026-10-08 实际消费者：兼容 audio/speech 生成 WAV/MP3，以已审核冻结陈述或讲解卡为正文，保存音频真实字节及用量并人工审核；预置音色接口与媒体页面已接入。完整课堂同步播放、多角色音色及真人/provider 验收仍保留。"
       ]
     },
     {
@@ -1152,7 +1220,7 @@
       "category": "providers_media",
       "name": "麦克风ASR与本地FunASR等后端",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "E",
       "upstreamPaths": [
         "lib/ai/providers.ts",
@@ -1164,7 +1232,9 @@
       ],
       "acceptance": "录音授权、转写与发送链实际可用",
       "evidence": [
-        "ASR 生成合同与领域已落地：asrGenerationCommandSchema + assertMediaGenerationAdmitted 对麦克风未授权在派发前明确拒绝；本地 ASR 后端允许离线。tests/media-generation.test.ts 覆盖。真实录音授权/转写/发送链仍待接入。"
+        "ASR 生成合同与领域已落地：asrGenerationCommandSchema + assertMediaGenerationAdmitted 对麦克风未授权在派发前明确拒绝；本地 ASR 后端允许离线。tests/media-generation.test.ts 覆盖。上述为早期合同/领域基线；当前实际消费者与保留范围见后续 2026-10-08 记录。",
+        "2026-10-08 实际消费者：已有正式 WAV/MP3 资产经显式远端转写授权后，按 multipart audio/transcriptions 调用并持久保存文本产物。未授权、非完整音频、超限和本地未接入引擎在派发前拒绝。",
+        "2026-10-08 麦克风录制消费者已接入开始/停止/试听/丢弃/幂等保存。真实 PCM16 WAV 限制 5 分钟/16 MiB，保存与派发核验实际帧数和时长；取消/卸载/迟到权限/初始化期间设备结束释放资源，原 ASR 输入受引用保护且结算前重验摘要。7 项生命周期、4 项保存边界及媒体服务时长/引用回归；见 docs/implementation-recording-2026-10-08.md。真实设备/OS 权限/安装态、FunASR/Whisper 本地引擎与完整发送消费者仍保留，status 继续 partial。"
       ]
     },
     {
@@ -1172,7 +1242,7 @@
       "category": "providers_media",
       "name": "多模态用量记录与查看",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "E",
       "upstreamPaths": [
         "lib/ai/providers.ts",
@@ -1184,7 +1254,8 @@
       ],
       "acceptance": "LLM/image/video/TTS/ASR实际用量可重算",
       "evidence": [
-        "多模态用量合同与领域已落地：mediaUsageObservationSchema/mediaUsageLedgerSchema 分 actual/estimated/unknown/unsettled 四档，summarizeMediaUsage/mediaLedgerForRun 纯重算且与顺序无关，未知按整笔保留不按 0，结算超预占直接拒绝；mediaTextLedgerEntry 把文本维度接入既有 model_usage_calls 口径。tests/media-usage.test.ts 覆盖。持久化与查看界面仍待接入。"
+        "多模态用量合同与领域已落地：mediaUsageObservationSchema/mediaUsageLedgerSchema 分 actual/estimated/unknown/unsettled 四档，summarizeMediaUsage/mediaLedgerForRun 纯重算且与顺序无关，未知按整笔保留不按 0，结算超预占直接拒绝；mediaTextLedgerEntry 把文本维度接入既有 model_usage_calls 口径。tests/media-usage.test.ts 覆盖。上述为早期合同/领域基线；当前实际消费者与保留范围见后续 2026-10-08 记录。",
+        "2026-10-08 实际消费者：media_generation_tasks 的不可变观测重算 actual/estimated/unknown/unsettled ledger，媒体页面按运行展示图片/秒数/字符/token 与未知费用；与 model_usage_calls 共享调用和 token 额度，终态重读不重复计账。未知或取消结果保留预占。真实 provider 用量/费用核对、价格版本及崩溃外部结算仍保留。"
       ]
     },
     {
@@ -1203,14 +1274,17 @@
         "lib/config/token-plan-presets.ts"
       ],
       "acceptance": "不伪造产物或进度，已发布课件可继续阅读",
-      "evidence": []
+      "evidence": [
+        "2026-10-08 媒体服务、provider、HTTP、存储回归覆盖缺配置、非法参数/音频授权、预算拒绝、取消、来源/项目变化、原请求重复、磁盘损坏与重启读回；没有字节不报完成，未知结果不记零、不自动重派。原生/真实 provider 完整故障矩阵仍保留。",
+        "2026-10-08 交接核对：模型未配置/断网/额度/取消/原生provider失败已有明确状态与budget保留；故障类型完整产品和跨执行者矩阵仍待补齐。"
+      ]
     },
     {
       "id": "OMA-067",
       "category": "export",
       "name": "可编辑PowerPoint导出",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "E",
       "upstreamPaths": [
         "lib/export",
@@ -1222,7 +1296,10 @@
       ],
       "acceptance": "文字/公式/图像/图表可编辑，不把课件整体栅格化",
       "evidence": [
-        "可编辑 PPTX 导出结构模型已落地：packages/study-domain/src/lesson-export-pptx.ts 的 buildPptxDeck 把每个场景逐元素映射为离散可编辑形状（text/picture/formula/chart/table/line），富文本解析为运行段、数学保留 LaTeX 源(native-math，无源退化 editable-text 并登记 formula-text-fallback)，全部回指 sourceElementId；assertPptxDeckEditable 拒绝 whole_slide_raster/empty_slide/content_loss/dropped_elements；产物字段收口在 PPTX_MODEL_KEYS 白名单，答案/解析/分值结构上无处存放。tests/lesson-export-pptx.test.ts 覆盖。字节级 PPTX 序列化与路由/存储接入仍待完成，仅有基础层，status 继续 planned。"
+        "可编辑 PPTX 导出结构模型已落地：packages/study-domain/src/lesson-export-pptx.ts 的 buildPptxDeck 把每个场景逐元素映射为离散可编辑形状（text/picture/formula/chart/table/line），富文本解析为运行段、数学保留 LaTeX 源(native-math，无源退化 editable-text 并登记 formula-text-fallback)，全部回指 sourceElementId；assertPptxDeckEditable 拒绝 whole_slide_raster/empty_slide/content_loss/dropped_elements；产物字段收口在 PPTX_MODEL_KEYS 白名单，答案/解析/分值结构上无处存放。tests/lesson-export-pptx.test.ts 覆盖。上述为早期合同/领域基线；当前实际消费者与保留范围见后续 2026-10-08 记录。",
+        "2026-10-08 实际消费者：pptxgenjs@4.0.1 序列化真实 .pptx 原生文本、图片、表格、图表及工作簿、线；从已审核冻结课堂文档导出并移除答案/判分依据，默认骨架取实际正文，不整页栅格化。导出/下载路由和界面、项目内原子落盘、逐部分与整文件 SHA-256、异步失效/取消门禁已接入。独立 python-pptx/openpyxl 读回确认文字/表格/图表/工作簿数据。公式为可编辑源码文字，尚非原生 Office 数学对象；互动/PBL 只读投影、字体不嵌入、Office 人工编辑与安装态验收仍保留。",
+        "pptx-math 已将支持的整体/行内公式转换成 PowerPoint a14:m/OMML AlternateContent 原生对象；8项实际PPTX XML测试通过，严格支持runs/fractions/roots/scripts，超出结构明示缺口。授权字体嵌入正在实现，Office人工编辑与安装态未验收。",
+        "2026-10-08 交接核对：PPTX真实editable序列化、限定OMML数学（拒绝mphantom/mpadded有损转换）、静态Noto中文字体fsType/字节/许可/关系验证已实现。公式/字重/对象支持缺口与Office/WPS实机编辑验收仍保留。"
       ]
     },
     {
@@ -1291,7 +1368,7 @@
       "category": "export",
       "name": "MP4导出与独立渲染任务",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "E",
       "upstreamPaths": [
         "lib/export",
@@ -1304,7 +1381,9 @@
       "acceptance": "Chromium/FFmpeg资源声明，真实可播放视频与失败恢复",
       "evidence": [
         "MP4 导出任务模型已落地：packages/study-domain/src/lesson-export-mp4.ts 定义渲染计划与任务状态机 draft→queued→preparing→(blocked|capturing→encoding→succeeded|failed|cancelled)，applyMp4JobEvent 为唯一推进入口，必需运行时不到位只能 blocked，未带 playable+sha256 的结果不能算成功；recoverMp4Job 判定 replan/none/publish-verified-output/resume-from-segment，失败分类决定可重试或 needs-attention。tests/lesson-export-mp4.test.ts 覆盖。真实 Chromium/FFmpeg 渲染、任务持久化与路由仍待接入，仅有基础层，status 继续 planned。",
-        "2026-10-07 核验修复（3d9fa4d）：begin-capture 必须经过本轮准备后的资源核验，resources-verified 的事实须覆盖计划必需的运行时；恢复发布还要求合法摘要、正字节长度和独立可播放性事实。旧/缺失事实不发布，走续跑或重新规划。MP4及可移植性定向回归19/19通过；仅修复领域门禁，没有真实渲染/编码或产品接入，status仍为planned。"
+        "2026-10-07 核验修复（3d9fa4d）：begin-capture 必须经过本轮准备后的资源核验，resources-verified 的事实须覆盖计划必需的运行时；恢复发布还要求合法摘要、正字节长度和独立可播放性事实。旧/缺失事实不发布，走续跑或重新规划。MP4及可移植性定向回归19/19通过；仅修复领域门禁，没有真实渲染/编码或产品接入，status仍为planned。",
+        "schema36/mp4-jobs/mp4-export-service/API/UI 已接通持久任务、帧检查点、取消、明确续跑与文件发布恢复；原生集成13项通过，output/mp4-runtime-tests/reviewed-lesson-publication.mp4 为真实审核课程发布下载产物并已全量解码。当前只支持静音幻灯片/测验题面，完整授课音轨/互动时间线与编码器分发仍待做。",
+        "2026-10-08 交接核对：MP4持久任务接DBlease fencing/cancel/recovery、真实capture checkpoint、prepared decodeproof、发布与核验下载；native Chrome+FFmpeg/ffprobe/full decode已运行。仅静音公开投影，完整课堂音轨/互动时间线仍未实现。"
       ]
     },
     {
@@ -1343,7 +1422,9 @@
         "lib/store/settings.ts"
       ],
       "acceptance": "适配真实stage/scene，版本冲突可验证",
-      "evidence": []
+      "evidence": [
+        "2026-10-08 交接核对：SQLite已迁移到schema39，新增原件binary归档、durable执行lease、Pro私有记录，并保留历史v16/v22/v24等重演测试；全DSL/backend迁移矩阵仍需补齐。"
+      ]
     },
     {
       "id": "OMA-074",
@@ -1441,7 +1522,9 @@
         "lib/store/settings.ts"
       ],
       "acceptance": "认证无效不回退匿名，认领完整迁移且隔离身份",
-      "evidence": []
+      "evidence": [
+        "2026-10-08 交接核对：完整owner认证/匿名认领/共享团队扩展尚未实现；本机owner-private Pro分区与执行lease不能视为此项认证/认领完成，保留planned。"
+      ]
     },
     {
       "id": "OMA-079",
@@ -1484,7 +1567,7 @@
       "category": "persistence_experience",
       "name": "12个locale国际化与语言推断",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "F",
       "upstreamPaths": [
         "packages/@openmaic/storage",
@@ -1495,7 +1578,11 @@
         "lib/store/settings.ts"
       ],
       "acceptance": "locale注册表全部支持，UI翻译与课程语言可设置",
-      "evidence": []
+      "evidence": [
+        "12 个 locale 注册表已落地（OMA-081）：packages/study-contracts/src/locale.ts 定义 LOCALE_IDS（zh-CN/zh-TW/en-US/ja-JP/ru-RU/ar-SA/pt-BR/ko-KR/es-MX/fr-FR/vi-VN/de-DE）、每个 locale 的自称与书写方向（ar-SA 为 rtl）。语言推断为纯函数：matchLocale 按「完整标签 → 中文脚本 hans/hant → 语言族唯一候选」匹配，inferLocale 遍历有序候选并回退默认，parseAcceptLanguage 按 q 值排序后推断。",
+        "界面/课程语言可设置：packages/study-contracts/src/http/preferences.ts 的 preferencesSchema 新增 uiLocale/courseLocale（默认 zh-CN），apps/learning/app/layout.tsx 把 <html lang/dir/data-locale/data-course-locale> 绑定到已保存偏好，apps/learning/components/appearance-settings.tsx 提供两个语言选择器（data-ui-locale / data-course-locale）。tests/locale-registry.test.ts 覆盖 12 项注册、方向、标签/脚本/语言族匹配、q 值排序、回退与 schema 默认。",
+        "边界：界面文案仍以中文为主，逐 key 的多语言翻译与课程内容本地化未全部完成；故保持 partial 而非 done。"
+      ]
     },
     {
       "id": "OMA-082",
@@ -1522,7 +1609,7 @@
       "category": "persistence_experience",
       "name": "共享部署/访问码/可选远程连接",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "F",
       "upstreamPaths": [
         "packages/@openmaic/storage",
@@ -1533,7 +1620,12 @@
         "lib/store/settings.ts"
       ],
       "acceptance": "明确授权且私密项目不公开，保留部署能力接口",
-      "evidence": []
+      "evidence": [
+        "共享部署访问码已落地（OMA-083）：packages/study-contracts/src/deployment-access.ts 定义访问码公开元数据（不含明文/哈希）、一次性明文返回、最小 scope（join/guest）、有效期与撤销命令；packages/study-domain/src/deployment-access.ts 的 assertDeploymentAccessUsable 按「存在→未撤销→未过期→项目归属→scope」判定，哈希恒定比较；deploymentCapability 表达「私密项目默认不公开」。",
+        "数据库只保存 SHA-256 哈希（schema46 deployment_access_codes，secret_hash UNIQUE），明文仅在签发时返回一次；兑换收据（deployment_access_receipts）按 requestId 幂等不重复计数。管理入口 apps/learning/app/api/study/deployment/access-codes/route.ts 只接受本机 session；兑换入口 .../deployment/redeem/route.ts 用访问码 + 本人 UID 换取接入授权（不代替本人凭据认证）。界面 apps/learning/components/deployment-access-codes.tsx 接入设置页。tests/deployment-access.test.ts 6 项覆盖一次性明文、撤销/过期失效、私密默认不公开、scope 最小化、兑换幂等与改意图拒绝、HTTP 边界。",
+        "边界：访问码目前只授予「接入授权」这一事实，尚未把接入方接入真实在线协作房间的端到端远程部署与干净环境验收完成；故保持 partial 而非 done。",
+        "2026-10-09 GitHub源码收尾：回放兑换回执前复验访问码撤销/到期/scope及指定codeId，不把历史回执当有效新授权。完整远程部署仍未接通。"
+      ]
     },
     {
       "id": "OMA-084",
@@ -1558,14 +1650,15 @@
       "category": "interactive",
       "name": "procedural-skill步骤技能训练",
       "required": true,
-      "status": "planned",
+      "status": "partial",
       "phase": "C",
-      "upstreamPaths": [
-        "lib/types/widgets.ts",
-        "skills/agent-runtime/vocational"
-      ],
+      "upstreamPaths": ["lib/types/widgets.ts", "skills/agent-runtime/vocational"],
       "acceptance": "技能步骤、工具和成功条件可操作并保存真实本人记录",
-      "evidence": []
+      "evidence": [
+        "步骤技能训练已落地（OMA-085）：packages/study-contracts/src/formal-interaction.ts 新增 procedural_skill 互动定义（procedureType/task/tools/steps/correctOrder），公开投影去掉每步正确工具 correctToolId 与正确步骤顺序；packages/study-domain/src/formal-interaction.ts 的 proceduralSkillCheck 逐步骤机械核验「顺序 + 工具」，非法执行序列（重复/遗漏/未知工具）返回 null。",
+        "作者/消费者闭环：apps/learning/lib/procedural-skill-authoring.ts 把作者输入（行顺序=正确顺序、工具序号）解析为稳定 id；apps/learning/components/formal-interaction-author.tsx 提供步骤技能作者界面；apps/learning/components/openmaic-adaptation/FormalInteractiveSceneView.tsx 提供本人逐步执行 + 每步选工具 + 上/下移/撤销与提交；apps/learning/lib/server/formal-interaction-service.ts 在 load 与 command 两条路径逐步骤核验；冻结定义校验步骤/工具唯一且正确顺序是全部步骤的一次排列；共享快照投影（packages/study-storage/src/repositories/classroom-room.ts）不含正确工具/顺序，apps/learning/components/collab-shared-scene.tsx 呈现步骤与判据。tests/procedural-skill.test.ts 3 项覆盖公开投影去答案、逐步骤核验与作者解析。",
+        "边界：真实 provider 生成 procedural_skill 课件质量、Office/真人验收与安装态仍未完成；故保持 partial 而非 done。"
+      ]
     }
   ],
   "builtinSkills": [
@@ -1693,27 +1786,12 @@
     },
     "search": {
       "source": "lib/web-search/types.ts",
-      "ids": [
-        "tavily",
-        "exa",
-        "bocha",
-        "brave",
-        "baidu",
-        "claude",
-        "minimax",
-        "doubao",
-        "searxng"
-      ],
+      "ids": ["tavily", "exa", "bocha", "brave", "baidu", "claude", "minimax", "doubao", "searxng"],
       "customExtension": false
     },
     "pdf": {
       "source": "lib/pdf/types.ts",
-      "ids": [
-        "unpdf",
-        "mineru",
-        "mineru-cloud",
-        "alidocmind"
-      ],
+      "ids": ["unpdf", "mineru", "mineru-cloud", "alidocmind"],
       "customExtension": false
     }
   }

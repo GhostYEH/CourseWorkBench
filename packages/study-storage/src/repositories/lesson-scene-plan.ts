@@ -13,9 +13,12 @@ import {
   scenePlanSchema,
   coursewareCandidateSchema,
   scenePlanReceiptSchema,
+  scenePlanDraftSchema,
+  SCENE_PLAN_DRAFT_VERSION,
   type CoursewareCandidateDto,
   type CoursewareCandidateStatus,
   type ScenePlanDto,
+  type ScenePlanDraftDto,
   type ScenePlanReceiptDto,
   type ScenePlanReceiptState,
 } from '@sew/study-contracts';
@@ -175,6 +178,7 @@ export class LessonScenePlanRepository {
       );
     const saved = this.getPlan(input.projectId, input.lessonId, input.lessonVersion);
     if (!saved) throw new StudyError('INTERNAL', { reason: 'scene_plan_missing_after_write' });
+    this.discardDraft(input.projectId, input.lessonId, input.lessonVersion);
     return saved;
   }
 
@@ -184,6 +188,111 @@ export class LessonScenePlanRepository {
       .get(projectId, candidateId) as Row | undefined;
     if (!row) return null;
     return mapCandidate(row);
+  }
+
+  /** 读取某版本的持久编辑草稿（工作副本）；不存在返回 null。 */
+  getDraft(projectId: string, lessonId: string, lessonVersion: number): ScenePlanDraftDto | null {
+    const row = this.db
+      .prepare(
+        'SELECT * FROM lesson_scene_plan_drafts WHERE project_id=? AND lesson_id=? AND lesson_version=?',
+      )
+      .get(projectId, lessonId, lessonVersion) as Row | undefined;
+    if (!row) return null;
+    const draft = readRequiredJsonColumn(
+      row['draft_json'],
+      scenePlanDraftSchema,
+      'lesson_scene_plan_drafts.draft_json',
+      { reason: 'invalid_scene_plan_draft' },
+    );
+    if (
+      draft.projectId !== row['project_id'] ||
+      draft.lessonId !== row['lesson_id'] ||
+      draft.lessonVersion !== row['lesson_version'] ||
+      draft.draftRevision !== row['draft_revision'] ||
+      draft.baseRevision !== row['base_revision'] ||
+      draft.baseDigest !== row['base_digest'] ||
+      draft.updatedAt !== row['updated_at']
+    ) {
+      throw new StudyError('INTERNAL', { reason: 'invalid_scene_plan_draft' });
+    }
+    return draft;
+  }
+
+  /** 保存/覆盖某版本的编辑草稿：整份覆盖写，基线由调用方传入，草稿 revision 单调 +1。 */
+  saveDraft(input: {
+    projectId: string;
+    lessonId: string;
+    lessonVersion: number;
+    baseRevision: number;
+    baseDigest: string | null;
+    scenes: ScenePlanDto['scenes'];
+    /**
+     * 客户端读到的草稿 revision（草稿级 CAS）。给出时必须与当前一致，否则拒绝乱序/过期写入。
+     * 省略用于首次保存（此时当前草稿必须不存在，否则视为覆盖更新，同样要求给出期望值）。
+     */
+    expectedDraftRevision?: number;
+  }): ScenePlanDraftDto {
+    const current = this.getDraft(input.projectId, input.lessonId, input.lessonVersion);
+    const currentRevision = current?.draftRevision ?? 0;
+    if (
+      input.expectedDraftRevision !== undefined &&
+      input.expectedDraftRevision !== currentRevision
+    ) {
+      throw new StudyError('VERSION_CONFLICT', {
+        reason: 'scene_plan_draft_revision_stale',
+        expected: input.expectedDraftRevision,
+        received: currentRevision,
+      });
+    }
+    if (input.expectedDraftRevision === undefined && current) {
+      // 未声明期望版本却已存在草稿：调用方可能在覆盖别处的更新，按冲突拒绝而不是静默覆盖。
+      throw new StudyError('VERSION_CONFLICT', {
+        reason: 'scene_plan_draft_exists_without_expected',
+        expected: currentRevision,
+        received: null,
+      });
+    }
+    const now = new Date().toISOString();
+    const draft = scenePlanDraftSchema.parse({
+      draftVersion: SCENE_PLAN_DRAFT_VERSION,
+      projectId: input.projectId,
+      lessonId: input.lessonId,
+      lessonVersion: input.lessonVersion,
+      draftRevision: currentRevision + 1,
+      baseRevision: input.baseRevision,
+      baseDigest: input.baseDigest,
+      scenes: input.scenes,
+      updatedAt: now,
+    });
+    this.db
+      .prepare(
+        `INSERT INTO lesson_scene_plan_drafts (project_id, lesson_id, lesson_version, draft_revision, base_revision, base_digest, draft_json, updated_at)
+         VALUES (?,?,?,?,?,?,?,?)
+         ON CONFLICT(project_id, lesson_id, lesson_version) DO UPDATE SET
+           draft_revision = excluded.draft_revision,
+           base_revision = excluded.base_revision, base_digest = excluded.base_digest,
+           draft_json = excluded.draft_json, updated_at = excluded.updated_at`,
+      )
+      .run(
+        draft.projectId,
+        draft.lessonId,
+        draft.lessonVersion,
+        draft.draftRevision,
+        draft.baseRevision,
+        draft.baseDigest,
+        encodeJson(draft),
+        now,
+      );
+    return draft;
+  }
+
+  /** 丢弃某版本的编辑草稿；不存在也不报错（幂等）。 */
+  discardDraft(projectId: string, lessonId: string, lessonVersion: number): void {
+    this.db
+      .prepare(
+        'DELETE FROM lesson_scene_plan_drafts WHERE project_id=? AND lesson_id=? AND lesson_version=?',
+      )
+      .run(projectId, lessonId, lessonVersion);
   }
 
   /** 项目内全部候选：页面一次读全，按课程版本在前端分组。 */
@@ -319,7 +428,7 @@ export class LessonScenePlanRepository {
   savePlanReceipt(input: {
     projectId: string;
     requestId: string;
-    action: 'save-scene-plan' | 'apply-courseware';
+    action: 'save-scene-plan' | 'apply-courseware' | 'save-scene-plan-draft';
     intent: string;
     state: ScenePlanReceiptState;
     result: unknown;

@@ -8,6 +8,7 @@ import {
 } from '@sew/study-contracts';
 import { apiFetch, describeApiError } from '../lib/client';
 import { createOrderingItemsCache } from '../lib/formal-ordering';
+import { parseProceduralSkillDraft } from '../lib/procedural-skill-authoring';
 
 export function FormalInteractionAuthor({
   scope,
@@ -36,6 +37,14 @@ export function FormalInteractionAuthor({
   const [ordering, setOrdering] = useState(false);
   /** 排序条目：每行一个标签，行顺序即正确顺序。 */
   const [orderItems, setOrderItems] = useState('');
+  /** 步骤技能训练（OMA-085）：工具每行一个；步骤每行 `标签 | 工具序号 | 判据 | 后果`。 */
+  const [procedural, setProcedural] = useState(false);
+  const [procedureTask, setProcedureTask] = useState('');
+  const [procedureType, setProcedureType] = useState<
+    'repair' | 'assembly' | 'inspection' | 'operation' | 'custom'
+  >('operation');
+  const [procedureTools, setProcedureTools] = useState('');
+  const [procedureSteps, setProcedureSteps] = useState('');
   const orderingItemsCache = useRef<{
     scope: string;
     read: ReturnType<typeof createOrderingItemsCache>;
@@ -78,6 +87,21 @@ export function FormalInteractionAuthor({
             } else if (definition.kind === 'ordering') {
               setOrdering(true);
               setOrderItems(definition.items.map((item) => item.label).join('\n'));
+            } else if (definition.kind === 'procedural_skill') {
+              setProcedural(true);
+              setProcedureTask(definition.task);
+              setProcedureType(definition.procedureType);
+              setProcedureTools(definition.tools.map((tool) => tool.label).join('\n'));
+              setProcedureSteps(
+                definition.steps
+                  .map((step) => {
+                    const toolIndex = definition.tools.findIndex(
+                      (tool) => tool.id === step.correctToolId,
+                    );
+                    return `${step.label} | ${toolIndex + 1} | ${step.successCriteria} | ${step.errorConsequences}`;
+                  })
+                  .join('\n'),
+              );
             } else {
               setRelation(true);
               setNodes(definition.nodes.map((n) => n.label).join('\n'));
@@ -144,6 +168,26 @@ export function FormalInteractionAuthor({
           statementIds: selected,
           items,
           correctOrder,
+        });
+      }
+      if (procedural) {
+        const draft = parseProceduralSkillDraft(procedureTools, procedureSteps);
+        if (draft.tools.length < 2 || draft.steps.length < 2) {
+          setError(
+            '步骤技能至少需要 2 个工具与 2 个步骤；请检查每行格式「标签 | 工具序号 | 判据 | 后果」。',
+          );
+          return;
+        }
+        definitions.push({
+          id: 'procedural',
+          title: procedureTask.trim() || '步骤技能训练',
+          kind: 'procedural_skill',
+          statementIds: selected,
+          procedureType,
+          task: procedureTask.trim() || '按顺序完成操作步骤',
+          tools: draft.tools,
+          steps: draft.steps,
+          correctOrder: draft.correctOrder,
         });
       }
       // 合同上限是每版本 2 个互动定义：界面上先挡一次，避免用户填了半天才被服务端拒绝。
@@ -297,6 +341,57 @@ export function FormalInteractionAuthor({
           </label>
         ) : null}
         <label>
+          <input
+            data-formal-procedural
+            type="checkbox"
+            checked={procedural}
+            onChange={(e) => setProcedural(e.target.checked)}
+          />
+          步骤技能训练（本人按正确顺序执行步骤并为每步选工具）
+        </label>
+        {procedural ? (
+          <>
+            <label>
+              任务说明
+              <input
+                data-formal-procedure-task
+                value={procedureTask}
+                onChange={(e) => setProcedureTask(e.target.value)}
+              />
+            </label>
+            <label>
+              工序类型
+              <select
+                data-formal-procedure-type
+                value={procedureType}
+                onChange={(e) => setProcedureType(e.target.value as typeof procedureType)}
+              >
+                <option value="repair">检修</option>
+                <option value="assembly">装配</option>
+                <option value="inspection">检查</option>
+                <option value="operation">操作</option>
+                <option value="custom">其他</option>
+              </select>
+            </label>
+            <label>
+              工具/器材（每行一个，顺序编号 1、2…）
+              <textarea
+                data-formal-procedure-tools
+                value={procedureTools}
+                onChange={(e) => setProcedureTools(e.target.value)}
+              />
+            </label>
+            <label>
+              步骤（每行：步骤标签 | 工具序号 | 成功判据 | 错误后果；**行顺序即正确执行顺序**）
+              <textarea
+                data-formal-procedure-steps
+                value={procedureSteps}
+                onChange={(e) => setProcedureSteps(e.target.value)}
+              />
+            </label>
+          </>
+        ) : null}
+        <label>
           审核依据与适用条件
           <textarea value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} />
         </label>
@@ -307,7 +402,9 @@ export function FormalInteractionAuthor({
         <button
           type="button"
           className="btn"
-          disabled={!checked || !selected.length || (!parameter && !relation && !ordering)}
+          disabled={
+            !checked || !selected.length || (!parameter && !relation && !ordering && !procedural)
+          }
           onClick={() => void freeze()}
         >
           人工审核并冻结本版本互动

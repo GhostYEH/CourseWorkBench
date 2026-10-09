@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { InteractiveContent } from '@openmaic/dsl';
-import { interactionDirectionSchema, interactionStateSchema, type InteractionStateDto } from '@sew/study-contracts';
+import { interactionDirectionSchema, interactionStateSchema, interactiveSnapshotStateSchema, type InteractionStateDto } from '@sew/study-contracts';
 import { apiFetch, describeApiError } from '../../lib/client';
 import { FormalInteractiveSceneView } from './FormalInteractiveSceneView';
 
@@ -39,6 +39,8 @@ function DemoInteractiveSceneView({ sceneId, stageId, content, scope }: { sceneI
   const [explanation, setExplanation] = useState('');
   const [saved, setSaved] = useState<InteractionStateDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** 互动保活快照（OMA-045）：临时现场（滑块取值）；只有组件版本一致才恢复，否则明确重置。 */
+  const [snapshotNote, setSnapshotNote] = useState<string | null>(null);
   const instanceId = useId();
   const [frameNonce, setFrameNonce] = useState('');
   useEffect(() => { setFrameNonce(crypto.randomUUID()); }, [html, stageId, sceneId]);
@@ -56,9 +58,36 @@ function DemoInteractiveSceneView({ sceneId, stageId, content, scope }: { sceneI
         setPrediction(data.lastSubmission.payload.prediction);
         setExplanation(data.lastSubmission.payload.explanation);
       }
+      // 互动保活快照（OMA-045）：恢复临时现场；组件版本（当前文档摘要）不一致时明确重置。
+      try {
+        const snapshot = await apiFetch('/api/study/interactive-snapshots', interactiveSnapshotStateSchema, {
+          method: 'POST', headers,
+          body: JSON.stringify({ operation: 'read', scope, stageId, sceneId }),
+        });
+        if (epochRef.current !== epoch) return;
+        if (snapshot.restored && snapshot.snapshot) {
+          const live = snapshot.snapshot.data['a'];
+          if (typeof live === 'number' && Number.isFinite(live)) setA(String(live));
+          setSnapshotNote('已恢复上次互动现场（组件版本一致）。');
+        } else {
+          setSnapshotNote(snapshot.reason === 'widget_version_changed'
+            ? '互动组件版本已更新，临时现场已重置（已提交记录保留）。'
+            : null);
+        }
+      } catch { /* 快照失败不阻塞互动：现场按初始值，已提交记录仍保留。 */ }
       setReady(true);
     } catch (caught) { if (epochRef.current === epoch) setError(describeApiError(caught)); }
-  }, [headers, sceneId, stageId]);
+  }, [headers, sceneId, stageId, scope]);
+  /** 上报临时现场（保活）：失败不影响继续编辑。 */
+  const keepAlive = useCallback(async (value: number): Promise<void> => {
+    try {
+      const snapshot = await apiFetch('/api/study/interactive-snapshots', interactiveSnapshotStateSchema, {
+        method: 'POST', headers,
+        body: JSON.stringify({ operation: 'write', scope, stageId, sceneId, data: { a: value } }),
+      });
+      setSnapshotNote(snapshot.restored ? '互动现场已保活（可跨场景/重启恢复）。' : null);
+    } catch { /* 忽略 */ }
+  }, [headers, sceneId, stageId, scope]);
   useEffect(() => {
     const epoch = ++epochRef.current;
     setReady(false); setSaved(null); setA('1'); setPrediction('increasing'); setExplanation('');
@@ -109,9 +138,10 @@ function DemoInteractiveSceneView({ sceneId, stageId, content, scope }: { sceneI
         style={{ width: '100%', height: '320px', border: '1px solid var(--sew-border-divider)', background: 'var(--sew-surface-document)' }} />
       {observation ? <p className="muted" role="status" data-widget-observation>{observation}</p> : null}
       {runtimeError ? <p className="error-text" role="alert" data-interactive-runtime-error>{runtimeError}</p> : null}
+      {snapshotNote ? <p className="muted" role="status" data-interactive-snapshot-note>{snapshotNote}</p> : null}
       <div data-interaction-ready={ready ? 'true' : 'false'}>
         <div className="field"><label htmlFor={`${instanceId}-a`}>本人实验参数 a（-3 至 3，步长 0.1）</label>
-          <input id={`${instanceId}-a`} type="number" min="-3" max="3" step="0.1" data-interaction-parameter value={a} disabled={!ready || busy} onChange={(event) => setA(event.target.value)} /></div>
+          <input id={`${instanceId}-a`} type="number" min="-3" max="3" step="0.1" data-interaction-parameter value={a} disabled={!ready || busy} onChange={(event) => { setA(event.target.value); const value = Number(event.target.value); if (Number.isFinite(value)) void keepAlive(value); }} /></div>
         <div className="field"><label htmlFor={`${instanceId}-prediction`}>本人预测</label>
           <select id={`${instanceId}-prediction`} data-interaction-prediction value={prediction} disabled={!ready || busy} onChange={(event) => { const value = interactionDirectionSchema.safeParse(event.target.value); if (value.success) setPrediction(value.data); }}>
             <option value="increasing">递增</option><option value="decreasing">递减</option><option value="constant">恒为 0</option>

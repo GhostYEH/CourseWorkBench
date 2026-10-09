@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import type { CSSProperties, ReactNode } from 'react';
+import { localeDirection } from '@sew/study-contracts';
 import './theme-tokens.css';
 import './globals.css';
 import { SessionBootstrap } from '../components/session-bootstrap';
@@ -25,10 +26,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   const devToken = process.env.SEW_DEV === '1' ? (process.env.SEW_SESSION_TOKEN ?? null) : null;
 
   const style = getAppearanceStyle(preferences) as CSSProperties;
+  // 界面语言与书写方向来自已保存偏好（OMA-081）：阿拉伯语为 rtl，其余 ltr。
+  const uiLocale = preferences.uiLocale;
 
   return (
     <html
-      lang="zh-CN"
+      lang={uiLocale}
+      dir={localeDirection(uiLocale)}
+      data-locale={uiLocale}
+      data-course-locale={preferences.courseLocale}
       data-theme={initialTheme}
       data-theme-choice={preferences.theme}
       data-accent={preferences.accentPreset}

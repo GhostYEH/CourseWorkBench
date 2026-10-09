@@ -411,6 +411,7 @@ export const generatePblMentor = async (
     let outcome: ModelGenerateOutcome;
     try {
       outcome = await deps.connection.generate(messages, {
+        route: 'pbl',
         signal: controller.signal,
         maxTokens: reservation.maxTokens,
       });

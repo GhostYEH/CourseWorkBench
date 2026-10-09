@@ -1,11 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as serializer from '../apps/learning/lib/server/pptx-serializer';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { apiResponses, type PlanPayloadDto } from '@sew/study-contracts';
 import { readZip } from '@sew/study-storage';
 import { POST as lessonsPost } from '../apps/learning/app/api/study/lessons/route';
 import { POST as exportPost } from '../apps/learning/app/api/study/lessons/export/route';
+import { GET as download } from '../apps/learning/app/api/study/lessons/export/download/route';
 import {
   closeProject,
   openProjectFromDisk,
@@ -38,17 +41,22 @@ describe('课件导出 HTTP 边界', () => {
       }),
     );
 
-  const exportRequest = (scopeOverride?: Record<string, number | string>) =>
+  const exportRequest = (
+    scopeOverride?: Record<string, number | string>,
+    format = 'html',
+    signal?: AbortSignal,
+  ) =>
     exportPost(
       new Request('http://127.0.0.1/api/study/lessons/export', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
+        signal,
         body: JSON.stringify({
           scope: scopeOverride ?? scope(),
           action: 'export-lesson',
           lessonId,
           version: lessonVersion,
-          format: 'html',
+          format,
         }),
       }),
     );
@@ -138,6 +146,7 @@ describe('课件导出 HTTP 边界', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     closeProject();
     rmSync(root, { recursive: true, force: true });
   });
@@ -229,5 +238,70 @@ describe('课件导出 HTTP 边界', () => {
     expect(session.projectId).toBe(projectId);
     const again = await exportRequest();
     expect(again.status).toBe(200);
+  });
+
+  it('exports a real PPTX with frozen default body and verifies every part plus the downloaded bytes', async () => {
+    await publishCurrent();
+    const response = await exportRequest(undefined, 'pptx');
+    const json = await response.json();
+    expect(response.status, JSON.stringify(json)).toBe(200);
+    const result = apiResponses.lessonExport.parse(json.data).export;
+    const bytes = readFileSync(join(root, 'exports', result.fileName));
+    const parts = readZip(bytes, { allowEmptyDirectories: true });
+    const xml = parts
+      .filter((part) => /^ppt\/slides\/slide\d+\.xml$/.test(part.path))
+      .map((part) => Buffer.from(part.bytes).toString('utf8'))
+      .join('');
+    expect(xml).toContain('增函数的定义');
+    expect(xml).toContain('同一区间 D 内');
+    expect(xml).not.toContain('&lt;p');
+    expect(xml).toContain('<p:sp>');
+    for (const entry of result.manifest.entries) {
+      const part = parts.find((part) => part.path === entry.path)!;
+      expect(part.bytes.byteLength).toBe(entry.byteLength);
+      expect(createHash('sha256').update(part.bytes).digest('hex')).toBe(entry.sha256);
+    }
+    const query = new URLSearchParams({
+      projectId: session.projectId,
+      generation: String(session.generation),
+      lessonId,
+      version: String(lessonVersion),
+      format: 'pptx',
+      sha256: result.sha256,
+    });
+    const delivered = await download(
+      new Request(`http://localhost/api/study/lessons/export/download?${query}`),
+    );
+    expect(delivered.status).toBe(200);
+    expect(delivered.headers.get('content-type')).toContain('presentationml');
+    const deliveredBytes = Buffer.from(await delivered.arrayBuffer());
+    expect(deliveredBytes.byteLength).toBe(bytes.byteLength);
+    expect(createHash('sha256').update(deliveredBytes).digest('hex')).toBe(result.sha256);
+    writeFileSync(join(root, 'exports', result.fileName), 'corrupted');
+    expect(
+      (await download(new Request(`http://localhost/api/study/lessons/export/download?${query}`)))
+        .status,
+    ).toBe(409);
+  });
+
+  it('blocks unpublished and cancelled PPTX exports without creating artifacts', async () => {
+    expect((await exportRequest(undefined, 'pptx')).status).toBe(403);
+    await publishCurrent();
+    const controller = new AbortController();
+    controller.abort();
+    expect((await exportRequest(undefined, 'pptx', controller.signal)).status).toBe(409);
+    expect(existsSync(join(root, 'exports', `lesson-${lessonId}-v1.pptx`))).toBe(false);
+  });
+
+  it('rechecks publication after async serialization and refuses a withdrawn lesson', async () => {
+    await publishCurrent();
+    const original = serializer.serializeEditablePptx;
+    vi.spyOn(serializer, 'serializeEditablePptx').mockImplementationOnce(async (...args) => {
+      const bytes = await original(...args);
+      expect((await post({ action: 'withdraw', lessonId, reason: '审核人撤回' })).status).toBe(200);
+      return bytes;
+    });
+    expect((await exportRequest(undefined, 'pptx')).status).toBe(403);
+    expect(existsSync(join(root, 'exports', `lesson-${lessonId}-v1.pptx`))).toBe(false);
   });
 });

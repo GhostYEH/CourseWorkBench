@@ -1,7 +1,8 @@
-import { lessonExportSchema } from '@sew/study-contracts';
+import { lessonExportSchema, StudyError } from '@sew/study-contracts';
 import { ok, parseBody, route } from '../../../../../lib/server/http';
 import { assertScope } from '../../../../../lib/server/service';
 import { exportLesson } from '../../../../../lib/server/lesson-export-service';
+import { exportPptxLesson } from '../../../../../lib/server/pptx-export-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,8 +16,15 @@ export const dynamic = 'force-dynamic';
 export const POST = route(async (request: Request) => {
   const body = await parseBody(request, lessonExportSchema);
   const session = assertScope(body.scope);
+  if (body.format === 'mp4')
+    throw new StudyError('INVALID_ARGUMENT', { reason: 'mp4_requires_job_endpoint' });
   return ok(
-    { export: exportLesson(session, body.lessonId, body.version) },
+    {
+      export:
+        body.format === 'pptx'
+          ? await exportPptxLesson(session, body.lessonId, body.version, request.signal)
+          : exportLesson(session, body.lessonId, body.version),
+    },
     { headers: { 'cache-control': 'no-store' } },
   );
 });

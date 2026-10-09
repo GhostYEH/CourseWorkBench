@@ -40,32 +40,47 @@ export const assertModelCallAdmitted = (facts: ModelCallGuardFacts): void => {
   }
   if (facts.usage.calls >= facts.limits.maxCalls) {
     throw new StudyError('BUDGET_EXCEEDED', {
-      reason: 'calls', used: facts.usage.calls, limit: facts.limits.maxCalls,
+      reason: 'calls',
+      used: facts.usage.calls,
+      limit: facts.limits.maxCalls,
     });
   }
   if (facts.usage.tokens >= facts.limits.maxTokens) {
     throw new StudyError('BUDGET_EXCEEDED', {
-      reason: 'tokens', used: facts.usage.tokens, limit: facts.limits.maxTokens,
+      reason: 'tokens',
+      used: facts.usage.tokens,
+      limit: facts.limits.maxTokens,
     });
   }
   // 执行时限只累计真正在跑的外部调用；等待本人输入的时间不计入（《规划书》6.4）。
-  if (facts.limits.maxWallClockMs !== undefined && facts.usage.activeElapsedMs !== undefined
-    && facts.usage.activeElapsedMs >= facts.limits.maxWallClockMs) {
+  if (
+    facts.limits.maxWallClockMs !== undefined &&
+    facts.usage.activeElapsedMs !== undefined &&
+    facts.usage.activeElapsedMs >= facts.limits.maxWallClockMs
+  ) {
     throw new StudyError('BUDGET_EXCEEDED', {
-      reason: 'wall_clock', used: facts.usage.activeElapsedMs, limit: facts.limits.maxWallClockMs,
+      reason: 'wall_clock',
+      used: facts.usage.activeElapsedMs,
+      limit: facts.limits.maxWallClockMs,
     });
   }
   if (facts.run.frozen.knowledgeTableDigest !== facts.currentKnowledgeTableDigest) {
     throw new StudyError('KNOWLEDGE_INVALIDATED', { reason: 'knowledge_table_changed' });
   }
   assertLessonKnowledgeAdmitted(facts.referencedKnowledgeIds, facts.admittedKnowledgeIds);
-  if (facts.purpose === 'teaching_prompt' || facts.purpose === 'collab_teaching_ai' || facts.purpose === 'pbl_guidance') {
+  if (
+    facts.purpose === 'teaching_prompt' ||
+    facts.purpose === 'collab_teaching_ai' ||
+    facts.purpose === 'pbl_guidance' ||
+    facts.purpose === 'media_generation'
+  ) {
     if (!facts.lesson) {
       throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', { reason: 'lesson_required' });
     }
     if (facts.lesson.status !== 'published' || !facts.lesson.reviewApproved) {
       throw new StudyError('CLASSROOM_LESSON_NOT_REVIEWED', {
-        reason: 'lesson_not_published_or_unreviewed', status: facts.lesson.status,
+        reason: 'lesson_not_published_or_unreviewed',
+        status: facts.lesson.status,
       });
     }
   }

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createHash } from 'node:crypto';
 import {
   StudyError,
   coursewareCandidateSchema,
@@ -12,6 +13,12 @@ import {
   scenePlanSaveSchema,
   scenePlanMergeSchema,
   coursewareApplySchema,
+  scenePlanPatchApplySchema,
+  scenePlanPatchPreviewInputSchema,
+  scenePlanDraftSaveSchema,
+  scenePlanDraftDiscardSchema,
+  scenePlanPatchPreviewSchema,
+  scenePlanPatchCandidateSchema,
   scenePlanSchema,
   GENERATED_ID_PATTERN,
   type StatementRevisionCandidateDto,
@@ -22,6 +29,8 @@ import {
 } from '@sew/study-contracts';
 import {
   assertPlanGrounded,
+  applyScenePlanPatch,
+  applyMergeResolutions,
   diffScenePlans,
   digestOfScenePlan,
   formalInteractionSceneId,
@@ -35,6 +44,7 @@ import { toLessonReviewDto, toLessonVersionDto } from './dto';
 import { attachFormalLessonDocument } from './classroom-service';
 import { readFormalInteractionDefinitions } from './formal-interaction-definition-store';
 import { readPblDefinition } from './pbl-definition-store';
+import { assertFormalLessonImage, approvedFormalLessonImageRefs } from './formal-lesson-assets';
 import { abortActiveModelCalls } from './model-call';
 
 export const lessonCommandSchema = z.discriminatedUnion('action', [
@@ -48,6 +58,10 @@ export const lessonCommandSchema = z.discriminatedUnion('action', [
   scenePlanSaveSchema,
   scenePlanMergeSchema,
   coursewareApplySchema,
+  scenePlanPatchApplySchema,
+  scenePlanPatchPreviewInputSchema,
+  scenePlanDraftSaveSchema,
+  scenePlanDraftDiscardSchema,
 ]);
 
 /** 计划里的场景编号由服务端按内容派生：同一份（证据包 + 场景）重复保存得到同一编号。 */
@@ -196,6 +210,10 @@ const groundScenes = (
       const statement = scene.statementId ? statements.get(scene.statementId) : undefined;
       const expected = statement ? [statement.knowledgeId] : [];
       checkDeclared(scene.knowledgeIds, expected);
+      for (const element of scene.elements) {
+        if (element.kind === 'image')
+          assertFormalLessonImage(session, element.assetRef ?? '', lesson.lessonId, bundle.digest);
+      }
       return { ...scene, sceneId, knowledgeIds: expected };
     }
     if (scene.kind === 'quiz') {
@@ -257,6 +275,12 @@ export const readLessonCatalog = (session: Session) => {
     /** 场景计划与完整课件候选：页面据此渲染编辑器与待核候选，按版本在前端取用。 */
     scenePlans: session.store.listProjectScenePlans(session.projectId),
     coursewareCandidates: session.store.listProjectCoursewareCandidates(session.projectId),
+    scenePlanPatchCandidates: session.store.listProjectScenePlanPatchCandidates(session.projectId),
+    scenePlanDrafts: catalog.versions
+      .map((version) =>
+        session.store.getScenePlanDraft(session.projectId, version.lessonId, version.version),
+      )
+      .filter((draft): draft is NonNullable<typeof draft> => draft !== null),
   };
 };
 
@@ -287,7 +311,14 @@ const scenePlanReceiptResultSchema = z.object({ plan: scenePlanSchema }).strict(
 const coursewareReceiptResultSchema = z
   .object({ candidate: coursewareCandidateSchema, plan: scenePlanSchema.nullable() })
   .strict();
-
+/** 受限补丁处置回执的业务结果形状：候选 + 计划 + 应用预览（逐条结论）。 */
+const scenePlanPatchReceiptResultSchema = z
+  .object({
+    candidate: scenePlanPatchCandidateSchema,
+    plan: scenePlanSchema.nullable(),
+    preview: scenePlanPatchPreviewSchema,
+  })
+  .strict();
 /**
  * 已存在的回执 → 响应。
  *
@@ -411,6 +442,80 @@ const recordCancelledPlanReceipt = (
     /* 取消记录失败不改变「没有业务写入」这一事实 */
     return false;
   }
+};
+
+/**
+ * 受限补丁的逐项预览（OMA-023 的只读核心）。
+ *
+ * 从当前计划与候选操作算出「每条操作可应用/被拒绝」以及应用可应用操作后的计划内容与摘要。
+ * 生成、只读预览与人工处置三处共用同一份判定，避免界面与服务端口径分裂。
+ */
+const scenePlanPatchPreviewFor = (
+  session: Session,
+  candidate: {
+    lessonId: string;
+    baseVersion: number;
+    ops: Parameters<typeof applyScenePlanPatch>[1];
+  },
+  nextElementId: (opIndex: number) => string,
+  selectedOpIndexes?: readonly number[],
+) => {
+  const lesson = session.store.getLessonVersion(
+    candidate.lessonId,
+    candidate.baseVersion,
+    session.projectId,
+  );
+  if (!lesson)
+    throw new StudyError('NOT_FOUND', {
+      lessonId: candidate.lessonId,
+      version: candidate.baseVersion,
+    });
+  const current = session.store.getScenePlan(session.projectId, candidate.lessonId, lesson.version);
+  if (!current) {
+    throw new StudyError('NOT_FOUND', {
+      reason: 'scene_plan_patch_requires_plan',
+      lessonId: candidate.lessonId,
+      version: lesson.version,
+    });
+  }
+  const bundleRow = session.store.getEvidenceBundle(session.projectId, lesson.bundleId);
+  if (!bundleRow) throw new StudyError('INTERNAL', { bundleId: lesson.bundleId });
+  const approvedAssetRefs = approvedFormalLessonImageRefs(
+    session,
+    candidate.lessonId,
+    bundleRow.digest,
+  );
+  const outcome = applyScenePlanPatch(
+    current.scenes,
+    candidate.ops,
+    { approvedAssetRefs, nextElementId },
+    selectedOpIndexes,
+  );
+  const applicableIndexes = outcome.results
+    .filter((result) => result.status === 'applicable')
+    .map((result) => result.index);
+  const applicableSet = new Set(applicableIndexes);
+  // 选择语义：未提供即采用全部可应用操作；提供时只把「选中的可应用」写入结果。
+  const selectedIndexes =
+    selectedOpIndexes === undefined ? applicableIndexes : [...selectedOpIndexes];
+  const selectedApplicable = selectedIndexes.filter((index) => applicableSet.has(index));
+  const preview = scenePlanPatchPreviewSchema.parse({
+    baseRevision: current.revision,
+    baseDigest: current.digest,
+    results: outcome.results,
+    applicableCount: applicableIndexes.length,
+    selectedCount: selectedIndexes.length,
+    appliedCount: selectedApplicable.length,
+    rejectedCount: outcome.results.filter((result) => result.status === 'rejected').length,
+    scenes: outcome.scenes,
+    digest: digestOfScenePlan({
+      lessonId: candidate.lessonId,
+      lessonVersion: lesson.version,
+      bundleId: lesson.bundleId,
+      scenes: outcome.scenes,
+    }),
+  });
+  return { lesson, bundleRow, current, outcome, preview };
 };
 
 /** Course commands retain their source, review, cancellation and publication rules. */
@@ -662,6 +767,242 @@ export const executeLessonCommand = (
     }
   }
 
+  if (body.action === 'save-scene-plan-draft') {
+    // 持久编辑草稿（OMA-024）：工作副本，按 (project,lesson,version) 覆盖写，天然幂等（同请求重发得到同一草稿）。
+    // 草稿不参与教学/审核，因此不写业务回执表；基线与当前计划一致才接受，避免把旧编辑盖到新 revision 上。
+    return session.store.transaction(() => {
+      const lesson = session.store.getLessonVersion(body.lessonId, body.version, projectId);
+      if (!lesson)
+        throw new StudyError('NOT_FOUND', { lessonId: body.lessonId, version: body.version });
+      if (lesson.status !== 'draft') {
+        throw new StudyError('STEP_ALREADY_COMMITTED', {
+          status: lesson.status,
+          reason: 'scene_plan_draft_base_not_draft',
+        });
+      }
+      const current = session.store.getScenePlan(projectId, body.lessonId, body.version);
+      if ((current?.revision ?? 0) !== body.baseRevision) {
+        throw new StudyError('VERSION_CONFLICT', {
+          reason: 'scene_plan_draft_base_stale',
+          expected: current?.revision ?? 0,
+          received: body.baseRevision,
+        });
+      }
+      const scenes = groundScenes(session, lesson, body.scenes, body.requestId);
+      const draft = session.store.saveScenePlanDraft({
+        projectId,
+        lessonId: body.lessonId,
+        lessonVersion: body.version,
+        baseRevision: body.baseRevision,
+        baseDigest: current?.digest ?? null,
+        scenes,
+        ...(body.expectedDraftRevision === undefined
+          ? {}
+          : { expectedDraftRevision: body.expectedDraftRevision }),
+      });
+      return { draft, deduplicated: false };
+    });
+  }
+
+  if (body.action === 'discard-scene-plan-draft') {
+    session.store.discardScenePlanDraft(projectId, body.lessonId, body.version);
+    return { discarded: true };
+  }
+
+  if (body.action === 'preview-scene-plan-patch') {
+    // 只读预览：逐条判定候选操作并按**当前选择**算出应用后的计划，不写入任何计划；天然幂等。
+    const candidate = session.store.getScenePlanPatchCandidate(projectId, body.candidateId);
+    if (!candidate) throw new StudyError('NOT_FOUND', { candidateId: body.candidateId });
+    const { preview } = scenePlanPatchPreviewFor(
+      session,
+      candidate,
+      (opIndex) =>
+        `el_text_${createHash('sha256')
+          .update(`${body.candidateId}:${opIndex}`)
+          .digest('hex')
+          .slice(0, 24)}`,
+      body.selectedOpIndexes,
+    );
+    return { candidate, preview };
+  }
+
+  if (body.action === 'apply-scene-plan-patch') {
+    // 幂等：同 requestId 与意图重试读回既有回执，不重复写入计划。
+    const intent = JSON.stringify({
+      candidateId: body.candidateId,
+      decision: body.decision,
+      note: body.note,
+      selectedOpIndexes: body.selectedOpIndexes ?? null,
+      expectedPlanRevision: body.expectedPlanRevision ?? null,
+      override: body.override,
+    });
+    const previous = session.store.scenePlanPatchReceipt(
+      projectId,
+      body.requestId,
+      'apply',
+      intent,
+    );
+    if (previous) {
+      if (previous.state === 'completed') {
+        const replayed = scenePlanPatchReceiptResultSchema.safeParse(previous.result);
+        if (!replayed.success)
+          throw new StudyError('INTERNAL', {
+            reason: 'scene_plan_patch_receipt_corrupt',
+            requestId: body.requestId,
+          });
+        return { ...replayed.data, deduplicated: true };
+      }
+      throw new StudyError(
+        (previous.errorCode as StudyError['code'] | null) ?? 'VERSION_CONFLICT',
+        {
+          reason: previous.errorReason ?? 'scene_plan_patch_result_unknown',
+          requestId: body.requestId,
+          receiptState: previous.state,
+        },
+        previous.message,
+      );
+    }
+    if (signal?.aborted) {
+      session.store.transaction(() =>
+        session.store.saveScenePlanPatchReceipt({
+          projectId,
+          requestId: body.requestId,
+          action: 'apply',
+          intent,
+          state: 'cancelled',
+          result: null,
+          message: '本次补丁处置在提交前被取消，未产生任何业务写入。',
+          errorCode: 'RUN_TERMINATED',
+          errorReason: 'request_cancelled',
+        }),
+      );
+      throw new StudyError('RUN_TERMINATED', {
+        reason: 'request_cancelled',
+        requestId: body.requestId,
+        receiptState: 'cancelled',
+      });
+    }
+    try {
+      return session.store.transaction(() => {
+        const candidate = session.store.getScenePlanPatchCandidate(projectId, body.candidateId);
+        if (!candidate) throw new StudyError('NOT_FOUND', { candidateId: body.candidateId });
+        if (candidate.status !== 'pending') {
+          throw new StudyError('STEP_ALREADY_COMMITTED', {
+            status: candidate.status,
+            reason: 'scene_plan_patch_already_decided',
+          });
+        }
+        const { lesson, current, outcome, preview } = scenePlanPatchPreviewFor(
+          session,
+          candidate,
+          // 元素编号种子统一用 candidateId，与生成、只读预览一致：审核者看到的计划与写入结果逐字相同。
+          (opIndex) =>
+            `el_text_${createHash('sha256')
+              .update(`${candidate.candidateId}:${opIndex}`)
+              .digest('hex')
+              .slice(0, 24)}`,
+          body.selectedOpIndexes,
+        );
+        if (lesson.status !== 'draft') {
+          throw new StudyError('STEP_ALREADY_COMMITTED', {
+            status: lesson.status,
+            reason: 'scene_plan_patch_base_not_draft',
+          });
+        }
+        // 审批所依据的计划基线必须与**客户端这次确认的**计划一致。
+        //
+        // `override` 只豁免「候选自身基线过期」，不能豁免「用户这次确认的计划修订已经变化」：
+        // 提交的 `expectedPlanRevision`（缺省时取候选基线）必须等于当前权威 revision，否则拒绝写入、
+        // 不改变候选成功状态，要求重新比较后再确认。绝不能用刚读取的 `current.revision` 替换客户端
+        // 预期值——那等于用新 revision 给旧确认背书，会让旧候选静默覆盖更晚的计划。
+        const confirmedRevision = body.expectedPlanRevision ?? candidate.basePlanRevision;
+        if (body.decision === 'approved' && confirmedRevision !== current.revision) {
+          throw new StudyError('VERSION_CONFLICT', {
+            reason: 'plan_revision_stale',
+            expected: confirmedRevision,
+            received: current.revision,
+            candidatePlanRevision: candidate.basePlanRevision,
+          });
+        }
+        // 未显式覆盖时，候选自身的计划基线（revision + digest）也必须与当前一致。
+        if (
+          body.decision === 'approved' &&
+          !body.override &&
+          (current.revision !== candidate.basePlanRevision ||
+            current.digest !== candidate.basePlanDigest)
+        ) {
+          throw new StudyError('VERSION_CONFLICT', {
+            reason: 'plan_revision_stale',
+            expected: candidate.basePlanRevision,
+            received: current.revision,
+            candidatePlanRevision: candidate.basePlanRevision,
+          });
+        }
+        const scenes =
+          body.decision === 'approved'
+            ? groundScenes(session, lesson, outcome.scenes, body.requestId)
+            : null;
+        const applied = session.store.applyScenePlanPatchCandidate({
+          projectId,
+          candidateId: body.candidateId,
+          decision: body.decision,
+          note: body.note,
+          reviewedBy: session.learnerUid,
+          scenes,
+          expectedPlanRevision: confirmedRevision,
+          override: body.override,
+        });
+        const payload = {
+          candidate: applied.candidate,
+          plan: applied.plan,
+          preview,
+        };
+        session.store.saveScenePlanPatchReceipt({
+          projectId,
+          requestId: body.requestId,
+          action: 'apply',
+          intent,
+          state: 'completed',
+          result: payload,
+          message: '',
+        });
+        return { ...payload, deduplicated: false };
+      });
+    } catch (error) {
+      if (isDeterministicFailure(error)) {
+        let recorded = false;
+        try {
+          session.store.transaction(() =>
+            session.store.saveScenePlanPatchReceipt({
+              projectId,
+              requestId: body.requestId,
+              action: 'apply',
+              intent,
+              state: 'failed',
+              result: null,
+              message: error.message,
+              errorCode: error.code,
+              errorReason:
+                typeof error.details?.['reason'] === 'string'
+                  ? (error.details['reason'] as string)
+                  : null,
+            }),
+          );
+          recorded = true;
+        } catch {
+          /* 保留原始失败 */
+        }
+        if (recorded)
+          throw new StudyError(error.code, {
+            ...error.details,
+            requestId: body.requestId,
+            receiptState: 'failed',
+          });
+      }
+      throw error;
+    }
+  }
+
   if (body.action === 'merge-scene-plans') {
     // 只读预览：比较来源版本与目标草案版本的计划，算出增/删/改/序、冲突与大纲缺口，
     // 不写入任何计划。写回走 save-scene-plan，版本与审核语义不变；重复调用结果一致。
@@ -721,7 +1062,16 @@ export const executeLessonCommand = (
     if (merged.scenes.length === 0) {
       throw new StudyError('INVALID_ARGUMENT', { reason: 'merge_result_empty' });
     }
-    const outline = outlineOrderedScenes(merged.scenes, target.statementIds);
+    // 逐项冲突决议：全部冲突都有决议时才改变合并结果；否则保持默认（保留目标内容）。
+    const resolvedScenes = body.resolutions
+      ? applyMergeResolutions({
+          merged,
+          incoming: sourcePlan.scenes,
+          current: currentScenes,
+          resolutions: body.resolutions,
+        })
+      : merged.scenes;
+    const outline = outlineOrderedScenes(resolvedScenes, target.statementIds);
     const bySource = new Map(sourcePlan.scenes.map((scene) => [scene.sceneId, scene]));
     const byCurrent = new Map(currentScenes.map((scene) => [scene.sceneId, scene]));
     const entry = (sceneId: string) => {
@@ -757,12 +1107,12 @@ export const executeLessonCommand = (
         })),
         outlineMissingStatementIds: outline.missing,
         outlineUnmatchedStatementIds: outline.unmatched,
-        mergedScenes: merged.scenes,
+        mergedScenes: resolvedScenes,
         mergedDigest: digestOfScenePlan({
           lessonId: body.lessonId,
           lessonVersion: body.toVersion,
           bundleId: target.bundleId,
-          scenes: merged.scenes,
+          scenes: resolvedScenes,
         }),
       },
     };

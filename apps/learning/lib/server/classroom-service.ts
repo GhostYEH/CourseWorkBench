@@ -30,6 +30,7 @@ import type { Session } from './service';
 import { ensureReviewedDemoAssets } from './classroom-demo-assets';
 import { readFormalInteractionDefinitions } from './formal-interaction-definition-store';
 import { readPblDefinition } from './pbl-definition-store';
+import { bindFormalLessonImages, readFormalLessonImages } from './formal-lesson-assets';
 import { buildFormalLessonDocument, formalStageId } from '../classroom/formal-lesson-document';
 import { buildPlannedLessonDocument } from '../classroom/planned-lesson-document';
 import type { ClassroomDocument } from '../classroom/reviewed-lesson';
@@ -581,6 +582,7 @@ const verifyFormalLessonDocument = (
     });
   }
   const expectedBindings = new Map(expected.scenes.map((scene) => [scene.sceneId, scene]));
+  readFormalLessonImages(session, stageId, stored.document, lesson.lessonId, bundle.digest);
 
   const rawScenes = (stored.document as { scenes?: unknown[] }).scenes ?? [];
   for (const expectedScene of expected.scenes.filter((scene) => scene.sceneType === 'pbl')) {
@@ -827,6 +829,7 @@ export const attachFormalLessonDocument = (
       stageId: plan.stageId,
       documentDigest: digest,
     });
+    bindFormalLessonImages(session, plan.stageId, plan.document, lessonId, bundle.digest);
     const saved = session.store.getClassroomDocument(projectId, plan.stageId);
     if (!saved) throw new StudyError('INTERNAL', { stageId: plan.stageId });
     verifyFormalLessonDocument(session, lesson, saved);

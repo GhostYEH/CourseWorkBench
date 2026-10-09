@@ -20,16 +20,15 @@ export default function StudyPage(): ReactNode {
     <div className="page-wide">
       <div className="page-head">
         <div>
-          <h1>今日学习</h1>
+          <h1>练习巩固</h1>
           <p>
-            本页列出准入通过的知识点与可用题目及其身份来源。
-            课程页已支持讲解卡审核、按序播放和交还本人；正式课件尚未挂接到课堂。
-            白板、完整练习与订正复做仍待开发；固定课堂演示使用独立演示内容。
+            选择题目独立作答，提交后查看反馈。想先听讲解，可以进入互动课堂；
+            演示课使用独立示例内容，不计入你的备考进度。
           </p>
         </div>
         <div className="actions">
           <Link className="btn btn-primary" href="/workbench/lessons">
-            课程与讲解
+            进入互动课堂
           </Link>
           <Link className="btn" href={`/classroom/${FIXED_LESSON_ID}`}>
             固定课堂演示
@@ -51,7 +50,7 @@ export default function StudyPage(): ReactNode {
       </div>
 
       <div className="card">
-        <h2>可教学知识点</h2>
+        <h2>已准备好的知识点</h2>
         {admitted.length === 0 ? (
           <Empty>当前没有准入通过的知识点，因此不会生成课程草案。</Empty>
         ) : (
@@ -68,7 +67,9 @@ export default function StudyPage(): ReactNode {
                 <tr key={point.knowledgeId}>
                   <td>{point.name}</td>
                   <td className="mono muted">
-                    {point.evidence.map((item) => `${item.materialId}/${item.segmentId}`).join('、')}
+                    {point.evidence
+                      .map((item) => `${item.materialId}/${item.segmentId}`)
+                      .join('、')}
                   </td>
                   <td>{point.masteryStatus}</td>
                 </tr>
@@ -95,18 +96,43 @@ export default function StudyPage(): ReactNode {
             <tbody>
               {questions.map((question) => (
                 <Fragment key={question.questionId}>
-                <tr key={question.questionId} id={`q-${question.questionId}`} style={{ scrollMarginTop: 'var(--sew-space-6)' }}>
-                  <td>{question.stem}</td>
-                  <td>
-                    <span className="pill" data-tone={question.origin === 'exam_original' ? 'verified' : 'info'}>
-                      {question.originLabel}
-                    </span>
-                  </td>
-                  <td className="muted">{question.originDetail ?? '—'}</td>
-                  <td className="mono muted">{question.knowledgeIds.join('、')}</td>
-                </tr>
-                <tr><td colSpan={4}><PersonalPractice key={`${session.projectId}:${session.generation}:${question.questionId}`} projectId={session.projectId} generation={session.generation} questionId={question.questionId}
-                  assessment={question.assessment ? { type: question.assessment.type, options: question.assessment.options, maxScore: question.assessment.maxScore, answerVersion: question.assessment.answerVersion } : null} /></td></tr>
+                  <tr
+                    key={question.questionId}
+                    id={`q-${question.questionId}`}
+                    style={{ scrollMarginTop: 'var(--sew-space-6)' }}
+                  >
+                    <td>{question.stem}</td>
+                    <td>
+                      <span
+                        className="pill"
+                        data-tone={question.origin === 'exam_original' ? 'verified' : 'info'}
+                      >
+                        {question.originLabel}
+                      </span>
+                    </td>
+                    <td className="muted">{question.originDetail ?? '—'}</td>
+                    <td className="mono muted">{question.knowledgeIds.join('、')}</td>
+                  </tr>
+                  <tr>
+                    <td colSpan={4}>
+                      <PersonalPractice
+                        key={`${session.projectId}:${session.generation}:${question.questionId}`}
+                        projectId={session.projectId}
+                        generation={session.generation}
+                        questionId={question.questionId}
+                        assessment={
+                          question.assessment
+                            ? {
+                                type: question.assessment.type,
+                                options: question.assessment.options,
+                                maxScore: question.assessment.maxScore,
+                                answerVersion: question.assessment.answerVersion,
+                              }
+                            : null
+                        }
+                      />
+                    </td>
+                  </tr>
                 </Fragment>
               ))}
             </tbody>

@@ -1,0 +1,74 @@
+[
+  {
+    "package": "ai",
+    "version": "6.0.168",
+    "license": "Apache-2.0",
+    "path": "docs/licenses/ai-Apache-2.0.txt",
+    "sha256": "b4f9adb7c568904834d0dd6cc98d16c390d21ca32fc17ae7a267715269bd5529",
+    "byteLength": 552
+  },
+  {
+    "package": "@ai-sdk/openai",
+    "version": "3.0.84",
+    "license": "Apache-2.0",
+    "path": "docs/licenses/ai-sdk-openai-Apache-2.0.txt",
+    "sha256": "b4f9adb7c568904834d0dd6cc98d16c390d21ca32fc17ae7a267715269bd5529",
+    "byteLength": 552
+  },
+  {
+    "package": "@ai-sdk/azure",
+    "version": "3.0.88",
+    "license": "Apache-2.0",
+    "path": "docs/licenses/ai-sdk-azure-Apache-2.0.txt",
+    "sha256": "b4f9adb7c568904834d0dd6cc98d16c390d21ca32fc17ae7a267715269bd5529",
+    "byteLength": 552
+  },
+  {
+    "package": "@ai-sdk/anthropic",
+    "version": "3.0.71",
+    "license": "Apache-2.0",
+    "path": "docs/licenses/ai-sdk-anthropic-Apache-2.0.txt",
+    "sha256": "b4f9adb7c568904834d0dd6cc98d16c390d21ca32fc17ae7a267715269bd5529",
+    "byteLength": 552
+  },
+  {
+    "package": "@ai-sdk/amazon-bedrock",
+    "version": "4.0.103",
+    "license": "Apache-2.0",
+    "path": "docs/licenses/ai-sdk-amazon-bedrock-Apache-2.0.txt",
+    "sha256": "b4f9adb7c568904834d0dd6cc98d16c390d21ca32fc17ae7a267715269bd5529",
+    "byteLength": 552
+  },
+  {
+    "package": "@ai-sdk/google",
+    "version": "3.0.64",
+    "license": "Apache-2.0",
+    "path": "docs/licenses/ai-sdk-google-Apache-2.0.txt",
+    "sha256": "b4f9adb7c568904834d0dd6cc98d16c390d21ca32fc17ae7a267715269bd5529",
+    "byteLength": 552
+  },
+  {
+    "package": "@aws-sdk/client-bedrock",
+    "version": "3.1045.0",
+    "license": "Apache-2.0",
+    "path": "docs/licenses/aws-sdk-client-bedrock-Apache-2.0.txt",
+    "sha256": "18c295fdd68d4f68418b0209829f241481e93549d9e7b9fcd4b4c029322c8a45",
+    "byteLength": 11390
+  },
+  {
+    "package": "@aws-sdk/credential-providers",
+    "version": "3.1045.0",
+    "license": "Apache-2.0",
+    "path": "docs/licenses/aws-sdk-credential-providers-Apache-2.0.txt",
+    "sha256": "d82ceb8cbd004a2d4834085c557d55459f528e30268d95159ee1e4030a693a6e",
+    "byteLength": 11357
+  },
+  {
+    "package": "@smithy/fetch-http-handler",
+    "version": "5.8.0",
+    "license": "Apache-2.0",
+    "path": "docs/licenses/smithy-fetch-http-handler-Apache-2.0.txt",
+    "sha256": "d82ceb8cbd004a2d4834085c557d55459f528e30268d95159ee1e4030a693a6e",
+    "byteLength": 11357
+  }
+]

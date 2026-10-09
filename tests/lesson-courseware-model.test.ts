@@ -324,9 +324,14 @@ describe('受 guard 约束的完整课件候选生成（注入假 fetcher）', (
 
   it('取消后的迟到provider结果不落候选，同nonce恢复失败回执', async () => {
     let release!: (response: Response) => void;
+    let providerStarted!: () => void;
+    const dispatched = new Promise<void>((resolve) => {
+      providerStarted = resolve;
+    });
     responder = () =>
       new Promise<Response>((resolve) => {
         release = resolve;
+        providerStarted();
       });
     const controller = new AbortController();
     const pending = generateCourseware(
@@ -334,6 +339,7 @@ describe('受 guard 约束的完整课件候选生成（注入假 fetcher）', (
       input(),
       controller.signal,
     );
+    await dispatched;
     controller.abort();
     release(
       okResponder({

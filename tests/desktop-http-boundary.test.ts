@@ -426,6 +426,47 @@ productionDescribe('production learning HTTP boundary (requires pnpm build:learn
     expect(await authorizedPage.text()).toContain('学科备考工作台');
   }, 35000);
 
+  it('opens only the exact external Pro route without a desktop session, and never as a prefix', async () => {
+    // 精确路径 `/api/pro/external` 不要求桌面 session（由 bearer token 认证）；缺 token 时返回 403，
+    // 而不是 401 SESSION_REQUIRED——证明它确实绕过了 session 边界、进入了业务认证。
+    const externalNoToken = await request('/api/pro/external', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'list', requestId: 'boundary-1' }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(externalNoToken.status).toBe(403);
+    expect(await externalNoToken.json()).toMatchObject({
+      ok: false,
+      error: { code: 'PROJECT_NOT_AUTHORIZED' },
+    });
+
+    // 近似路径与父路径仍要求桌面 session：外部放行不能放宽成前缀。
+    for (const path of ['/api/pro', '/api/pro/external/extra', '/api/pro/externality']) {
+      const guarded = await request(path, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'list', requestId: 'boundary-2' }),
+        headers: { origin, 'content-type': 'application/json' },
+      });
+      expect(guarded.status).toBe(401);
+      expect(await guarded.json()).toMatchObject({
+        ok: false,
+        error: { code: 'SESSION_REQUIRED' },
+      });
+    }
+
+    // token 管理入口仍要求桌面 session。
+    const tokenManage = await request('/api/study/pro/tokens', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'list', scope: { projectId: 'x', generation: 1 } }),
+      headers: { origin, 'content-type': 'application/json' },
+    });
+    expect(tokenManage.status).toBe(401);
+    expect(await tokenManage.json()).toMatchObject({
+      ok: false,
+      error: { code: 'SESSION_REQUIRED' },
+    });
+  }, 35000);
+
   it('uses service generations across close/reopen and retains the old session after a failed open', async () => {
     const trusted = {
       origin,

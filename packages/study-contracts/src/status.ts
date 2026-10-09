@@ -10,7 +10,12 @@ export const SOURCE_STATUS = ['pending', 'verified', 'invalidated'] as const;
 export type SourceStatus = (typeof SOURCE_STATUS)[number];
 
 /** 为什么把这一项放进学习范围。 */
-export const SCOPE_STATUS = ['in_syllabus', 'prerequisite', 'scope_pending', 'out_of_scope'] as const;
+export const SCOPE_STATUS = [
+  'in_syllabus',
+  'prerequisite',
+  'scope_pending',
+  'out_of_scope',
+] as const;
 export type ScopeStatus = (typeof SCOPE_STATUS)[number];
 
 /** 数据是否属于可纳入正式学习统计的记录范围。 */
@@ -37,7 +42,12 @@ export type EvidenceUse = (typeof EVIDENCE_USE)[number];
  * 题目身份由可信创建/导入记录判定，AI 自报「真题」不生效。
  * material_original = 材料原题（≠ 考试真题）；exam_original 需人工核实材料身份。
  */
-export const QUESTION_ORIGIN = ['exam_original', 'material_original', 'material_rewrite', 'ai_new'] as const;
+export const QUESTION_ORIGIN = [
+  'exam_original',
+  'material_original',
+  'material_rewrite',
+  'ai_new',
+] as const;
 export type QuestionOrigin = (typeof QUESTION_ORIGIN)[number];
 
 /** 会话中的发言/动作主体。AI 同学作答不能写成本人提交。 */
@@ -105,6 +115,7 @@ export const MODEL_CALL_PURPOSE = [
   'courseware_generation',
   'collab_teaching_ai',
   'pbl_guidance',
+  'media_generation',
 ] as const;
 export type ModelCallPurpose = (typeof MODEL_CALL_PURPOSE)[number];
 

@@ -9,9 +9,8 @@
  * - 纯客户端组件（公式、字体、脚本等）以「离线资源清单」如实登记：已内联的写明内联，
  *   仍未内联的逐项列出缺口，不把外部 URL 或开发期绝对路径写进产物。
  *
- * 本项只落地**课件自包含 HTML + 媒体打包**（OMA-068/069/070/072）与确定性 ZIP 容器。
- * 可编辑 PowerPoint（OMA-067）与 MP4 视频导出（OMA-071）需要额外的文档/渲染服务，
- * 尚未实现，见对应能力清单条目的 evidence 缺口，不在此处伪装完成。
+ * 支持自包含 HTML 包与可编辑 PowerPoint；MP4 仍需真实渲染编码任务。
+ * 公式、互动与 PBL 的格式转换边界必须进入清单，不以静态投影冒充互动运行。
  */
 
 import { z } from 'zod';
@@ -20,8 +19,8 @@ import { projectScopeSchema } from './api';
 /** 导出容器结构版本。 */
 export const LESSON_EXPORT_VERSION = 1;
 
-/** 导出格式：当前只支持自包含 HTML 包；PowerPoint/MP4 未实现，显式拒绝而不是静默降级。 */
-export const LESSON_EXPORT_FORMATS = ['html'] as const;
+/** 已接通实际文件序列化的导出格式。 */
+export const LESSON_EXPORT_FORMATS = ['html', 'pptx', 'mp4'] as const;
 export type LessonExportFormat = (typeof LESSON_EXPORT_FORMATS)[number];
 
 /** 离线资源的内联状态：`inlined` 表示已随包内联，`missing` 表示仍未内联（缺口必须可见）。 */
@@ -118,7 +117,7 @@ export type LessonExportInput = z.infer<typeof lessonExportSchema>;
  * 领域错误（HTTP 错误响应），**不返回半成品结果**，因此这里没有 failed 态与可空产物字段。
  *
  * `destination` 是项目内 `exports/` 下的相对路径（不含本机绝对路径）；
- * `sha256` 是整个 ZIP 文件的摘要；`unresolvedAssets` 列出文档引用了但库里查不到的资源，
+ * `sha256` 是整个产物文件的摘要；`unresolvedAssets` 列出文档引用了但库里查不到的资源，
  * 这些缺口进入清单而不是被静默跳过。
  */
 export const lessonExportResultSchema = z

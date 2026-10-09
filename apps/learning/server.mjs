@@ -75,6 +75,16 @@ const isControlRoute = (pathname) =>
   (pathname.startsWith('/internal/') && pathname !== '/internal/health') ||
   pathname === '/api/study/backup';
 
+/**
+ * 唯一的外部任务入口：精确路径 `/api/pro/external`。
+ *
+ * 这是本机服务里**唯一**不要求桌面 session 的业务路径：它用外部 bearer token（owner/project
+ * 绑定、有效期、最小 scope、仅存哈希）认证，认证在 Next 路由内完成。这里只做「是否绕过
+ * 桌面 session」的判定，且必须是**精确**路径——不能放宽整个 `/api`、Host 或 control 路由。
+ * Host 校验与 Origin 校验（对非 GET）仍然照常执行。
+ */
+const isExternalProRoute = (pathname) => pathname === '/api/pro/external';
+
 const isPublicStatic = (pathname) =>
   pathname.startsWith('/_next/static/') || pathname === '/favicon.ico';
 
@@ -187,8 +197,14 @@ const main = async () => {
       return;
     }
 
-    const requiresSession = (!isDev && !isPublicStatic(policyPath)) ||
-      policyPath.startsWith('/api/') || policyPath.startsWith('/internal/');
+    // 外部任务入口用 bearer token 认证，不要求桌面 session；其余 `/api/` 与 `/internal/`
+    // 一律要求 session。这里必须是精确路径，不能放宽成前缀匹配。
+    const external = isExternalProRoute(policyPath);
+    const requiresSession =
+      !external &&
+      ((!isDev && !isPublicStatic(policyPath)) ||
+        policyPath.startsWith('/api/') ||
+        policyPath.startsWith('/internal/'));
     if (requiresSession && req.headers['x-sew-session'] !== sessionToken) {
       sendJson(res, 401, errorBody('SESSION_REQUIRED', 'Application session is required'));
       return;
@@ -204,6 +220,8 @@ const main = async () => {
       return;
     }
 
+    // 外部入口用 bearer token 认证（非浏览器客户端通常不带 Origin），因此桌面 Origin 规则
+    // 只保护使用 session 凭据的路径；外部入口的认证与 scope 由路由内的 token 判定负责。
     if (requiresSession && req.method !== 'GET' && req.method !== 'HEAD') {
       const expectedOrigin = `http://${host}`;
       if (req.headers.origin !== expectedOrigin) {

@@ -88,6 +88,17 @@ export const CollabSharedScene = ({
                 <li key={item.id}>{item.label}</li>
               ))}
             </ul>
+          ) : scene.interaction.kind === 'procedural_skill' ? (
+            <>
+              <p>{scene.interaction.task}</p>
+              <ul>
+                {scene.interaction.steps.map((step) => (
+                  <li key={step.id}>
+                    {step.label}（判据：{step.successCriteria}）
+                  </li>
+                ))}
+              </ul>
+            </>
           ) : (
             <>
               <ul>

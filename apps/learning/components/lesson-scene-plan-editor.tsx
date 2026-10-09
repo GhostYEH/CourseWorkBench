@@ -11,7 +11,7 @@
  * 已发布版本的计划只读：发布即冻结历史，改动必须派生新草案版本。
  */
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiResponses, SCENE_PLAN_WRITE_LIMIT, scenePlanSaveSchema } from '@sew/study-contracts';
@@ -21,10 +21,13 @@ import type {
   PlanElementDto,
   PlanSceneDto,
   ScenePlanDto,
+  ScenePlanDraftDto,
 } from '@sew/study-contracts';
 import { Notice } from './ui';
-import { apiFetch, describeApiError } from '../lib/client';
+import { LessonVisualCanvas } from './lesson-visual-canvas';
+import { apiFetch, describeApiError, ApiError } from '../lib/client';
 import { useCommand } from '../lib/use-command';
+import { createDraftSaveQueue, type DraftSaveState } from './lesson-scene-plan-draft-queue';
 import {
   beginLessonCommandAttempt,
   lessonCommandFailureState,
@@ -64,6 +67,7 @@ const ScenePlanEditor = ({
   lesson,
   bundle,
   plan,
+  draft = null,
   interactions = [],
   reviewedPbl = [],
   busy,
@@ -74,6 +78,8 @@ const ScenePlanEditor = ({
   lesson: LessonVersionDto;
   bundle: EvidenceBundleDto;
   plan: ScenePlanDto | null;
+  /** 持久编辑草稿（OMA-024）：跨端口/重启恢复未保存的编辑；基线一致时才采用。 */
+  draft?: ScenePlanDraftDto | null;
   /** 本版本已审核的正式互动定义（场景编号由服务端按 `formalInteractionSceneId` 派生）。 */
   interactions?: Array<{ sceneId: string; title: string }>;
   /** Only frozen PBL definitions are eligible for a plan scene. */
@@ -83,10 +89,21 @@ const ScenePlanEditor = ({
 }): ReactNode => {
   const router = useRouter();
   const editable = lesson.status === 'draft';
+  /**
+   * 初始场景：优先采用与当前计划基线一致的持久草稿（恢复未保存编辑），否则用计划本身，
+   * 再否则用确定性骨架。草稿基线过期（服务端计划已推进）时不采用，避免把旧编辑盖到新 revision 上。
+   */
+  const restoredDraft =
+    draft &&
+    draft.baseRevision === (plan?.revision ?? 0) &&
+    draft.baseDigest === (plan?.digest ?? null)
+      ? draft
+      : null;
   const initial = useMemo<PlanSceneDto[]>(() => {
+    if (restoredDraft) return restoredDraft.scenes;
     if (plan) return plan.scenes;
     return initialLessonPlanScenes(bundle, lesson, interactions, reviewedPbl);
-  }, [plan, bundle, lesson, interactions, reviewedPbl]);
+  }, [restoredDraft, plan, bundle, lesson, interactions, reviewedPbl]);
 
   /**
    * 编辑器保存必须绑定**实际加载的那一版计划 revision**。
@@ -103,6 +120,76 @@ const ScenePlanEditor = ({
   const saving = command.busy;
   const [attempt, setAttempt] = useState<LessonCommandAttempt | null>(null);
   const [openScene, setOpenScene] = useState<string | null>(initial[0]?.sceneId ?? null);
+  const [imageAssetId, setImageAssetId] = useState('');
+  /** 持久草稿状态：恢复过一次即显示提示；草稿保存失败不阻塞编辑，只提示。 */
+  const [draftRestored] = useState<boolean>(Boolean(restoredDraft));
+  const [draftNote, setDraftNote] = useState<string | null>(null);
+  /** 草稿保存状态机（OMA-024）：pending/saving/saved/failed，界面据此如实展示，不把「已调用」当「已确认」。 */
+  const [draftStatus, setDraftStatus] = useState<DraftSaveState>('idle');
+  const [discardingDraft, setDiscardingDraft] = useState(false);
+  /** 是否有未落库的编辑；undo/redo 与所有改变内容的入口都要经 `apply`/`applyHistory` 置脏。 */
+  const dirtyRef = useRef(false);
+  /** 最新编辑快照与基线，供离开页面/隐藏时可靠保存最后快照（不依赖闭包里的旧值）。 */
+  const latestScenesRef = useRef(editor.scenes);
+  latestScenesRef.current = editor.scenes;
+  const loadedRevisionRef = useRef(loadedRevision);
+  loadedRevisionRef.current = loadedRevision;
+  const baseDigestRef = useRef(plan?.digest ?? null);
+  baseDigestRef.current = plan?.digest ?? null;
+
+  /**
+   * 草稿串行保存队列（OMA-024）：串行保存、保留最后快照，并用草稿级 revision CAS 拒绝乱序/过期写入。
+   * 组件按 scope key 重挂载，因此这里捕获的 scope 稳定。
+   */
+  const draftQueue = useMemo(
+    () =>
+      createDraftSaveQueue({
+        send: async (snapshot, expectedDraftRevision) => {
+          const result = await apiFetch('/api/study/lessons', apiResponses.lessonScenePlanDraft, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              scope: { projectId, generation },
+              action: 'save-scene-plan-draft',
+              requestId: crypto.randomUUID(),
+              lessonId: lesson.lessonId,
+              version: lesson.version,
+              baseRevision: snapshot.baseRevision,
+              expectedDraftRevision,
+              scenes: scenesForSubmit(snapshot.scenes),
+            }),
+          });
+          return { draftRevision: result.draft.draftRevision };
+        },
+        classifyError: (error) => {
+          if (
+            error instanceof ApiError &&
+            error.code === 'VERSION_CONFLICT' &&
+            error.details?.['reason'] === 'scene_plan_draft_revision_stale'
+          ) {
+            const revision = error.details?.['expected'];
+            if (typeof revision === 'number') return { conflictRevision: revision };
+          }
+          return {};
+        },
+        onStateChange: (next) => setDraftStatus(next),
+        onSaved: () => setDraftNote('未保存的编辑已自动存为草稿，可跨重启恢复。'),
+        onError: (error) => {
+          const conflict = error instanceof ApiError && error.code === 'VERSION_CONFLICT';
+          setDraftNote(
+            conflict
+              ? '草稿保存遇到版本冲突，本地内容已保留，未覆盖其他编辑。请重新读取并比较后保存计划。'
+              : '草稿自动保存失败（不影响继续编辑）；保存计划仍走原入口。',
+          );
+        },
+      }),
+    // scope 与课程版本在组件生命周期内固定（外层按 key 重挂载）。
+    [projectId, generation, lesson.lessonId, lesson.version],
+  );
+  // 恢复的草稿带有自身 revision：采纳为已知基线，避免首存被判为冲突。
+  useEffect(() => {
+    if (restoredDraft) draftQueue.adoptRevision(restoredDraft.draftRevision);
+  }, [draftQueue, restoredDraft]);
 
   // 服务端计划推进后，本地快照可能落后：明确提示冲突，不静默换 revision 也不丢编辑。
   //
@@ -115,6 +202,63 @@ const ScenePlanEditor = ({
     (scene) => scene.kind === 'pbl' && !reviewedPbl.some((item) => item.sceneId === scene.sceneId),
   );
 
+  /**
+   * 持久化编辑草稿（OMA-024）：把「正在编辑、尚未保存」的工作副本写项目 SQLite，跨端口/重启恢复。
+   *
+   * 只在可编辑、非冲突态时保存；保存计划成功或显式载入最新会丢弃草稿。草稿写失败不阻塞编辑，
+   * 只提示——草稿是辅助，不是权威计划。`dirtyRef` 防止初始渲染就把骨架写成草稿。
+   */
+  useEffect(() => {
+    if (!editable || stale || !dirtyRef.current) return;
+    const timer = setTimeout(() => {
+      dirtyRef.current = false;
+      draftQueue.submit({
+        baseRevision: loadedRevision,
+        baseDigest: plan?.digest ?? null,
+        scenes: editor.scenes,
+      });
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [editor.scenes, editable, stale, loadedRevision, plan?.digest, draftQueue]);
+
+  /** 立即把最后快照交给队列并等待落库：离开页面/路由导航/隐藏页/关闭窗口前调用。 */
+  const flushDraft = useCallback(() => {
+    if (dirtyRef.current || draftQueue.hasUnsaved()) {
+      dirtyRef.current = false;
+      draftQueue.submit({
+        baseRevision: loadedRevisionRef.current,
+        baseDigest: baseDigestRef.current,
+        scenes: latestScenesRef.current,
+      });
+    }
+    return draftQueue.flush();
+  }, [draftQueue]);
+
+  // 隐藏页（切标签/最小化）与组件卸载（SPA 切课/路由离开）：把最后快照交给串行队列并 flush。
+  // 同页 SPA 导航时运行时仍在，fetch 会完成；整页卸载/关闭窗口由 beforeunload 明确拦截确认。
+  useEffect(() => {
+    const onHidden = (): void => {
+      if (document.visibilityState === 'hidden') void flushDraft();
+    };
+    document.addEventListener('visibilitychange', onHidden);
+    return () => {
+      document.removeEventListener('visibilitychange', onHidden);
+      void flushDraft();
+    };
+  }, [flushDraft]);
+
+  // 关闭窗口/整页卸载：无法保证 async 保存被数据库确认，因此明确提示未保存确认，不静默丢弃。
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent): void => {
+      if (dirtyRef.current || draftQueue.hasUnsaved()) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [draftQueue]);
+
   const selectedStatements = bundle.statements.filter((statement) =>
     lesson.statementIds.includes(statement.statementId),
   );
@@ -122,14 +266,81 @@ const ScenePlanEditor = ({
     lesson.questionIds.includes(question.questionId),
   );
 
-  const apply = (scenes: PlanSceneDto[]): void => setEditor((current) => commit(current, scenes));
+  const apply = (scenes: PlanSceneDto[]): void => {
+    dirtyRef.current = true;
+    setEditor((current) => commit(current, scenes));
+  };
 
-  /** 载入服务端最新计划：放弃本地编辑（用户明确选择）。 */
-  const loadLatest = (): void => {
-    setEditor(createEditorState(initial));
-    setLoadedRevision(remoteRevision);
-    setOpenScene(initial[0]?.sceneId ?? null);
-    setError(null);
+  /**
+   * 撤销/重做同样改变编辑内容，必须与其它入口一致置脏（OMA-024 / 修复 3.4）：
+   * 保存成功会清 dirty，但撤销栈仍可用；undo/redo 之后必须重新进入持久化路径，
+   * 否则重开会丢掉这次撤销/重做后的编辑。
+   */
+  const applyHistory = (next: (state: typeof editor) => typeof editor): void => {
+    dirtyRef.current = true;
+    setEditor(next);
+  };
+  const addImage = (scene: PlanSceneDto): void => {
+    if (!imageAssetId.trim() || scene.elements.length >= 24) return;
+    const statement = bundle.statements.find((item) => item.statementId === scene.statementId);
+    const body = scene.elements.length
+      ? scene.elements
+      : statement
+        ? [
+            {
+              ...makeElement(0),
+              text: `${statement.text}\n适用条件：${statement.conditions}`,
+              width: 500,
+              height: 230,
+            },
+          ]
+        : [];
+    const image: PlanElementDto = {
+      ...makeElement(body.length),
+      kind: 'image',
+      text: '',
+      assetRef: imageAssetId.trim(),
+      left: 620,
+      top: 140,
+      width: 300,
+      height: 230,
+    };
+    apply(
+      editor.scenes.map((item) =>
+        item.sceneId === scene.sceneId ? { ...item, elements: [...body, image] } : item,
+      ),
+    );
+  };
+
+  /** 载入服务端最新计划：放弃本地编辑（用户明确选择），同时丢弃持久草稿。 */
+  const loadLatest = async (): Promise<void> => {
+    setDiscardingDraft(true);
+    dirtyRef.current = false;
+    draftQueue.reset();
+    await draftQueue.flush();
+    try {
+      await apiFetch('/api/study/lessons', apiResponses.lessonScenePlanDraftDiscard, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          scope: { projectId, generation },
+          action: 'discard-scene-plan-draft',
+          lessonId: lesson.lessonId,
+          version: lesson.version,
+        }),
+      });
+      const latest =
+        plan?.scenes ?? initialLessonPlanScenes(bundle, lesson, interactions, reviewedPbl);
+      setEditor(createEditorState(latest));
+      setLoadedRevision(remoteRevision);
+      setOpenScene(latest[0]?.sceneId ?? null);
+      setDraftNote(null);
+      setError(null);
+    } catch (caught) {
+      setError(describeApiError(caught));
+    } finally {
+      setDiscardingDraft(false);
+    }
   };
 
   const save = async (overwrite = false): Promise<void> => {
@@ -168,6 +379,10 @@ const ScenePlanEditor = ({
         onSuccess: (result) => {
           setAttempt(null);
           setLoadedRevision(result.plan.revision);
+          dirtyRef.current = false;
+          draftQueue.reset();
+          setDraftNote(null);
+          // 服务端在保存计划的同一事务中清草稿，避免迟到的清理请求删除后续编辑。
           onSaved(
             `v${lesson.version} 场景计划已保存：${result.plan.scenes.length} 个场景，修订 ${result.plan.revision}。`,
           );
@@ -309,7 +524,7 @@ const ScenePlanEditor = ({
     );
   };
 
-  const disabled = busy || saving || !editable || attempt !== null;
+  const disabled = busy || saving || discardingDraft || !editable || attempt !== null;
 
   return (
     <details className="card">
@@ -322,6 +537,28 @@ const ScenePlanEditor = ({
           ? '增删、排序、复制与局部重生成都不改已有场景的编号；幻灯片元素可改正文与样式。所有编辑支持撤销/恢复。'
           : '已发布版本的计划只读：发布即冻结历史，改动请派生新草案版本。'}
       </p>
+      {draftRestored ? (
+        <Notice tone="pending">
+          已从项目数据库恢复上次未保存的编辑草稿（基线修订 {loadedRevision}
+          ）。保存计划后草稿会被清除。
+        </Notice>
+      ) : null}
+      {draftNote ? (
+        <p className="muted" data-scene-plan-draft-note>
+          {draftNote}
+        </p>
+      ) : null}
+      {editable && draftStatus !== 'idle' ? (
+        <p className="muted" data-scene-plan-draft-status={draftStatus}>
+          {draftStatus === 'pending'
+            ? '有未保存的编辑，将在片刻后自动存为草稿。'
+            : draftStatus === 'saving'
+              ? '正在保存草稿…'
+              : draftStatus === 'saved'
+                ? '草稿已保存（可跨重启恢复）。'
+                : '草稿保存失败：请勿直接关闭；请重试或先保存计划。'}
+        </p>
+      ) : null}
       {stale ? (
         <Notice tone="pending">
           服务端计划已推进到修订 {remoteRevision}（本地基于修订 {loadedRevision} 编辑）。
@@ -370,7 +607,8 @@ const ScenePlanEditor = ({
           type="button"
           className="btn"
           disabled={disabled || !canUndo(editor)}
-          onClick={() => setEditor(undo)}
+          data-scene-plan-undo
+          onClick={() => applyHistory(undo)}
         >
           撤销
         </button>
@@ -378,7 +616,8 @@ const ScenePlanEditor = ({
           type="button"
           className="btn"
           disabled={disabled || !canRedo(editor)}
-          onClick={() => setEditor(redo)}
+          data-scene-plan-redo
+          onClick={() => applyHistory(redo)}
         >
           恢复
         </button>
@@ -540,6 +779,24 @@ const ScenePlanEditor = ({
               {openScene === scene.sceneId && scene.kind === 'slide' ? (
                 <div className="card">
                   <div className="row-inline">
+                    <label>
+                      已审核图片编号
+                      <input
+                        value={imageAssetId}
+                        disabled={disabled}
+                        maxLength={200}
+                        onChange={(event) => setImageAssetId(event.target.value)}
+                        placeholder="从媒体与用量页面复制资源编号"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={disabled || !imageAssetId.trim() || scene.elements.length >= 24}
+                      onClick={() => addImage(scene)}
+                    >
+                      加入已审核图片
+                    </button>
                     <button
                       type="button"
                       className="btn"
@@ -558,25 +815,87 @@ const ScenePlanEditor = ({
                       按陈述局部重生成
                     </button>
                   </div>
+                  <LessonVisualCanvas
+                    elements={scene.elements}
+                    disabled={disabled}
+                    onCommit={(elements) =>
+                      apply(
+                        editor.scenes.map((item) =>
+                          item.sceneId === scene.sceneId ? { ...item, elements } : item,
+                        ),
+                      )
+                    }
+                    onRemove={(elementIds) =>
+                      apply(
+                        editor.scenes.map((item) =>
+                          item.sceneId === scene.sceneId
+                            ? {
+                                ...item,
+                                elements: item.elements.filter(
+                                  (element) => !elementIds.includes(element.elementId),
+                                ),
+                              }
+                            : item,
+                        ),
+                      )
+                    }
+                  />
                   {scene.elements.map((element) => (
                     <div key={element.elementId} className="field">
-                      <label>
-                        <span>正文（支持 b/i/u/sub/sup/br/span）</span>
-                        <textarea
-                          rows={2}
-                          value={element.text}
-                          disabled={disabled}
-                          data-element-text={element.elementId}
-                          onChange={(event) =>
-                            apply(
-                              updateElement(editor.scenes, scene.sceneId, element.elementId, {
-                                text: event.target.value,
-                              }),
-                            )
-                          }
-                        />
-                      </label>
+                      {element.kind === 'image' ? (
+                        <label>
+                          图片资源编号
+                          <input
+                            value={element.assetRef ?? ''}
+                            disabled={disabled}
+                            maxLength={200}
+                            onChange={(event) =>
+                              apply(
+                                updateElement(editor.scenes, scene.sceneId, element.elementId, {
+                                  assetRef: event.target.value,
+                                }),
+                              )
+                            }
+                          />
+                        </label>
+                      ) : (
+                        <label>
+                          <span>正文（支持 b/i/u/sub/sup/br/span）</span>
+                          <textarea
+                            rows={2}
+                            value={element.text}
+                            disabled={disabled}
+                            data-element-text={element.elementId}
+                            onChange={(event) =>
+                              apply(
+                                updateElement(editor.scenes, scene.sceneId, element.elementId, {
+                                  text: event.target.value,
+                                }),
+                              )
+                            }
+                          />
+                        </label>
+                      )}
                       <div className="row-inline">
+                        {(['left', 'top', 'width', 'height'] as const).map((field, index) => (
+                          <label key={field}>
+                            <span>{['左边距', '上边距', '宽度', '高度'][index]}</span>
+                            <input
+                              type="number"
+                              min={field === 'width' || field === 'height' ? 20 : 0}
+                              max={4000}
+                              value={element[field]}
+                              disabled={disabled}
+                              onChange={(event) =>
+                                apply(
+                                  updateElement(editor.scenes, scene.sceneId, element.elementId, {
+                                    [field]: Number(event.target.value),
+                                  }),
+                                )
+                              }
+                            />
+                          </label>
+                        ))}
                         <label>
                           <span>字号</span>
                           <input

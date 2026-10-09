@@ -145,6 +145,17 @@ export const freezePublishedRoomCourse = (input: {
         },
       };
     }
+    if (shared.kind === 'procedural_skill') {
+      // 步骤技能：公开投影只给步骤/工具/判据，每步正确工具与正确步骤顺序都不进共享快照。
+      return {
+        sceneId: scene.id, type: 'interactive' as const, title: scene.title, order: scene.order,
+        interaction: {
+          interactionId: shared.id, kind: 'procedural_skill' as const, title: shared.title,
+          statementIds: shared.statementIds, procedureType: shared.procedureType, task: shared.task,
+          tools: shared.tools, steps: shared.steps,
+        },
+      };
+    }
     // 排序互动：公开投影只给候选条目，正确顺序 `correctOrder` 不进共享快照。
     return {
       sceneId: scene.id, type: 'interactive' as const, title: scene.title, order: scene.order,

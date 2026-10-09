@@ -179,6 +179,31 @@ const attempts = () => evaluate(`fetch('/api/study/attempts?kind=real&recordScop
 const interactionState = (scope) => evaluate(`fetch('/api/maic/interaction?stageId=stage-demo-monotonicity-1&sceneId=scene-interactive-parameter', {
   headers: {'x-sew-project-id':${JSON.stringify(scope.projectId)},'x-sew-generation':${JSON.stringify(String(scope.generation))}}
 }).then(async r => { const value=await r.json(); if(!r.ok||!value.ok) throw new Error('interaction read failed'); return value.data; })`);
+/**
+ * 课堂恢复失败时的现场诊断：记录当前 tab（含 disabled）、位置保存状态、可见错误，以及一次
+ * 导航 PUT 的请求/响应。不泄露 session/control/token 明文，只保留布尔与状态码。
+ */
+const classroomDiagnostics = async (scope) => {
+  try {
+    return await evaluate(`(async () => {
+      const tab = document.querySelector('[data-current="true"]');
+      const tabs = [...document.querySelectorAll('[data-scene-id]')].map(b => ({id:b.dataset.sceneId, current:b.dataset.current==='true', disabled:b.disabled}));
+      const status = document.querySelector('.shell-status')?.innerText ?? '';
+      const error = document.querySelector('.classroom-stage [role=alert]')?.textContent ?? null;
+      const hasResult = Boolean(document.querySelector('[data-attempt-result]'));
+      const hasQuiz = Boolean(document.querySelector('[data-scene=quiz]'));
+      let probe = null;
+      try {
+        const state = await window.sewNative.getServiceState();
+        const token = state?.ready?.sessionToken ?? null;
+        const r = await fetch('/api/maic/state', {method:'PUT', headers:{'content-type':'application/json', ...(token?{'x-sew-session':token}:{})},
+          body: JSON.stringify({scope:${JSON.stringify({ projectId: scope.projectId, generation: scope.generation })},stageId:'stage-demo-monotonicity-1',sceneId:'scene-quiz-single'})});
+        const j = await r.json(); probe = {status:r.status, ok:j.ok, code:j.error?.code ?? null};
+      } catch (caught) { probe = {thrown: String(caught)}; }
+      return {current: tab?.dataset.sceneId ?? null, tabs, status, error, hasResult, hasQuiz, probe};
+    })()`);
+  } catch { return null; }
+};
 const closeApp = async () => {
   const oldOrigin = origin;
   await evaluate('(() => { window.sewNative.closeWindow(); return true; })()');
@@ -388,7 +413,15 @@ try {
     const recoveredProject = await selectProject();
     await navigateClassroom();
     await mouseClick('[data-scene-id="scene-quiz-single"]');
-    await waitFor(() => evaluate('Boolean(document.querySelector("[data-attempt-result]"))'), 'quiz recovery after service crash');
+    let quizDiagnostics = null;
+    try {
+      await waitFor(() => evaluate('Boolean(document.querySelector("[data-attempt-result]"))'), 'quiz recovery after service crash');
+    } catch (error) {
+      // 失败时先采集当前 tab/位置状态/导航 PUT 现场，再抛出（不改超时、不绕过认证）。
+      quizDiagnostics = await classroomDiagnostics(recoveredProject);
+      rendererFailure = { ...(rendererFailure ?? {}), quizDiagnostics };
+      throw error;
+    }
     const recoveredAttempts = await attempts();
     record('服务崩溃后重开保留原记录且不重复提交', recoveredProject.projectId === firstProject.projectId && recoveredAttempts.length === 1 && recoveredAttempts[0].attemptId === submitted.attemptId);
     const interactionAfterCrash = await interactionState(recoveredProject);

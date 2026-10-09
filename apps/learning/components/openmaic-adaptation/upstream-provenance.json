@@ -31,41 +31,27 @@
       "source": "lib/playback/types.ts",
       "sha256": "793DD97388230AB0B77EB35088E80E985F03030C330663E8CB8A9B94BC82C58C",
       "destination": "playback-types.ts",
-      "retained": [
-        "playback snapshot, modes, trigger, and callback contracts"
-      ]
+      "retained": ["playback snapshot, modes, trigger, and callback contracts"]
     },
     {
       "source": "lib/playback/action-navigation.ts",
       "sha256": "A4CB84F28B20FFCEA1152020709397C8E0C39C07B239DA6B76AE33CC203AC612",
       "destination": "action-navigation.ts",
-      "retained": [
-        "safe action-prefix navigation rules"
-      ],
-      "adapted": [
-        "DSL type import",
-        "unchecked array reads guarded under strict indexed access"
-      ]
+      "retained": ["safe action-prefix navigation rules"],
+      "adapted": ["DSL type import", "unchecked array reads guarded under strict indexed access"]
     },
     {
       "source": "lib/choreography/cursor.ts",
       "sha256": "9D06618DA91638BB5F0D88206C928040FB5B1DA743F9D42F4EE8B7455B2472CD",
       "destination": "cursor.ts",
-      "retained": [
-        "scene/action cursor advancement",
-        "empty scene dwell behavior"
-      ],
-      "adapted": [
-        "guarded array access under strict indexed access"
-      ]
+      "retained": ["scene/action cursor advancement", "empty scene dwell behavior"],
+      "adapted": ["guarded array access under strict indexed access"]
     },
     {
       "source": "lib/choreography/timing.ts",
       "sha256": "A036DA843B40F70AA6D3496BF901496FDE59F9FB8074932F367DC35A26FC52BF",
       "destination": "timing.ts",
-      "retained": [
-        "upstream reading duration and playback timing constants"
-      ]
+      "retained": ["upstream reading duration and playback timing constants"]
     },
     {
       "source": "components/classroom/ClassroomSurface.tsx",
@@ -118,9 +104,7 @@
       "source": "components/stage.tsx",
       "sha256": "CFF947D24B7C727F0BD735480B40E003022C370242445D42521327BA32EC029F",
       "destination": "Stage.tsx",
-      "retained": [
-        "stage-level playback dispatch boundary"
-      ],
+      "retained": ["stage-level playback dispatch boundary"],
       "replaced": [
         "edit/pro workspace/agent/ownership/feature-flag graph with explicit M0 playback-only dispatch"
       ]
@@ -129,12 +113,8 @@
       "source": "components/edit/PlaybackChromeRoot.tsx",
       "sha256": "8466A2A2BD5896F4C63F289E43845CE0C83DF257E4B8FAF96DD22335E11632E2",
       "destination": "PlaybackChromeRoot.tsx",
-      "retained": [
-        "playback engine mount/unmount lifecycle and user playback controls"
-      ],
-      "replaced": [
-        "chat/Director/whiteboard/editor chrome with a narrow M0 control surface"
-      ]
+      "retained": ["playback engine mount/unmount lifecycle and user playback controls"],
+      "replaced": ["chat/Director/whiteboard/editor chrome with a narrow M0 control surface"]
     },
     {
       "source": "components/stage/scene-renderer.tsx",
@@ -225,9 +205,7 @@
         "error reports use __maicInteractive=true and kind=runtime-error",
         "buffer/replay request uses __maicErrorReplayRequest"
       ],
-      "replaced": [
-        "upstream injected storage and picker shims are not included"
-      ]
+      "replaced": ["upstream injected storage and picker shims are not included"]
     }
   ]
 }

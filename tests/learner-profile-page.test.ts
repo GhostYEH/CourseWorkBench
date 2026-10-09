@@ -42,11 +42,12 @@ describe('global learner profile entry', () => {
     expect(html).not.toContain('sew:classroom:owner:v1');
     expect(html).toContain('数据库备份不会复制个人身份');
   });
-  it('renders without a project and has a reachable entry from the empty state', () => {
+  it('renders without a project and has a reachable entry from the empty state', async () => {
     mocked.error = false;
     mocked.profile = profile;
     expect(renderToStaticMarkup(ProfilePage())).toContain(profile.uid);
-    expect(renderToStaticMarkup(NoProjectPage())).toContain('href="/profile"');
+    const noProject = await NoProjectPage({ searchParams: Promise.resolve({}) });
+    expect(renderToStaticMarkup(noProject)).toContain('href="/profile"');
   });
   it('keeps a damaged profile unavailable and offers a reread, without an editable UID', () => {
     mocked.error = true;

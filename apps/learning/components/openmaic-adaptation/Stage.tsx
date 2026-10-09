@@ -16,12 +16,20 @@ export function Stage({
   currentSceneId,
   onPrevious,
   onNext,
+  immersive,
+  onToggleImmersive,
+  rolesOpen,
+  onToggleRoles,
   children,
 }: {
   scenes: readonly ClassroomScene[];
   currentSceneId: string;
   onPrevious: () => void;
   onNext: () => void;
+  immersive: boolean;
+  onToggleImmersive: () => void;
+  rolesOpen: boolean;
+  onToggleRoles: () => void;
   children: ReactNode;
 }) {
   const currentSceneIndex = scenes.findIndex((scene) => scene.id === currentSceneId);
@@ -34,6 +42,10 @@ export function Stage({
       currentSceneIndex={currentSceneIndex}
       onPrevious={onPrevious}
       onNext={onNext}
+      immersive={immersive}
+      onToggleImmersive={onToggleImmersive}
+      rolesOpen={rolesOpen}
+      onToggleRoles={onToggleRoles}
     >
       {children}
     </PlaybackChromeRoot>

@@ -6,7 +6,8 @@ import { Notice } from './ui';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { PreferencesDto, TeachingPreferenceDto } from '@sew/study-contracts';
+import { LOCALE_IDS, LOCALE_META } from '@sew/study-contracts';
+import type { LocaleId, PreferencesDto, TeachingPreferenceDto } from '@sew/study-contracts';
 import { apiFetch, applyThemeToDocument, describeApiError } from '../lib/client';
 
 const PRESET_LABEL: Record<PreferencesDto['theme'], string> = {
@@ -110,6 +111,42 @@ export const AppearanceSettings = ({ initial }: { initial: PreferencesDto }) => 
             <option value="system-serif">系统衬线</option>
           </select>
         </div>
+      </div>
+
+      <div className="row-inline">
+        <div className="field" style={{ flex: '0 0 200px' }}>
+          <label htmlFor="ui-locale">界面语言</label>
+          <select
+            id="ui-locale"
+            data-ui-locale
+            value={draft.uiLocale}
+            onChange={(event) => update('uiLocale', event.target.value as LocaleId)}
+          >
+            {LOCALE_IDS.map((id) => (
+              <option key={id} value={id}>
+                {LOCALE_META[id].nativeName}（{id}）
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field" style={{ flex: '0 0 200px' }}>
+          <label htmlFor="course-locale">课程语言</label>
+          <select
+            id="course-locale"
+            data-course-locale
+            value={draft.courseLocale}
+            onChange={(event) => update('courseLocale', event.target.value as LocaleId)}
+          >
+            {LOCALE_IDS.map((id) => (
+              <option key={id} value={id}>
+                {LOCALE_META[id].nativeName}（{id}）
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="muted" style={{ flex: '1 1 200px', alignSelf: 'flex-end' }}>
+          界面语言与课程语言分开设置；课程语言作为生成与显示的默认语言提示，不改变已发布课程内容。
+        </p>
       </div>
 
       <div className="row-inline">

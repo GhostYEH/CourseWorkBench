@@ -8,8 +8,15 @@
  * 全局配置只由主进程写入，本地服务负责阅读/主题/课堂视图偏好。
  */
 
-const { mkdirSync, readFileSync, writeFileSync, renameSync, unlinkSync } = require('node:fs');
-const { join } = require('node:path');
+const {
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  renameSync,
+  unlinkSync,
+  statSync,
+} = require('node:fs');
+const { join, isAbsolute } = require('node:path');
 const { validateModelConfig } = require('./model-config.cjs');
 
 const EMPTY_STATE = Object.freeze({ window: null, recentProjects: [] });
@@ -38,6 +45,20 @@ const createSettings = ({ app, safeStorage }) => {
   const readRecentProjects = () => {
     const recent = readState().recentProjects;
     return Array.isArray(recent) ? recent : [];
+  };
+
+  // Restore a previously selected space; a fresh install needs no directory picker.
+  const startupProjectRoot = () => {
+    for (const item of readRecentProjects()) {
+      if (!item || typeof item.path !== 'string' || !isAbsolute(item.path)) continue;
+      try {
+        if (statSync(item.path).isDirectory() && statSync(join(item.path, 'project.json')).isFile())
+          return item.path;
+      } catch {
+        /* A moved/deleted space stays in recent history for manual recovery. */
+      }
+    }
+    return join(userDataDir(), 'study-spaces', '我的备考');
   };
 
   const rememberProject = (project) => {
@@ -91,12 +112,15 @@ const createSettings = ({ app, safeStorage }) => {
 
   const readSessionModelCredentials = () => sessionModelCredentials;
   const readModelCredentials = () => {
-    if (sessionModelCredentials) return { config: validateModelConfig(sessionModelCredentials), persisted: false };
+    if (sessionModelCredentials)
+      return { config: validateModelConfig(sessionModelCredentials), persisted: false };
     if (!safeStorage.isEncryptionAvailable()) return null;
     try {
       const decoded = safeStorage.decryptString(readFileSync(credentialFile()));
       return { config: validateModelConfig(JSON.parse(decoded)), persisted: true };
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   };
 
   return {
@@ -106,6 +130,7 @@ const createSettings = ({ app, safeStorage }) => {
     readState,
     writeState,
     readRecentProjects,
+    startupProjectRoot,
     rememberProject,
     readWindowGeometry,
     persistWindowGeometry,

@@ -21,6 +21,8 @@ import type {
   LessonVersionDto,
   QuestionListItemDto,
   ScenePlanDto,
+  ScenePlanPatchCandidateDto,
+  ScenePlanDraftDto,
   StatementRevisionCandidateDto,
 } from '@sew/study-contracts';
 import { Empty, Notice } from './ui';
@@ -28,7 +30,9 @@ import { apiFetch, describeApiError } from '../lib/client';
 import { FormalInteractionAuthor } from './formal-interaction-author';
 import { LessonCoursewareGeneration } from './lesson-courseware-generation';
 import { LessonScenePlanEditor } from './lesson-scene-plan-editor';
+import { CourseCompletionPanel } from './course-completion-panel';
 import { LessonScenePlanMerge } from './lesson-scene-plan-merge';
+import { LessonScenePlanPatch } from './lesson-scene-plan-patch';
 import { LessonSceneRevision } from './lesson-scene-revision';
 import { LessonStatementRevision } from './lesson-statement-revision';
 import { PblProjectAuthor } from './pbl-project-author';
@@ -78,6 +82,8 @@ export const LessonWorkbench = ({
   statementRevisions = [],
   scenePlans = [],
   coursewareCandidates = [],
+  scenePlanPatchCandidates = [],
+  scenePlanDrafts = [],
   reviewedInteractions = new Map(),
   reviewedPbl = new Map(),
   learnerUid = '',
@@ -105,6 +111,10 @@ export const LessonWorkbench = ({
   scenePlans?: ScenePlanDto[];
   /** 完整课件生成候选（OMA-006）：待核的才可处置。 */
   coursewareCandidates?: CoursewareCandidateDto[];
+  /** 受限 AI 场景计划补丁候选（OMA-023）：待核的才可处置。 */
+  scenePlanPatchCandidates?: ScenePlanPatchCandidateDto[];
+  /** 场景计划持久编辑草稿（OMA-024）：按课程 + 版本恢复未保存的编辑。 */
+  scenePlanDrafts?: ScenePlanDraftDto[];
   /** 每个课程版本已审核互动定义派生出的场景编号与标题；默认计划据此与冻结定义一一对应。 */
   reviewedInteractions?: Map<string, Array<{ sceneId: string; title: string }>>;
   /** Frozen PBL project scene ids/titles, by lesson version. */
@@ -236,13 +246,13 @@ export const LessonWorkbench = ({
   return (
     <>
       <div className="card">
-        <h2>冻结课程证据包</h2>
+        <h2>选择这节课要学习的内容</h2>
         <p className="secondary">
-          证据包冻结计划版本、知识清单版本、材料与段落摘要、允许的陈述与条件、题目与答案版本，
-          以及教学偏好与角色配置摘要。陈述的来源固定取该知识点已批准的证据，不能在这里临时指定段落。
+          勾选本节课的知识点，检查讲解内容和适用条件，然后保存课程依据。
+          保存后，这份依据会固定教材原文与知识点版本，供课程生成和核对使用。
         </p>
         {rows.length === 0 ? (
-          <Empty>没有准入通过的知识点，无法冻结证据包。</Empty>
+          <Empty>还没有可用于课程的知识点。请先核对教材原文并确认知识点。</Empty>
         ) : (
           rows.map((row, index) => (
             <div className="row-inline" key={row.knowledgeId}>
@@ -262,7 +272,7 @@ export const LessonWorkbench = ({
                 {row.name}
               </label>
               <div className="field" style={{ flex: '1 1 300px' }}>
-                <label htmlFor={`statement-${row.knowledgeId}`}>陈述</label>
+                <label htmlFor={`statement-${row.knowledgeId}`}>要讲解的内容</label>
                 <input
                   id={`statement-${row.knowledgeId}`}
                   value={row.text}
@@ -317,12 +327,12 @@ export const LessonWorkbench = ({
           onClick={freeze}
           disabled={busy || rows.length === 0}
         >
-          冻结证据包
+          保存课程依据
         </button>
       </div>
 
       <div className="card">
-        <h2>已冻结证据包（{bundles.length}）</h2>
+        <h2>已保存的课程依据（{bundles.length}）</h2>
         {bundles.length === 0 ? (
           <Empty>还没有证据包。</Empty>
         ) : (
@@ -594,6 +604,13 @@ export const LessonWorkbench = ({
                                 item.lessonVersion === lesson.version,
                             ) ?? null
                           }
+                          draft={
+                            scenePlanDrafts.find(
+                              (item) =>
+                                item.lessonId === lesson.lessonId &&
+                                item.lessonVersion === lesson.version,
+                            ) ?? null
+                          }
                           interactions={
                             reviewedInteractions.get(`${lesson.lessonId}:${lesson.version}`) ?? []
                           }
@@ -634,6 +651,15 @@ export const LessonWorkbench = ({
                           onSaved={setNote}
                         />
                       ) : null}
+                      {lesson.status === 'published' ? (
+                        <CourseCompletionPanel
+                          key={`${lesson.lessonId}-v${lesson.version}-completion`}
+                          projectId={projectId}
+                          generation={generation}
+                          lessonId={lesson.lessonId}
+                          version={lesson.version}
+                        />
+                      ) : null}
                       {versionBundle(lesson) && lesson.status === 'draft' ? (
                         <LessonCoursewareGeneration
                           key={`${lesson.lessonId}-v${lesson.version}-courseware`}
@@ -642,6 +668,23 @@ export const LessonWorkbench = ({
                           lesson={lesson}
                           bundle={versionBundle(lesson)!}
                           candidates={coursewareCandidates}
+                          plan={
+                            scenePlans.find(
+                              (item) =>
+                                item.lessonId === lesson.lessonId &&
+                                item.lessonVersion === lesson.version,
+                            ) ?? null
+                          }
+                          configured={modelConfigured}
+                        />
+                      ) : null}
+                      {versionBundle(lesson) && lesson.status === 'draft' ? (
+                        <LessonScenePlanPatch
+                          key={`${lesson.lessonId}-v${lesson.version}-scene-plan-patch`}
+                          projectId={projectId}
+                          generation={generation}
+                          lesson={lesson}
+                          candidates={scenePlanPatchCandidates}
                           plan={
                             scenePlans.find(
                               (item) =>

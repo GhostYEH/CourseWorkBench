@@ -50,7 +50,7 @@ const ALIGN_TO_JUSTIFY: Record<PlanElementDto['style']['align'], 'left' | 'cente
   right: 'right',
 };
 
-/** 计划元素 → DSL 文本/图片元素。位置尺寸与样式逐字来自计划。 */
+/** 计划元素 → DSL 文本/图片元素。位置尺寸、旋转与样式来自计划。 */
 const planElementToDsl = (element: PlanElementDto) => {
   if (element.kind === 'image') {
     return {
@@ -59,7 +59,7 @@ const planElementToDsl = (element: PlanElementDto) => {
       top: element.top,
       width: element.width,
       height: element.height,
-      rotate: 0,
+      rotate: element.rotation ?? 0,
       type: 'image' as const,
       fixedRatio: true,
       src: element.assetRef ?? '',
@@ -82,7 +82,7 @@ const planElementToDsl = (element: PlanElementDto) => {
     top: element.top,
     width: element.width,
     height: element.height,
-    rotate: 0,
+    rotate: element.rotation ?? 0,
     type: 'text' as const,
     content: `<p style="${style}">${inner}</p>`,
     defaultFontName: 'Microsoft YaHei',
@@ -196,7 +196,14 @@ export const buildPlannedLessonDocument = (input: {
       }
       const elements =
         scene.elements.length > 0
-          ? scene.elements.map(planElementToDsl)
+          ? scene.elements
+              .map((element, index) => ({ element, index }))
+              .sort(
+                (left, right) =>
+                  (left.element.layerOrder ?? left.index) -
+                  (right.element.layerOrder ?? right.index),
+              )
+              .map(({ element }) => planElementToDsl(element))
           : [
               {
                 id: `${scene.sceneId}-body`,

@@ -76,12 +76,52 @@ export const publicFormalInteractionDefinition = (
       statementIds: string[];
       kind: 'ordering';
       items: Array<{ id: string; label: string }>;
+    }
+  | {
+      id: string;
+      title: string;
+      statementIds: string[];
+      kind: 'procedural_skill';
+      procedureType: 'repair' | 'assembly' | 'inspection' | 'operation' | 'custom';
+      task: string;
+      tools: Array<{ id: string; label: string }>;
+      steps: Array<{
+        id: string;
+        label: string;
+        successCriteria: string;
+        errorConsequences: string;
+      }>;
     } => {
   if (definition.kind === 'parameter') return definition;
   if (definition.kind === 'concept_relation') {
     return {
       ...definition,
       edges: definition.edges.map(({ id, from, label }) => ({ id, from, label })),
+    };
+  }
+  if (definition.kind === 'procedural_skill') {
+    return {
+      id: definition.id,
+      title: definition.title,
+      statementIds: definition.statementIds,
+      kind: 'procedural_skill',
+      procedureType: definition.procedureType,
+      task: definition.task,
+      tools: definition.tools.map(({ id, label }) => ({ id, label })),
+      // 去掉每步 `correctToolId`：否则把定义下发出去就等于把「每步用哪个工具」的答案一起给了对方。
+      // 步骤顺序同样按与 correctOrder 无关的稳定键呈现，不泄漏正确先后。
+      steps: definition.steps
+        .map(({ id, label, successCriteria, errorConsequences }) => ({
+          id,
+          label,
+          successCriteria,
+          errorConsequences,
+        }))
+        .sort((left, right) =>
+          formalInteractionHash([definition.id, left.id, left.label]).localeCompare(
+            formalInteractionHash([definition.id, right.id, right.label]),
+          ),
+        ),
     };
   }
   return {
@@ -114,4 +154,53 @@ export const orderingMatches = (
   if (order.length !== itemIds.length || new Set(order).size !== order.length) return null;
   if (order.some((id) => !itemIds.includes(id))) return null;
   return order.every((id, index) => id === correctOrder[index]);
+};
+
+export interface ProceduralSkillStepCheck {
+  stepId: string;
+  /** 步骤在本人执行序列中的位置是否与正确顺序一致。 */
+  orderCorrect: boolean;
+  /** 本人为该步骤选择的工具是否与冻结定义里的正确工具一致。 */
+  toolCorrect: boolean;
+}
+
+export interface ProceduralSkillCheck {
+  /** 执行序列是否恰好是全部步骤的一次排列（否则整份提交非法，返回 null）。 */
+  steps: ProceduralSkillStepCheck[] | null;
+  /** 全部步骤的顺序与工具都对。 */
+  allCorrect: boolean;
+}
+
+/**
+ * 步骤技能训练的逐步骤核验（OMA-085）。
+ *
+ * 只做机械比较：执行序列必须恰好是全部步骤的一次排列（不重复、不遗漏），否则返回 null 表示非法提交；
+ * 否则逐步骤给出「顺序是否正确」与「工具是否正确」。结果**不更新掌握状态**。
+ */
+export const proceduralSkillCheck = (
+  executed: ReadonlyArray<{ stepId: string; toolId: string }>,
+  definition: {
+    steps: ReadonlyArray<{ id: string; correctToolId: string }>;
+    correctOrder: readonly string[];
+    tools: ReadonlyArray<{ id: string }>;
+  },
+): ProceduralSkillCheck => {
+  const stepIds = definition.steps.map((step) => step.id);
+  const toolIds = new Set(definition.tools.map((tool) => tool.id));
+  const executedIds = executed.map((item) => item.stepId);
+  if (
+    executedIds.length !== stepIds.length ||
+    new Set(executedIds).size !== executedIds.length ||
+    executedIds.some((id) => !stepIds.includes(id)) ||
+    executed.some((item) => !toolIds.has(item.toolId))
+  ) {
+    return { steps: null, allCorrect: false };
+  }
+  const correctToolOf = new Map(definition.steps.map((step) => [step.id, step.correctToolId]));
+  const steps = executed.map((item, index) => ({
+    stepId: item.stepId,
+    orderCorrect: definition.correctOrder[index] === item.stepId,
+    toolCorrect: correctToolOf.get(item.stepId) === item.toolId,
+  }));
+  return { steps, allCorrect: steps.every((step) => step.orderCorrect && step.toolCorrect) };
 };

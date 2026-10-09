@@ -4,6 +4,8 @@
 
 具有来源约束与多智能体互动课堂的 Electron 桌面学习系统。设计文档在 [`docs/`](docs/)，本目录是代码。
 
+2026-10-09 源码检查点：85 项中 **71 项部分实现、14 项待实现，0 项完成全部验收**；来源约束、材料/课程/作答闭环、媒体/PPTX/静音 MP4、Pro、持久编辑、互动快照与备考入口已有消费者。最新进度、修复和源码检查见 [源码收尾记录](docs/source-closeout-2026-10-09.md) 与 [完整能力矩阵](docs/requirement-matrix-2026-10-09.md)。本次 GitHub 推送保留当前开发成果，尚未重新 build；历史安装包和报告不代表本检查点。按用户约束，全部软件实现完成后再统一构建和产物验收。
+
 ## 目录
 
 ```text
@@ -38,27 +40,27 @@ pnpm install
 
 ## 常用命令
 
-| 命令 | 说明 |
-| --- | --- |
-| `pnpm typecheck` | 包、学习服务、协作服务、桌面和真实 IPC 类型检查 |
-| `pnpm check:code` | 分层与 DTO 边界、preload 同步、JavaScript 语法及构建一致性反例检查 |
-| `pnpm check` | 类型、代码合同检查与全部测试 |
-| `pnpm test` | 领域合同 + 第一阶段闭环（vitest，线程池） |
-| `pnpm gen:theme` | 由 `docs/设计令牌.json` 生成 `apps/learning/app/theme-tokens.css` |
-| `pnpm gen:preload` | 由 IPC 合同生成沙箱可加载的 preload |
-| `pnpm dev:learning` | 以开发模式启动本地服务，并打开 `../.dev-project` |
-| `pnpm dev:collab` | 启动独立协作服务（独立开发数据目录，默认回环） |
-| `pnpm test:collab` | 两个隔离本地受控客户端连接同一独立协作服务，含权限和恢复负例 |
-| `pnpm build:learning` | 生成 standalone 构建并记录输入摘要与 BUILD_ID |
-| `pnpm dev:desktop` | 启动 Electron 壳（自动拉起本地服务并握手） |
-| `pnpm build:desktop` | 生成 preload 并检查桌面源码，尚不生成安装包 |
-| `pnpm package:desktop` | electron-builder 生成未打包目录（PACK-01） |
-| `pnpm verify:desktop` | 将目录包复制到临时中文空格路径，以实际 Electron exe 验证生产 SSR、preload、随包服务和隔离用户数据；报告写入 `apps/desktop/release/` |
-| `pnpm verify:classroom` | 用实际目录包和原生项目选择器操作固定课堂，鼠标作答后关闭整应用，再重新授权项目读回；在开发机运行不等于干净 Windows 验收 |
-| `pnpm dist:desktop` | 生成 Windows x64 NSIS 安装包（不会自动安装） |
-| `node scripts/fetch-node-runtime.mjs` | 下载 Windows x64 随包 Node；运行服务产物准备前必需 |
-| `pnpm prepare:learning-dist` | 构建并组装 standalone 服务产物，含随包 Node 的 native sharp 验证（`apps/learning/dist/service`） |
-| `pnpm verify:service` | 用随包 Node 启动服务产物，验证握手、会话/控制凭据边界与受控退出 |
+| 命令                                  | 说明                                                                                                                                |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm typecheck`                      | 包、学习服务、协作服务、桌面和真实 IPC 类型检查                                                                                     |
+| `pnpm check:code`                     | 分层与 DTO 边界、preload 同步、JavaScript 语法及构建一致性反例检查                                                                  |
+| `pnpm check`                          | 类型、代码合同检查与全部测试                                                                                                        |
+| `pnpm test`                           | 领域合同 + 第一阶段闭环（vitest，线程池）                                                                                           |
+| `pnpm gen:theme`                      | 由 `docs/设计令牌.json` 生成 `apps/learning/app/theme-tokens.css`                                                                   |
+| `pnpm gen:preload`                    | 由 IPC 合同生成沙箱可加载的 preload                                                                                                 |
+| `pnpm dev:learning`                   | 以开发模式启动本地服务，并打开 `../.dev-project`                                                                                    |
+| `pnpm dev:collab`                     | 启动独立协作服务（独立开发数据目录，默认回环）                                                                                      |
+| `pnpm test:collab`                    | 两个隔离本地受控客户端连接同一独立协作服务，含权限和恢复负例                                                                        |
+| `pnpm build:learning`                 | 生成 standalone 构建并记录输入摘要与 BUILD_ID                                                                                       |
+| `pnpm dev:desktop`                    | 启动 Electron 壳（自动拉起本地服务并握手）                                                                                          |
+| `pnpm build:desktop`                  | 生成 preload 并检查桌面源码，尚不生成安装包                                                                                         |
+| `pnpm package:desktop`                | electron-builder 生成未打包目录（PACK-01）                                                                                          |
+| `pnpm verify:desktop`                 | 将目录包复制到临时中文空格路径，以实际 Electron exe 验证生产 SSR、preload、随包服务和隔离用户数据；报告写入 `apps/desktop/release/` |
+| `pnpm verify:classroom`               | 用实际目录包和原生项目选择器操作固定课堂，鼠标作答后关闭整应用，再重新授权项目读回；在开发机运行不等于干净 Windows 验收             |
+| `pnpm dist:desktop`                   | 生成 Windows x64 NSIS 安装包（不会自动安装）                                                                                        |
+| `node scripts/fetch-node-runtime.mjs` | 下载 Windows x64 随包 Node；运行服务产物准备前必需                                                                                  |
+| `pnpm prepare:learning-dist`          | 构建并组装 standalone 服务产物，含随包 Node 的 native sharp 验证（`apps/learning/dist/service`）                                    |
+| `pnpm verify:service`                 | 用随包 Node 启动服务产物，验证握手、会话/控制凭据边界与受控退出                                                                     |
 
 PACK-01 本地验收顺序：先运行 `node scripts/fetch-node-runtime.mjs`，再运行 `pnpm prepare:learning-dist`，随后
 `pnpm package:desktop` 生成 `apps/desktop/release/win-unpacked`，最后运行 `pnpm verify:desktop`。
@@ -167,6 +169,7 @@ M1 已补严格 UTF-8 解码、空正文拒绝、不可变材料历史版本和�
 
 见 [`docs/THIRD_PARTY_NOTICES.md`](docs/THIRD_PARTY_NOTICES.md)。上游复用清单与逐项改动记录见
 [`docs/upstream-adaptation.md`](docs/upstream-adaptation.md)。
+
 ## 公共教学补全（2026-10-06）
 
 「双人共同课堂」当前使用协议 5 / 数据库 schema v34。公共板书先由房主对精确正文和当前场景陈述提交人工审核回执，write 必须引用该回执；旧协议状态和旧未确认 write 不会被伪称已审核，旧命令隔离保留并可由本人明确确认清理。简图显示真实端点、方向与标签。公共 AI 教学已有房主候选权威存储、路由、人工审核/播报面板和受控 provider/shared-budget 本地主入口，目前仍是手动单次生成；独立协作服务持有效房主凭据者可以提交 pending 候选，`model_generated` 只记录受控 gateway 的来源声明，不是独立 provider attestation。完整 Director、多代理自动整课、真实 provider、真人双设备、干净 Windows 和跨设备本人恢复仍未验收。个人答案与评分留个人课堂。见[ADR-0005](docs/adr/0005-online-collaboration-service.md#10-公共教学状态与-uid-等待)及[待办](docs/待办事项.md)。

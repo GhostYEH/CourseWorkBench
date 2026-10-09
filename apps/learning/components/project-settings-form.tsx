@@ -48,7 +48,7 @@ export const ProjectSettingsForm = ({
           learningMode: draft.learningMode,
         }),
       });
-      setMessage('项目设置已保存（草稿）。这不代表候选或课程已经审核通过。');
+      setMessage('备考目标与时间已保存。');
       router.refresh();
     } catch (caught) {
       setError(describeApiError(caught));
@@ -62,7 +62,7 @@ export const ProjectSettingsForm = ({
       <h2>目标与时间</h2>
       <div className="row-inline">
         <div className="field" style={{ flex: '1 1 220px' }}>
-          <label htmlFor="display-name">项目名称</label>
+          <label htmlFor="display-name">学习空间名称</label>
           <input
             id="display-name"
             value={draft.displayName}
@@ -104,7 +104,10 @@ export const ProjectSettingsForm = ({
             id="mode"
             value={draft.learningMode}
             onChange={(event) =>
-              setDraft({ ...draft, learningMode: event.target.value === 'review' ? 'review' : 'beginner' })
+              setDraft({
+                ...draft,
+                learningMode: event.target.value === 'review' ? 'review' : 'beginner',
+              })
             }
           >
             <option value="beginner">零基础</option>
@@ -114,7 +117,11 @@ export const ProjectSettingsForm = ({
       </div>
       <div className="field">
         <label htmlFor="goal">学习目标</label>
-        <textarea id="goal" value={draft.goal} onChange={(event) => setDraft({ ...draft, goal: event.target.value })} />
+        <textarea
+          id="goal"
+          value={draft.goal}
+          onChange={(event) => setDraft({ ...draft, goal: event.target.value })}
+        />
         <span className="hint">缺少考试日期时会按相对天数给出初版计划，并明确标注假设。</span>
       </div>
       <button type="button" className="btn btn-primary" onClick={save} disabled={busy}>

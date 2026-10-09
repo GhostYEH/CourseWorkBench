@@ -621,4 +621,178 @@ describe('跨版本场景计划差异与合并', () => {
     expect(response.status).toBe(404);
     expect(session.store.listProjectScenePlans(session.projectId)).toEqual([]);
   });
+
+  it('逐项冲突决议：全部决议后才改变合并结果，缺决议则拒绝', async () => {
+    const slideId = `scene_slide_${statementId}`;
+    // 共同祖先 v1：正文 'A'。
+    await post({
+      action: 'save-scene-plan',
+      requestId: 'res-base',
+      lessonId,
+      version: lessonVersion,
+      baseRevision: 0,
+      scenes: [scene(slideId, 'A')],
+    });
+    // 来源 v2：正文改 'A2'。
+    const sourceDraft = await post({
+      action: 'draft',
+      lessonId,
+      bundleId,
+      title: '决议来源',
+      statementIds: [statementId],
+      questionIds: [],
+    });
+    const sourceVersion = (await sourceDraft.json()).data.lesson.version;
+    await post({
+      action: 'save-scene-plan',
+      requestId: 'res-source',
+      lessonId,
+      version: sourceVersion,
+      baseRevision: 0,
+      scenes: [scene(slideId, 'A2')],
+    });
+    // 目标 v3：标题改 'TARGET'（与来源的正文改动冲突）。
+    const targetDraft = await post({
+      action: 'draft',
+      lessonId,
+      bundleId,
+      title: '决议目标',
+      statementIds: [statementId],
+      questionIds: [],
+    });
+    const targetVersion = (await targetDraft.json()).data.lesson.version;
+    await post({
+      action: 'save-scene-plan',
+      requestId: 'res-target',
+      lessonId,
+      version: targetVersion,
+      baseRevision: 0,
+      scenes: [scene(slideId, 'A', { title: 'TARGET' })],
+    });
+
+    const base = {
+      action: 'merge-scene-plans',
+      lessonId,
+      baseVersion: lessonVersion,
+      fromVersion: sourceVersion,
+      toVersion: targetVersion,
+    };
+    // 缺决议：默认保留目标内容。
+    const plain = (await (await post(base)).json()).data.merge;
+    expect(plain.conflicts.map((item: { sceneId: string }) => item.sceneId)).toEqual([slideId]);
+    expect(plain.mergedScenes[0]!.title).toBe('TARGET');
+    expect(plain.mergedScenes[0]!.elements[0]!.text).toBe('A');
+
+    // 决议「采用来源版本」：合并结果变成来源内容（正文 A2、标题回到 slideId）。
+    const useIncoming = (
+      await (
+        await post({
+          ...base,
+          resolutions: [{ sceneId: slideId, choice: 'incoming' }],
+        })
+      ).json()
+    ).data.merge;
+    expect(useIncoming.mergedScenes[0]!.elements[0]!.text).toBe('A2');
+    expect(useIncoming.mergedScenes[0]!.title).toBe(slideId);
+
+    // 决议「保留本版本」：合并结果保持目标内容。
+    const keepCurrent = (
+      await (
+        await post({
+          ...base,
+          resolutions: [{ sceneId: slideId, choice: 'current' }],
+        })
+      ).json()
+    ).data.merge;
+    expect(keepCurrent.mergedScenes[0]!.elements[0]!.text).toBe('A');
+    expect(keepCurrent.mergedScenes[0]!.title).toBe('TARGET');
+
+    // 非法决议：给非冲突场景决议被拒。
+    const notAConflict = await post({
+      ...base,
+      resolutions: [{ sceneId: 'scene_not_conflict', choice: 'current' }],
+    });
+    expect(notAConflict.status).toBe(400);
+    // 仍未写入任何计划。
+    expect(
+      session.store.getScenePlan(session.projectId, lessonId, targetVersion)!.scenes[0]!.title,
+    ).toBe('TARGET');
+  });
+
+  it('反向删改冲突决议：采用来源可把被目标删除的场景加回来', async () => {
+    const a = 'scene_a';
+    const b = 'scene_b';
+    // 共同祖先 v1：a、b 两个场景。
+    await post({
+      action: 'save-scene-plan',
+      requestId: 'rev-base',
+      lessonId,
+      version: lessonVersion,
+      baseRevision: 0,
+      scenes: [scene(a, 'A'), scene(b, 'B')],
+    });
+    // 来源 v2：把 a 改成 A2（相对祖先的改动）。
+    const sourceDraft = await post({
+      action: 'draft',
+      lessonId,
+      bundleId,
+      title: '反向来源',
+      statementIds: [statementId],
+      questionIds: [],
+    });
+    const sourceVersion = (await sourceDraft.json()).data.lesson.version;
+    await post({
+      action: 'save-scene-plan',
+      requestId: 'rev-source',
+      lessonId,
+      version: sourceVersion,
+      baseRevision: 0,
+      scenes: [scene(a, 'A2'), scene(b, 'B')],
+    });
+    // 目标 v3：删除 a（只留 b）。
+    const targetDraft = await post({
+      action: 'draft',
+      lessonId,
+      bundleId,
+      title: '反向目标',
+      statementIds: [statementId],
+      questionIds: [],
+    });
+    const targetVersion = (await targetDraft.json()).data.lesson.version;
+    await post({
+      action: 'save-scene-plan',
+      requestId: 'rev-target',
+      lessonId,
+      version: targetVersion,
+      baseRevision: 0,
+      scenes: [scene(b, 'B')],
+    });
+
+    const base = {
+      action: 'merge-scene-plans',
+      lessonId,
+      baseVersion: lessonVersion,
+      fromVersion: sourceVersion,
+      toVersion: targetVersion,
+    };
+    // 默认：保留目标删除，a 不回加。
+    const plain = (await (await post(base)).json()).data.merge;
+    expect(plain.conflicts.map((item: { sceneId: string }) => item.sceneId)).toEqual([a]);
+    expect(plain.mergedScenes.map((item: PlanSceneDto) => item.sceneId)).toEqual([b]);
+
+    // 决议「保留本版本」：仍保持删除。
+    const keep = (
+      await (await post({ ...base, resolutions: [{ sceneId: a, choice: 'current' }] })).json()
+    ).data.merge;
+    expect(keep.mergedScenes.map((item: PlanSceneDto) => item.sceneId)).toEqual([b]);
+
+    // 决议「采用来源」：a 必须被加回来（否则决议被静默忽略、内容丢失）。
+    const use = (
+      await (await post({ ...base, resolutions: [{ sceneId: a, choice: 'incoming' }] })).json()
+    ).data.merge;
+    expect(use.mergedScenes.map((item: PlanSceneDto) => item.sceneId).sort()).toEqual([a, b]);
+    expect(
+      use.mergedScenes.find((item: PlanSceneDto) => item.sceneId === a)!.elements[0]!.text,
+    ).toBe('A2');
+  });
 });

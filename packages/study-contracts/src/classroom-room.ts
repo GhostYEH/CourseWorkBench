@@ -138,6 +138,38 @@ export const classroomSharedSceneSchema = z.discriminatedUnion('type', [
               .max(24),
           })
           .strict(),
+        /**
+         * 步骤技能训练的公开投影：只给步骤、工具与判据。
+         *
+         * **不带**每步 `correctToolId`，也不带正确步骤顺序 `correctOrder`：答案留在各自本地服务。
+         */
+        z
+          .object({
+            interactionId: id,
+            kind: z.literal('procedural_skill'),
+            title: publicText(120),
+            statementIds: z.array(id).min(1).max(24),
+            procedureType: z.enum(['repair', 'assembly', 'inspection', 'operation', 'custom']),
+            task: publicText(500),
+            tools: z
+              .array(z.object({ id, label: publicText(200) }).strict())
+              .min(2)
+              .max(24),
+            steps: z
+              .array(
+                z
+                  .object({
+                    id,
+                    label: publicText(200),
+                    successCriteria: publicText(400),
+                    errorConsequences: publicText(400),
+                  })
+                  .strict(),
+              )
+              .min(2)
+              .max(24),
+          })
+          .strict(),
       ]),
     })
     .strict(),

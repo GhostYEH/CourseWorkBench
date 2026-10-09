@@ -392,6 +392,14 @@ export interface ImportMaterialInput {
   rawBytes?: Uint8Array | null;
   /** 选择器文件名字面，仅用于展示与人工核对；不作为路径参与任何文件操作。 */
   originalName?: string | null;
+  /** Binary original is archived separately; paragraph byte spans still address rawText. */
+  sourceExtraction?: {
+    format: 'pdf' | 'docx' | 'pptx' | 'xlsx';
+    originalName: string;
+    bytes: Uint8Array;
+    extractionVersion: string;
+    locations: Array<{ ordinal: number; label: string }>;
+  };
   /** Internal provisioning scope; HTTP import DTOs cannot set this field. */
   recordScope?: RecordScope;
 }

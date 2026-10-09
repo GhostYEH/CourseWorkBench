@@ -47,6 +47,8 @@ import {
   type ScenePlanDto,
   type ScenePlanReceiptDto,
   type ScenePlanReceiptState,
+  type ScenePlanPatchCandidateDto,
+  type ScenePlanDraftDto,
 } from '@sew/study-contracts';
 import {
   assertCardApprovable,
@@ -90,6 +92,14 @@ import type {
   ClassroomAssetRow,
 } from './repositories/classroom-assets';
 import { ClassroomAssetsRepository } from './repositories/classroom-assets';
+import { MediaTasksRepository } from './repositories/media-tasks';
+import { Mp4JobsRepository } from './repositories/mp4-jobs';
+import { MaterialOriginalsRepository } from './repositories/material-originals';
+import { ExecutionLeasesRepository } from './repositories/execution-leases';
+import { ProSessionsRepository, ProSkillsRepository } from './repositories/pro-sessions';
+import { ProExternalTokensRepository } from './repositories/pro-external-tokens';
+import { DeploymentAccessCodeRepository } from './repositories/deployment-access';
+import { InteractiveSnapshotRepository } from './repositories/interactive-snapshots';
 import {
   ClassroomBoardRepository,
   type CreateClassroomBoardInput,
@@ -142,6 +152,11 @@ import {
   type CreateCoursewareCandidateInput,
   type SaveScenePlanInput,
 } from './repositories/lesson-scene-plan';
+import {
+  ScenePlanPatchRepository,
+  type CreateScenePlanPatchCandidateInput,
+  type ScenePlanPatchReceipt,
+} from './repositories/scene-plan-patch';
 import {
   ModelUsageRepository,
   type ModelUsageLimits,
@@ -272,6 +287,7 @@ export class StudyStore {
   private readonly lessons: LessonRepository;
   private readonly lessonRevisions: LessonStatementRevisionRepository;
   private readonly scenePlans: LessonScenePlanRepository;
+  private readonly scenePlanPatches: ScenePlanPatchRepository;
   private readonly teaching: TeachingRepository;
   private readonly syllabus: SyllabusRepository;
   private readonly classroom: ClassroomRepository;
@@ -279,6 +295,14 @@ export class StudyStore {
   private readonly classroomAssets: ClassroomAssetsRepository;
   readonly runtime: ClassroomRuntimeRepository;
   readonly classroomKV: ClassroomKVRepository;
+  readonly media: MediaTasksRepository;
+  readonly mp4: Mp4JobsRepository;
+  readonly executions: ExecutionLeasesRepository;
+  readonly proSessions: ProSessionsRepository;
+  readonly proSkills: ProSkillsRepository;
+  readonly proExternalTokens: ProExternalTokensRepository;
+  readonly deploymentAccess: DeploymentAccessCodeRepository;
+  readonly interactiveSnapshots: InteractiveSnapshotRepository;
 
   private constructor(
     db: SqlDatabase,
@@ -313,11 +337,20 @@ export class StudyStore {
     this.lessons = new LessonRepository(db);
     this.lessonRevisions = new LessonStatementRevisionRepository(db);
     this.scenePlans = new LessonScenePlanRepository(db);
+    this.scenePlanPatches = new ScenePlanPatchRepository(db);
     this.teaching = new TeachingRepository(db);
     this.syllabus = new SyllabusRepository(db);
     this.classroom = new ClassroomRepository(db);
     this.documentOrganization = new DocumentOrganizationRepository(db);
     this.classroomAssets = new ClassroomAssetsRepository(db);
+    this.media = new MediaTasksRepository(db, this.classroomAssets, databaseFile);
+    this.mp4 = new Mp4JobsRepository(db);
+    this.executions = new ExecutionLeasesRepository(db);
+    this.proSessions = new ProSessionsRepository(db);
+    this.proSkills = new ProSkillsRepository(db);
+    this.proExternalTokens = new ProExternalTokensRepository(db);
+    this.deploymentAccess = new DeploymentAccessCodeRepository(db);
+    this.interactiveSnapshots = new InteractiveSnapshotRepository(db);
     this.runtime = new ClassroomRuntimeRepository(db);
     this.classroomKV = new ClassroomKVRepository(db);
     this.collaboration = new CollaborationRepository(db);
@@ -536,6 +569,13 @@ export class StudyStore {
   /** 读取归档的原始字节：未归档或摘要不符都按明确错误失败，不返回无法核对的原文。 */
   readMaterialRaw(materialId: string, revision: number, scope: RecordScope = 'formal') {
     return this.materials.readMaterialRaw(materialId, revision, scope);
+  }
+  readMaterialExtractionOriginal(
+    materialId: string,
+    revision: number,
+    scope: RecordScope = 'formal',
+  ) {
+    return new MaterialOriginalsRepository(this.db).read(materialId, revision, scope);
   }
 
   /** 段落在归档原文中的字节区间与行号；段落不属于该版本或范围不符时明确失败。 */
@@ -1521,6 +1561,40 @@ export class StudyStore {
     return this.scenePlans.listPlansForProject(projectId);
   }
 
+  /** 场景计划的持久编辑草稿（OMA-024）：工作副本，不参与教学/审核。 */
+  getScenePlanDraft(
+    projectId: string,
+    lessonId: string,
+    lessonVersion: number,
+  ): ScenePlanDraftDto | null {
+    return this.scenePlans.getDraft(projectId, lessonId, lessonVersion);
+  }
+
+  saveScenePlanDraft(input: {
+    projectId: string;
+    lessonId: string;
+    lessonVersion: number;
+    baseRevision: number;
+    baseDigest: string | null;
+    scenes: ScenePlanDto['scenes'];
+    expectedDraftRevision?: number;
+  }): ScenePlanDraftDto {
+    const lesson = this.lessons.getVersion(input.lessonId, input.lessonVersion, input.projectId);
+    if (!lesson)
+      throw new StudyError('NOT_FOUND', { lessonId: input.lessonId, version: input.lessonVersion });
+    if (lesson.status !== 'draft') {
+      throw new StudyError('STEP_ALREADY_COMMITTED', {
+        status: lesson.status,
+        reason: 'scene_plan_draft_base_not_draft',
+      });
+    }
+    return this.scenePlans.saveDraft(input);
+  }
+
+  discardScenePlanDraft(projectId: string, lessonId: string, lessonVersion: number): void {
+    this.scenePlans.discardDraft(projectId, lessonId, lessonVersion);
+  }
+
   /** 生成完整课件候选：只落待核区，不写入计划、不进入教学。 */
   createCoursewareCandidate(input: CreateCoursewareCandidateInput): CoursewareCandidateDto {
     return this.scenePlans.createCandidate(input);
@@ -1556,7 +1630,7 @@ export class StudyStore {
   saveScenePlanReceipt(input: {
     projectId: string;
     requestId: string;
-    action: 'save-scene-plan' | 'apply-courseware';
+    action: 'save-scene-plan' | 'apply-courseware' | 'save-scene-plan-draft';
     intent: string;
     state: ScenePlanReceiptState;
     result: unknown;
@@ -1648,10 +1722,125 @@ export class StudyStore {
     });
   }
 
+  /** 受限 AI 场景计划补丁候选（OMA-023）：只落待核区，不写入计划、不进入教学。 */
+  createScenePlanPatchCandidate(
+    input: CreateScenePlanPatchCandidateInput,
+  ): ScenePlanPatchCandidateDto {
+    return this.scenePlanPatches.createCandidate(input);
+  }
+
+  getScenePlanPatchCandidate(
+    projectId: string,
+    candidateId: string,
+  ): ScenePlanPatchCandidateDto | null {
+    return this.scenePlanPatches.getCandidate(projectId, candidateId);
+  }
+
+  listProjectScenePlanPatchCandidates(projectId: string): ScenePlanPatchCandidateDto[] {
+    return this.scenePlanPatches.listForProject(projectId);
+  }
+
+  scenePlanPatchReceipt(
+    projectId: string,
+    requestId: string,
+    action: string,
+    intent: string,
+  ): ScenePlanPatchReceipt | null {
+    return this.scenePlanPatches.receipt(projectId, requestId, action, intent);
+  }
+
+  saveScenePlanPatchReceipt(input: {
+    projectId: string;
+    requestId: string;
+    action: 'propose' | 'apply';
+    intent: string;
+    state: 'completed' | 'failed' | 'cancelled' | 'unknown';
+    result: unknown;
+    message: string;
+    errorCode?: string | null;
+    errorReason?: string | null;
+  }): void {
+    this.scenePlanPatches.saveReceipt(input);
+  }
+
+  /**
+   * 人工处置受限补丁候选（OMA-023 的「通过→写入场景计划」闭环）。
+   *
+   * 通过时在同一个事务内：把调用方已按冻结证据包逐项规范化并复验过的场景写成该草案版本的
+   * 场景计划，并把候选标记为 applied；拒绝只留档，不产生计划。基线版本必须是草案。
+   *
+   * 候选记录了生成时的计划基线：审批时若计划已被别处推进（手工保存或另一候选通过），
+   * 除非显式 `override`，否则返回 `VERSION_CONFLICT`（`plan_revision_stale`）而不是静默覆盖。
+   */
+  applyScenePlanPatchCandidate(input: {
+    projectId: string;
+    candidateId: string;
+    decision: 'approved' | 'rejected';
+    note: string;
+    reviewedBy: string;
+    scenes: ScenePlanDto['scenes'] | null;
+    expectedPlanRevision?: number;
+    override?: boolean;
+  }): { candidate: ScenePlanPatchCandidateDto; plan: ScenePlanDto | null } {
+    return this.transaction(() => {
+      const candidate = this.scenePlanPatches.getCandidate(input.projectId, input.candidateId);
+      if (!candidate) throw new StudyError('NOT_FOUND', { candidateId: input.candidateId });
+      const base = this.lessons.getVersion(
+        candidate.lessonId,
+        candidate.baseVersion,
+        input.projectId,
+      );
+      if (!base)
+        throw new StudyError('NOT_FOUND', {
+          lessonId: candidate.lessonId,
+          version: candidate.baseVersion,
+        });
+      if (base.status !== 'draft') {
+        throw new StudyError('STEP_ALREADY_COMMITTED', {
+          status: base.status,
+          reason: 'scene_plan_patch_base_not_draft',
+        });
+      }
+      const current = this.scenePlans.getPlan(
+        input.projectId,
+        candidate.lessonId,
+        candidate.baseVersion,
+      );
+      const currentRevision = current?.revision ?? 0;
+      const expected = input.expectedPlanRevision ?? candidate.basePlanRevision;
+      const baselineChanged =
+        candidate.basePlanRevision !== currentRevision ||
+        candidate.basePlanDigest !== (current?.digest ?? null);
+      if (
+        input.decision === 'approved' &&
+        (expected !== currentRevision ||
+          (input.override ? input.expectedPlanRevision === undefined : baselineChanged))
+      ) {
+        throw new StudyError('VERSION_CONFLICT', {
+          reason: 'plan_revision_stale',
+          expected,
+          received: currentRevision,
+          candidatePlanRevision: candidate.basePlanRevision,
+        });
+      }
+      const decided = this.scenePlanPatches.decideCandidate(input);
+      if (input.decision === 'rejected' || !input.scenes) return { candidate: decided, plan: null };
+      const plan = this.scenePlans.savePlan({
+        projectId: input.projectId,
+        lessonId: candidate.lessonId,
+        lessonVersion: candidate.baseVersion,
+        bundleId: base.bundleId,
+        scenes: input.scenes,
+        origin: 'model_generated',
+        baseRevision: currentRevision,
+      });
+      return { candidate: decided, plan };
+    });
+  }
+
   listLessonVersions(lessonId: string, projectId: string): LessonVersionRow[] {
     return this.lessons.listVersions(lessonId, projectId);
   }
-
   readLessonCatalog(projectId: string) {
     return this.lessons.readCatalog(projectId);
   }

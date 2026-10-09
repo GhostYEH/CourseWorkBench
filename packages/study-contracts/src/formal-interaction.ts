@@ -82,6 +82,44 @@ export const formalInteractionDefinitionSchema = z.discriminatedUnion('kind', [
       correctOrder: z.array(id).min(2).max(24),
     })
     .strict(),
+  /**
+   * 步骤技能训练（OMA-085）：按顺序执行一组操作步骤，工具/成功条件/错误后果随定义冻结。
+   *
+   * 与 `ordering` 的区别：这里每个步骤有独立的**工具**与**成功判据**，且服务端在提交时逐步骤
+   * 核验「本人这一步用的工具/顺序是否正确」；公开投影去掉每一步的 `correctToolId` 与步骤的
+   * 正确先后（`correctOrder`），只给步骤集合与可选工具。训练记录仍是本人操作，不更新掌握。
+   */
+  z
+    .object({
+      ...base,
+      kind: z.literal('procedural_skill'),
+      procedureType: z.enum(['repair', 'assembly', 'inspection', 'operation', 'custom']),
+      task: z.string().min(2).max(500),
+      tools: z
+        .array(z.object({ id, label: z.string().min(1).max(200) }).strict())
+        .min(2)
+        .max(24),
+      steps: z
+        .array(
+          z
+            .object({
+              id,
+              label: z.string().min(1).max(200),
+              /** 该步骤的正确工具（`tools.id`）；服务端据此核验本人选择。 */
+              correctToolId: id,
+              /** 成功判据（阈值/读数/状态），展示给本人，不构成答案泄漏。 */
+              successCriteria: z.string().min(2).max(400),
+              /** 跳过或违规操作的后果，展示给本人。 */
+              errorConsequences: z.string().min(2).max(400),
+            })
+            .strict(),
+        )
+        .min(2)
+        .max(24),
+      /** 正确步骤顺序（`steps.id` 的一个排列）。服务端核验本人提交的执行顺序。 */
+      correctOrder: z.array(id).min(2).max(24),
+    })
+    .strict(),
 ]);
 export type FormalInteractionDefinitionDto = z.infer<typeof formalInteractionDefinitionSchema>;
 export const formalInteractionPublicDefinitionSchema = z.union([
@@ -100,6 +138,26 @@ export const formalInteractionPublicDefinitionSchema = z.union([
       ...base,
       kind: z.literal('ordering'),
       items: z.array(z.object({ id, label: z.string() }).strict()),
+    })
+    .strict(),
+  /** 步骤技能的公开投影：给出步骤/工具/判据，**去掉每步正确工具与正确步骤顺序**。 */
+  z
+    .object({
+      ...base,
+      kind: z.literal('procedural_skill'),
+      procedureType: z.enum(['repair', 'assembly', 'inspection', 'operation', 'custom']),
+      task: z.string(),
+      tools: z.array(z.object({ id, label: z.string() }).strict()),
+      steps: z.array(
+        z
+          .object({
+            id,
+            label: z.string(),
+            successCriteria: z.string(),
+            errorConsequences: z.string(),
+          })
+          .strict(),
+      ),
     })
     .strict(),
 ]);
@@ -140,6 +198,20 @@ export const formalInteractionValuesSchema = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('ordering'),
       order: z.array(id).min(2).max(24),
+      explanation: z.string().max(2000),
+    })
+    .strict(),
+  /**
+   * 本人给出的步骤执行：按执行顺序给出步骤 id，并为每步选择所用工具。
+   * 服务端核验「步骤顺序正确」且「每步工具正确」，逐步骤给出对错。
+   */
+  z
+    .object({
+      kind: z.literal('procedural_skill'),
+      executed: z
+        .array(z.object({ stepId: id, toolId: id }).strict())
+        .min(2)
+        .max(24),
       explanation: z.string().max(2000),
     })
     .strict(),

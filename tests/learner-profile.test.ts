@@ -89,6 +89,24 @@ describe('user-level learner profile', () => {
     expect(fs.readdirSync(root)).toEqual([LEARNER_PROFILE_FILE_NAME]);
   });
 
+  it('recovers a transient Windows file-occupancy failure on atomic replacement without losing identity', () => {
+    const original = getLearnerProfile();
+    const real = fs.renameSync.bind(fs);
+    let calls = 0;
+    // 首次 EPERM（杀毒/索引器短暂占用），随后成功：有限次重试后仍完成原子替换。
+    const spy = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      calls += 1;
+      if (calls === 1) throw Object.assign(new Error('busy'), { code: 'EPERM' });
+      return real(from, to);
+    });
+    const renamed = updateLearnerProfile({ displayName: '瞬态重试后保存', expectedUid: original.uid, expectedRevision: 1 });
+    expect(calls).toBeGreaterThanOrEqual(2);
+    expect(renamed).toMatchObject({ uid: original.uid, createdAt: original.createdAt, displayName: '瞬态重试后保存', revision: 2 });
+    expect(getLearnerProfile()).toEqual(renamed);
+    expect(fs.readdirSync(root)).toEqual([LEARNER_PROFILE_FILE_NAME]);
+    spy.mockRestore();
+  });
+
   it('preserves the previous identity when writing or flushing the temporary file fails', () => {
     const original = getLearnerProfile();
     const originalBytes = fs.readFileSync(join(root, LEARNER_PROFILE_FILE_NAME), 'utf8');

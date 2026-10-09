@@ -132,7 +132,7 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  panels: { tree: true, right: true, bottom: false, rightTab: 'assistant' },
+  panels: { tree: false, right: false, bottom: false, rightTab: 'assistant' },
   toggleTree: () => set((state) => ({ panels: { ...state.panels, tree: !state.panels.tree } })),
   toggleRight: () => set((state) => ({ panels: { ...state.panels, right: !state.panels.right } })),
   toggleBottom: () => set((state) => ({ panels: { ...state.panels, bottom: !state.panels.bottom } })),

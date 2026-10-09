@@ -211,7 +211,10 @@ const findEndOfCentralDirectory = (buffer: Buffer): number => {
 };
 
 /** 解析并逐条校验归档；任何偏移/长度/摘要不一致都拒绝，不返回部分结果。 */
-export const readZip = (input: Uint8Array): ZipReadEntry[] => {
+export const readZip = (
+  input: Uint8Array,
+  options: { allowEmptyDirectories?: boolean } = {},
+): ZipReadEntry[] => {
   const buffer = Buffer.from(input.buffer, input.byteOffset, input.byteLength);
   const eocd = findEndOfCentralDirectory(buffer);
   if (buffer.readUInt16LE(eocd + 4) !== 0 || buffer.readUInt16LE(eocd + 6) !== 0)
@@ -249,8 +252,10 @@ export const readZip = (input: Uint8Array): ZipReadEntry[] => {
     const name = decodeName(buffer.subarray(cursor + 46, cursor + 46 + nameLength));
     cursor += 46 + nameLength + extraLength + commentLength;
 
-    if (name.endsWith('/')) fail('directory_entries_unsupported');
-    if (!isPortableZipPath(name)) fail('invalid_path');
+    const directory = name.endsWith('/');
+    if (directory && !options.allowEmptyDirectories) fail('directory_entries_unsupported');
+    if (!isPortableZipPath(directory ? name.slice(0, -1) : name)) fail('invalid_path');
+    if (directory && uncompressedSize !== 0) fail('nonempty_directory_entry');
     const key = name.toLowerCase();
     if (seen.has(key)) fail('duplicate_path');
     seen.add(key);
@@ -273,7 +278,8 @@ export const readZip = (input: Uint8Array): ZipReadEntry[] => {
     const localName = decodeName(
       buffer.subarray(localOffset + 30, localOffset + 30 + localNameLength),
     );
-    if (!isPortableZipPath(localName) || localName !== name) fail('local_header_mismatch');
+    if (!isPortableZipPath(directory ? localName.slice(0, -1) : localName) || localName !== name)
+      fail('local_header_mismatch');
     if (
       (flags & 0x0008) === 0 &&
       (buffer.readUInt32LE(localOffset + 14) !== crc ||
@@ -313,7 +319,7 @@ export const readZip = (input: Uint8Array): ZipReadEntry[] => {
 
     totalBytes += bytes.byteLength;
     if (totalBytes > ZIP_MAX_TOTAL_BYTES) fail('total_size_limit');
-    entries.push({ path: name, bytes });
+    if (!directory) entries.push({ path: name, bytes });
   }
   if (cursor !== centralOffset + centralSize) fail('central_directory_size_mismatch');
   return entries;

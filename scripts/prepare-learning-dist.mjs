@@ -130,7 +130,8 @@ const copyPackageFiles = (source, target, onlyMissing = false) => {
     const sourcePath = join(source, entry.name);
     const targetPath = join(target, entry.name);
     if (entry.isDirectory() || entry.isSymbolicLink()) {
-      if (statSync(sourcePath).isDirectory()) files += copyPackageFiles(sourcePath, targetPath, onlyMissing);
+      if (statSync(sourcePath).isDirectory())
+        files += copyPackageFiles(sourcePath, targetPath, onlyMissing);
       else if (!onlyMissing || !existsSync(targetPath)) {
         copyFileSync(sourcePath, targetPath);
         files += 1;
@@ -199,7 +200,9 @@ const materializePackagePayload = (sourcePath, targetPath) => {
   if (targetExists) {
     const targetIdentity = packageIdentity(targetPath);
     if (sourceIdentity && targetIdentity !== sourceIdentity) {
-      fail(`依赖目标版本冲突：${targetPath} 已有 ${targetIdentity ?? '无有效 package.json'}，请求物化 ${sourceIdentity}`);
+      fail(
+        `依赖目标版本冲突：${targetPath} 已有 ${targetIdentity ?? '无有效 package.json'}，请求物化 ${sourceIdentity}`,
+      );
     }
   }
   if (!targetExists) {
@@ -320,7 +323,9 @@ for (const [name, sourcePath] of rootSources) {
 for (const [name, sourcePath] of rootSources) {
   expandPackageDependencies(sourcePath, join(serviceNodeModules, name));
 }
-console.log(`依赖物化：根目录 ${rootSources.size} 个包版本，局部冲突副本使总量 ${mergedPackages} 个包（${mergedFiles} 个文件）`);
+console.log(
+  `依赖物化：根目录 ${rootSources.size} 个包版本，局部冲突副本使总量 ${mergedPackages} 个包（${mergedFiles} 个文件）`,
+);
 
 // 3. 复制真正的服务入口与运行时配置；主进程握手与边界校验都在 server.mjs。
 copyFileSync(join(learningDir, 'server.mjs'), join(serviceDir, 'server.mjs'));
@@ -328,7 +333,8 @@ copyFileSync(join(learningDir, 'next.config.ts'), join(serviceDir, 'next.config.
 
 // 4. standalone 不会包含静态资源，必须从源码构建输出补齐。
 const staticSource = join(nextDistDir, 'static');
-if (!existsSync(staticSource)) fail('缺少 apps/learning/.next/static；请先运行 pnpm build:learning');
+if (!existsSync(staticSource))
+  fail('缺少 apps/learning/.next/static；请先运行 pnpm build:learning');
 const staticFiles = copyTreeReal(staticSource, join(serviceDir, '.next', 'static'));
 console.log(`已补齐 .next/static（${staticFiles} 个文件）`);
 
@@ -344,8 +350,11 @@ if (existsSync(publicSource)) {
 // 显式携带演示资产的原始文件和许可，纳入下方完整产物清单。
 const classroomAssetSource = join(learningDir, 'lib', 'classroom', 'assets');
 if (existsSync(classroomAssetSource)) {
-  if (!existsSync(join(classroomAssetSource, 'KaTeX-LICENSE.txt'))) fail('课堂字体缺少 KaTeX 许可文本');
-  console.log(`已复制课堂资产与许可（${copyTreeReal(classroomAssetSource, join(serviceDir, 'classroom-assets'))} 个文件）`);
+  if (!existsSync(join(classroomAssetSource, 'KaTeX-LICENSE.txt')))
+    fail('课堂字体缺少 KaTeX 许可文本');
+  console.log(
+    `已复制课堂资产与许可（${copyTreeReal(classroomAssetSource, join(serviceDir, 'classroom-assets'))} 个文件）`,
+  );
 }
 
 // Browser-bundled upstream source still requires its complete license and an
@@ -363,6 +372,37 @@ if (existsSync(classroomAdaptation)) {
 }
 
 // 布局校验：入口、构建标识、依赖解析与静态资源缺一不可。
+// Retain the complete license even when the PowerPoint serializer is bundled into server chunks.
+const pptxLicense = join(learningDir, 'node_modules', 'pptxgenjs', 'LICENSE');
+if (!existsSync(pptxLicense)) fail('PowerPoint 序列化依赖缺少完整许可');
+const pptxNoticesDir = join(serviceDir, 'third-party', 'pptxgenjs');
+mkdirSync(pptxNoticesDir, { recursive: true });
+copyFileSync(pptxLicense, join(pptxNoticesDir, 'LICENSE'));
+for (const packageName of [
+  '@xmldom/xmldom',
+  'fflate',
+  'pdfjs-dist',
+  'ai',
+  '@ai-sdk/openai',
+  '@ai-sdk/azure',
+  '@ai-sdk/anthropic',
+  '@ai-sdk/amazon-bedrock',
+  '@ai-sdk/google',
+  '@aws-sdk/client-bedrock',
+  '@aws-sdk/credential-providers',
+  '@smithy/fetch-http-handler',
+]) {
+  const license = join(learningDir, 'node_modules', packageName, 'LICENSE');
+  if (!existsSync(license)) fail(`导入/序列化依赖 ${packageName} 缺少完整许可`);
+  const target = join(serviceDir, 'third-party', packageName.replace('@', '').replace('/', '-'));
+  mkdirSync(target, { recursive: true });
+  copyFileSync(license, join(target, 'LICENSE'));
+}
+const exportFonts = join(learningDir, 'resources', 'fonts');
+if (existsSync(exportFonts)) copyTreeReal(exportFonts, join(serviceDir, 'resources', 'fonts'));
+const proSkills = join(learningDir, 'resources', 'pro-skills');
+if (existsSync(proSkills)) copyTreeReal(proSkills, join(serviceDir, 'resources', 'pro-skills'));
+
 const requireFromService = createRequire(join(serviceDir, 'server.mjs'));
 const buildIdFile = join(serviceDir, '.next', 'BUILD_ID');
 const problems = [];
@@ -373,7 +413,11 @@ for (const moduleId of ['next', '@swc/helpers/_/_interop_require_default', 'reac
     const resolved = realpathSync(requireFromService.resolve(moduleId));
     const serviceReal = realpathSync(serviceDir);
     const relativeDependency = relative(serviceReal, resolved);
-    if (relativeDependency === '..' || relativeDependency.startsWith(`..${sep}`) || isAbsolute(relativeDependency)) {
+    if (
+      relativeDependency === '..' ||
+      relativeDependency.startsWith(`..${sep}`) ||
+      isAbsolute(relativeDependency)
+    ) {
       problems.push(`依赖 ${moduleId} 解析到服务产物外部 ${resolved}`);
     }
   } catch {
@@ -381,7 +425,8 @@ for (const moduleId of ['next', '@swc/helpers/_/_interop_require_default', 'reac
   }
 }
 const bundledNode = join(root, 'resources', 'node', 'runtime', 'node.exe');
-if (!existsSync(bundledNode)) problems.push('缺少 resources/node/runtime/node.exe，无法验证随包 Node 原生模块');
+if (!existsSync(bundledNode))
+  problems.push('缺少 resources/node/runtime/node.exe，无法验证随包 Node 原生模块');
 else {
   const sharpCheck = String.raw`const { createRequire } = require('node:module');
 const req = createRequire(process.argv[1]);
@@ -404,10 +449,17 @@ const tslibPackage = require('node:path').join(require('node:path').dirname(tsli
   const result = spawnSync(bundledNode, ['-e', sharpCheck, join(serviceDir, 'server.mjs')], {
     encoding: 'utf8',
     cwd: serviceDir,
-    env: { SystemRoot: systemRoot, WINDIR: systemRoot, PATH: `${systemRoot}\\System32;${systemRoot}`, NODE_PATH: '', NODE_OPTIONS: '' },
+    env: {
+      SystemRoot: systemRoot,
+      WINDIR: systemRoot,
+      PATH: `${systemRoot}\\System32;${systemRoot}`,
+      NODE_PATH: '',
+      NODE_OPTIONS: '',
+    },
   });
   if (result.error) problems.push(`随包 Node 启动失败：${result.error.message}`);
-  else if (result.status !== 0) problems.push(`随包 Node sharp 原生编码检查失败：${(result.stderr || result.stdout).trim()}`);
+  else if (result.status !== 0)
+    problems.push(`随包 Node sharp 原生编码检查失败：${(result.stderr || result.stdout).trim()}`);
   else console.log(`随包 Node sharp PNG 编码通过：${result.stdout.trim()}`);
 }
 const staticDir = join(serviceDir, '.next', 'static');
@@ -415,22 +467,27 @@ if (!existsSync(staticDir) || countTree(staticDir) === 0) problems.push('.next/s
 if (problems.length > 0) fail(problems.join('；'));
 
 const finalProvenance = validateBuildInputs(root, nextDistDir);
-if (finalProvenance.buildId !== buildProvenance.buildId
-  || finalProvenance.source.digest !== buildProvenance.source.digest) {
+if (
+  finalProvenance.buildId !== buildProvenance.buildId ||
+  finalProvenance.source.digest !== buildProvenance.source.digest
+) {
   fail('组装期间构建或输入发生变化；请在构建完成后重新组装');
 }
 const inventory = inventoryTree(serviceDir, new Set([SERVICE_MANIFEST]));
 const longestRelativePath = inventory.reduce((max, [path]) => Math.max(max, path.length), 0);
 if (longestRelativePath > MAX_SERVICE_RELATIVE_PATH) {
-  fail(`服务清单最长相对路径 ${longestRelativePath} 超出 Windows 安装安全限值 ${MAX_SERVICE_RELATIVE_PATH}`);
+  fail(
+    `服务清单最长相对路径 ${longestRelativePath} 超出 Windows 安装安全限值 ${MAX_SERVICE_RELATIVE_PATH}`,
+  );
 }
-const maxInstallDirLength = MAX_WINDOWS_ABSOLUTE_PATH
-  - SERVICE_INSTALL_RELATIVE_PATH.length
-  - longestRelativePath;
+const maxInstallDirLength =
+  MAX_WINDOWS_ABSOLUTE_PATH - SERVICE_INSTALL_RELATIVE_PATH.length - longestRelativePath;
 if (maxInstallDirLength < 1) {
   fail(`服务路径无法满足 Windows 绝对路径安全限值 ${MAX_WINDOWS_ABSOLUTE_PATH}`);
 }
-console.log(`服务清单路径校验通过：${inventory.length} 个文件，最长相对路径 ${longestRelativePath}/${MAX_SERVICE_RELATIVE_PATH}`);
+console.log(
+  `服务清单路径校验通过：${inventory.length} 个文件，最长相对路径 ${longestRelativePath}/${MAX_SERVICE_RELATIVE_PATH}`,
+);
 
 const manifest = {
   schemaVersion: 1,
@@ -449,7 +506,9 @@ writeFileSync(
   `!define SEW_MAX_INSTALL_DIR_LENGTH ${maxInstallDirLength}\n`,
   'utf8',
 );
-console.log(`NSIS 安装目录长度上限已写入：${installPathLimitsInclude}（${maxInstallDirLength} 字符）`);
+console.log(
+  `NSIS 安装目录长度上限已写入：${installPathLimitsInclude}（${maxInstallDirLength} 字符）`,
+);
 
 console.log(`布局校验通过：BUILD_ID ${readFileSync(buildIdFile, 'utf8').trim()}`);
 console.log(`服务产物就绪：${serviceDir}`);

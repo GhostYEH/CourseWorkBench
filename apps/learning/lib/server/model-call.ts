@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto';
 import {
   StudyError,
   modelGenerationResultSchema,
+  modelChatMessageSchema,
   newId,
   EXPLANATION_TEXT_MAX_LENGTH,
   explanationCardSchema,
@@ -36,6 +37,7 @@ import {
 } from '@sew/study-domain';
 import type { StudyStore } from '@sew/study-storage';
 import type { ModelGenerateOutcome } from './model-connection';
+import type { ModelRoute } from './provider-registry';
 
 export interface ModelCallLimits {
   maxCalls: number;
@@ -60,12 +62,14 @@ export interface ModelCallDeps {
     status: () => ModelConnectionStatus;
     generate: (
       messages: ModelChatMessage[],
-      options?: { maxTokens?: number; signal?: AbortSignal },
+      options?: { maxTokens?: number; signal?: AbortSignal; route?: ModelRoute },
     ) => Promise<ModelGenerateOutcome>;
   };
   limits?: ModelCallLimits;
   /** The HTTP owner revalidates project generation before any post-await database access. */
   revalidateScope?: () => void;
+  /** Fences authorized execution side effects; obsolete dispatched calls retain accounting only. */
+  verifyExecutionLease?: () => void;
   /** HTTP classroom owner checks recovery before dispatch and late-result admission. */
   verifyClassroom?: (sessionId: string) => void;
 }
@@ -226,6 +230,26 @@ export const generateGuarded = async (
   );
 };
 
+/** Server-owned conversation context augments, and cannot remove, the frozen evidence prompt. */
+export const generateGuardedConversation = async (
+  deps: ModelCallDeps,
+  input: ModelGenerationInput,
+  context: ModelChatMessage[],
+  signal?: AbortSignal,
+): Promise<ModelGenerationResultDto> => {
+  const checked = modelChatMessageSchema
+    .refine(
+      (message) => message.role !== 'system',
+      'Conversation context cannot replace system policy',
+    )
+    .array()
+    .max(6)
+    .parse(context);
+  return withExclusiveProjectModelCall(deps.projectId, () =>
+    generateExclusive(deps, input, signal, checked),
+  );
+};
+
 /**
  * 迟到结果里「属于来源或状态变化」的拒绝：丢弃正文但保留已付费的调用记录。
  *
@@ -258,6 +282,7 @@ interface AdmittedGeneration {
   lesson: { status: LessonStatus | null; reviewApproved: boolean } | null;
 }
 interface GenerationExecution extends AdmittedGeneration {
+  conversationOnly: boolean;
   requestId: string;
   reservedTokens: number;
   limits: ModelCallLimits;
@@ -346,6 +371,7 @@ const invokeGeneration = async (
     limits: ModelCallLimits;
     messages: ModelChatMessage[];
     maxTokens: number;
+    route: ModelRoute;
   },
   signal?: AbortSignal,
 ): Promise<GenerationResponse> => {
@@ -372,18 +398,26 @@ const invokeGeneration = async (
     else signal.addEventListener('abort', onCallerAbort, { once: true });
   }
   let outcome: ModelGenerateOutcome;
+  let invoked = false;
   try {
-    outcome = await deps.connection.generate(messages, { signal: controller.signal, maxTokens });
+    deps.verifyExecutionLease?.();
+    if (controller.signal.aborted) throw new StudyError('RUN_TERMINATED');
+    invoked = true;
+    outcome = await deps.connection.generate(messages, {
+      signal: controller.signal,
+      maxTokens,
+      route: request.route,
+    });
   } catch {
     outcome = {
-      dispatched: true,
+      dispatched: invoked,
       ok: false,
       message: '调用失败，用量未知，已保留预算。',
       text: null,
       totalTokens: 0,
       requestedModel: deps.connection.status().model ?? null,
       elapsedMs: 0,
-      providerTokens: null,
+      providerTokens: invoked ? null : 0,
     };
   } finally {
     if (leaseDeadline !== null) clearTimeout(leaseDeadline);
@@ -409,11 +443,27 @@ const commitGeneration = (
 ): ModelGenerationResultDto => {
   const { store, projectId } = deps;
   const { run, session, requestId, limits } = execution;
-  const { outcome, callId, discarded, invalidTeachingText } = response;
+  const { callId } = response;
+  let { outcome, discarded, invalidTeachingText } = response;
   // A refused request is not a provider attempt. Dispatched attempts are accounted even when obsolete.
   // Ledger, state transition and pending card commit atomically (driver savepoints nest safely).
   let pendingExplanationId: string | null = null;
   return store.transaction(() => {
+    if (!discarded) {
+      try {
+        deps.verifyExecutionLease?.();
+      } catch (error) {
+        if (!(error instanceof StudyError) || error.code !== 'VERSION_CONFLICT') throw error;
+        discarded = true;
+        invalidTeachingText = false;
+        outcome = {
+          ...outcome,
+          ok: false,
+          text: null,
+          message: '执行租约已失效，迟到正文已丢弃；已派发调用仍保留实际用量。',
+        };
+      }
+    }
     if (outcome.dispatched) {
       store.appendNextRunEvent(run.runId, {
         type: 'model_call',
@@ -436,7 +486,11 @@ const commitGeneration = (
           discarded,
           expectedSceneId: session.currentSceneId,
         });
-      if ((outcome.ok || invalidTeachingText) && outcome.text !== null) {
+      if (
+        !execution.conversationOnly &&
+        (outcome.ok || invalidTeachingText) &&
+        outcome.text !== null
+      ) {
         store.appendNextRunEvent(run.runId, { type: 'draft_delta', text: outcome.text });
         if (input.purpose === 'lesson_draft')
           store.updateRunState(run.runId, 'awaiting_lesson_review');
@@ -529,6 +583,7 @@ const finalizeGeneration = (
     try {
       if (signal?.aborted || stoppedByClassroom)
         throw new StudyError('RUN_TERMINATED', { reason: 'request_aborted' });
+      deps.verifyExecutionLease?.();
       if (leaseCheck) store.assertClassroomTeacherLease(leaseCheck, deps.learnerUid!);
       const currentRun = store.getLatestRun();
       if (!currentRun || currentRun.runId !== run.runId || currentRun.state !== run.state) {
@@ -624,6 +679,7 @@ const generateExclusive = async (
   deps: ModelCallDeps,
   input: ModelGenerationInput,
   signal?: AbortSignal,
+  context?: ModelChatMessage[],
 ): Promise<ModelGenerationResultDto> => {
   const { store, projectId } = deps;
   const limits = deps.limits ?? DEFAULT_MODEL_CALL_LIMITS;
@@ -636,6 +692,7 @@ const generateExclusive = async (
         bundleId: input.bundleId,
         lessonId: input.lessonId,
         instruction: input.instruction,
+        ...(context ? { conversationContext: context } : {}),
       }),
     )
     .digest('hex');
@@ -668,7 +725,10 @@ const generateExclusive = async (
 
   const admitted = admitGeneration(deps, input, limits);
   const { run, session, bundle } = admitted;
-  const messages = generationPrompt(bundle.bundle, input.purpose, input.instruction);
+  const messages = [
+    ...generationPrompt(bundle.bundle, input.purpose, input.instruction),
+    ...(context ?? []),
+  ];
   const { reservedTokens, maxTokens } = reserveSharedModelTokens(
     messages,
     limits.maxTokens - store.modelCallUsage(run.runId).tokens,
@@ -732,13 +792,21 @@ const generateExclusive = async (
       limits,
       messages,
       maxTokens,
+      route: context ? 'pro-chat' : input.purpose === 'lesson_draft' ? 'lesson-draft' : 'teaching',
     },
     signal,
   );
   return finalizeGeneration(
     deps,
     input,
-    { ...admitted, limits, requestId, reservedTokens, leaseCheck },
+    {
+      ...admitted,
+      limits,
+      requestId,
+      reservedTokens,
+      leaseCheck,
+      conversationOnly: context !== undefined,
+    },
     response,
     signal,
   );

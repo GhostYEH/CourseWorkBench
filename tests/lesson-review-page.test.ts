@@ -191,7 +191,7 @@ productionDescribe('课程审核界面（生产构建 SSR）', () => {
     expect(studyHtml).toContain('href="/workbench/lessons"');
     expect(studyHtml).toContain('href="/classroom/lesson-demo-monotonicity-1"');
     expect(studyHtml).not.toContain('/classroom/lesson-001');
-    expect(studyHtml).toContain('课程与讲解');
+    expect(studyHtml).toContain('进入互动课堂');
     expect(studyHtml).toContain('固定课堂演示');
     const html = await lessonHtml();
     expect(html).toContain('课程版本');

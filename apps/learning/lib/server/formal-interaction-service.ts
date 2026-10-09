@@ -12,6 +12,7 @@ import {
   formalInteractionObservationSessionId,
   orderingMatches,
   parameterResult,
+  proceduralSkillCheck,
   publicFormalInteractionDefinition,
 } from '@sew/study-domain';
 import {
@@ -133,6 +134,13 @@ export const loadFormalInteraction = (
           throw new StudyError('INTERNAL', { reason: 'formal_interaction_order_invalid' });
         if (parsed.data.mode === 'submit')
           expected = matched ? '排序核验一致' : '排序核验不一致，请对照来源重试';
+      } else if (definition.kind === 'procedural_skill' && values.kind === 'procedural_skill') {
+        // 步骤技能核验：逐步骤判定「顺序 + 工具」，只由服务端用冻结定义判定。
+        const check = proceduralSkillCheck(values.executed, definition);
+        if (check.steps === null)
+          throw new StudyError('INTERNAL', { reason: 'formal_interaction_procedure_invalid' });
+        if (parsed.data.mode === 'submit')
+          expected = check.allCorrect ? '步骤核验一致' : '步骤核验不一致，请对照步骤判据重试';
       } else throw new StudyError('INTERNAL');
       if (parsed.data.result !== expected)
         throw new StudyError('INTERNAL', { reason: 'formal_interaction_result_mismatch' });
@@ -216,6 +224,14 @@ export const commandFormalInteraction = (session: Session, raw: FormalInteractio
         throw new StudyError('INVALID_ARGUMENT', { reason: 'formal_interaction_order_invalid' });
       if (input.operation === 'submit')
         result = matched ? '排序核验一致' : '排序核验不一致，请对照来源重试';
+    } else if (definition.kind === 'procedural_skill' && input.values.kind === 'procedural_skill') {
+      const check = proceduralSkillCheck(input.values.executed, definition);
+      if (check.steps === null)
+        throw new StudyError('INVALID_ARGUMENT', {
+          reason: 'formal_interaction_procedure_invalid',
+        });
+      if (input.operation === 'submit')
+        result = check.allCorrect ? '步骤核验一致' : '步骤核验不一致，请对照步骤判据重试';
     } else throw new StudyError('INVALID_ARGUMENT', { reason: 'interaction_type_mismatch' });
     const payload = formalInteractionRecordSchema.parse({
       version: 1,

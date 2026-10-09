@@ -230,6 +230,8 @@ export const scenePlanDigest = (plan: {
           top: element.top,
           width: element.width,
           height: element.height,
+          ...(element.rotation === undefined ? {} : { rotation: element.rotation }),
+          ...(element.layerOrder === undefined ? {} : { layerOrder: element.layerOrder }),
           style: {
             fontSize: element.style.fontSize,
             color: element.style.color.toLowerCase(),
@@ -272,6 +274,8 @@ export const planSceneDigest = (scene: PlanSceneDto): string =>
         top: element.top,
         width: element.width,
         height: element.height,
+        ...(element.rotation === undefined ? {} : { rotation: element.rotation }),
+        ...(element.layerOrder === undefined ? {} : { layerOrder: element.layerOrder }),
         style: {
           fontSize: element.style.fontSize,
           color: element.style.color.toLowerCase(),
@@ -469,6 +473,103 @@ export const mergeScenePlans = (input: {
   }
 
   return { scenes: result, conflicts, applied };
+};
+
+/**
+ * 逐项合并冲突决议（OMA-022）。
+ *
+ * 三向合并把无法自动判定的冲突原样保留目标版本内容。这里让用户对每处冲突显式选择：
+ * - `current`：保留目标版本当前内容（默认，也是合并本身的取舍）；
+ * - `incoming`：采用来源版本内容；
+ * - `manual`：用用户给出的场景替换（必须提供完整场景）。
+ *
+ * 只有**全部冲突都有决议**时才允许写回；否则抛错要求补齐。决议只影响冲突场景，其余场景逐字保留。
+ * 这是纯函数：不写入任何计划，写回仍走 save-scene-plan 的乐观并发与审核语义。
+ */
+export type SceneMergeResolutionChoice = 'current' | 'incoming' | 'manual';
+
+export interface SceneMergeResolution {
+  sceneId: string;
+  choice: SceneMergeResolutionChoice;
+  /** choice=manual 时必须给出完整场景；其余情况忽略。 */
+  scene?: PlanSceneDto;
+}
+
+export const applyMergeResolutions = (input: {
+  merged: PlanMergeResult;
+  incoming: readonly PlanSceneDto[];
+  current: readonly PlanSceneDto[];
+  resolutions: readonly SceneMergeResolution[];
+}): PlanSceneDto[] => {
+  const conflictIds = new Set(input.merged.conflicts.map((conflict) => conflict.sceneId));
+  const byResolution = new Map(input.resolutions.map((item) => [item.sceneId, item]));
+  for (const resolution of input.resolutions) {
+    if (!conflictIds.has(resolution.sceneId)) {
+      throw new StudyError('INVALID_ARGUMENT', {
+        reason: 'merge_resolution_not_a_conflict',
+        sceneId: resolution.sceneId,
+      });
+    }
+  }
+  const missing = [...conflictIds].filter((sceneId) => !byResolution.has(sceneId));
+  if (missing.length > 0) {
+    throw new StudyError('INVALID_ARGUMENT', { reason: 'merge_conflicts_unresolved', missing });
+  }
+  const incomingById = new Map(input.incoming.map((scene) => [scene.sceneId, scene]));
+  const currentById = new Map(input.current.map((scene) => [scene.sceneId, scene]));
+  const present = new Set(input.merged.scenes.map((scene) => scene.sceneId));
+  const result: PlanSceneDto[] = input.merged.scenes.flatMap((scene) => {
+    const resolution = byResolution.get(scene.sceneId);
+    if (!resolution) return [scene];
+    if (resolution.choice === 'current') {
+      // 冲突场景在 merged 里已是目标版本内容；目标已删则保持删除。
+      const current = currentById.get(scene.sceneId);
+      return current ? [current] : [];
+    }
+    if (resolution.choice === 'incoming') {
+      const incoming = incomingById.get(scene.sceneId);
+      return incoming ? [incoming] : [];
+    }
+    if (!resolution.scene) {
+      throw new StudyError('INVALID_ARGUMENT', {
+        reason: 'merge_manual_resolution_missing_scene',
+        sceneId: scene.sceneId,
+      });
+    }
+    if (resolution.scene.sceneId !== scene.sceneId) {
+      throw new StudyError('INVALID_ARGUMENT', {
+        reason: 'merge_manual_scene_id_mismatch',
+        sceneId: scene.sceneId,
+      });
+    }
+    return [resolution.scene];
+  });
+  // 「目标已删除、来源修改」型冲突：该场景不在 merged.scenes 里（合并默认保留删除）。
+  // 此时用户的 incoming/manual 决议必须能把场景**加回来**，否则决议被静默忽略、内容丢失。
+  for (const conflict of input.merged.conflicts) {
+    if (present.has(conflict.sceneId)) continue;
+    const resolution = byResolution.get(conflict.sceneId)!;
+    if (resolution.choice === 'current') continue; // 保留删除
+    if (resolution.choice === 'incoming') {
+      const incoming = incomingById.get(conflict.sceneId);
+      if (incoming) result.push(incoming);
+      continue;
+    }
+    if (!resolution.scene) {
+      throw new StudyError('INVALID_ARGUMENT', {
+        reason: 'merge_manual_resolution_missing_scene',
+        sceneId: conflict.sceneId,
+      });
+    }
+    if (resolution.scene.sceneId !== conflict.sceneId) {
+      throw new StudyError('INVALID_ARGUMENT', {
+        reason: 'merge_manual_scene_id_mismatch',
+        sceneId: conflict.sceneId,
+      });
+    }
+    result.push(resolution.scene);
+  }
+  return result;
 };
 
 /**

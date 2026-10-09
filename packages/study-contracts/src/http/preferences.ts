@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { projectScopeSchema } from './project';
+import { localeIdSchema, DEFAULT_LOCALE } from '../locale';
 
 export const preferencesSchema = z.object({
   version: z.number().int().positive().default(1),
@@ -16,6 +17,10 @@ export const preferencesSchema = z.object({
   panelTreeWidth: z.number().int().min(180).max(360),
   panelRightWidth: z.number().int().min(260).max(440),
   bottomPanelHeight: z.number().int().min(28).max(400),
+  /** 界面语言（OMA-081）：12 个注册 locale 之一；缺省回退默认。 */
+  uiLocale: localeIdSchema.default(DEFAULT_LOCALE),
+  /** 课程内容语言（OMA-081）：与界面语言分开，用于课程生成与显示的语言提示。 */
+  courseLocale: localeIdSchema.default(DEFAULT_LOCALE),
 });
 export type PreferencesDto = z.infer<typeof preferencesSchema>;
 

@@ -1,0 +1,279 @@
+{
+  "schemaVersion": 1,
+  "upstream": "OpenMAIC",
+  "version": "v1.1.1",
+  "commit": "33553362be22a8a5efe56c62f2c0472694705280",
+  "license": "MIT",
+  "files": [
+    {
+      "sourcePath": "skills/agent-runtime/build-personal-skill/SKILL.md",
+      "bundledPath": "build-personal-skill/SKILL.md",
+      "byteLength": 2798,
+      "sha256": "5c1bef5c9e768cc416b3139df911adc25db089def5f8bb7e6fcb6af8f0aa1091"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/curriculum-planner/SKILL.md",
+      "bundledPath": "curriculum-planner/SKILL.md",
+      "byteLength": 11595,
+      "sha256": "661a274f60d2a18fcf320715e8390cde178b2deb7a07c77669c4f1ce658ed1fb"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/deep-interactive/outline-constraints.json",
+      "bundledPath": "deep-interactive/outline-constraints.json",
+      "byteLength": 580,
+      "sha256": "31f9618dac6dd1598a4d679e35f94b3c8b85c003dc7dd0e262570cc866f5ae63"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/deep-interactive/SKILL.md",
+      "bundledPath": "deep-interactive/SKILL.md",
+      "byteLength": 2849,
+      "sha256": "bb26d6b34f34bad37a76fef7f9863e1e67a2d4a5fbdf89d4ef08734c74db97bb"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/deep-research/outline-constraints.json",
+      "bundledPath": "deep-research/outline-constraints.json",
+      "byteLength": 392,
+      "sha256": "8acbc55066657da9866d4e28388a1a8642976793cc2dd492d3730f0c475d2bd7"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/deep-research/SKILL.md",
+      "bundledPath": "deep-research/SKILL.md",
+      "byteLength": 8022,
+      "sha256": "063ce7f57f178e8e3f4e5cdf52a34a78b9cfbd82c29e45d5ee93325c54f25ca0"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/fact-check/SKILL.md",
+      "bundledPath": "fact-check/SKILL.md",
+      "byteLength": 7924,
+      "sha256": "44979669a1873ed393f249b06352fa37e01c608ce6a3f611368e1502f9ad4427"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/feynman-learning/SKILL.md",
+      "bundledPath": "feynman-learning/SKILL.md",
+      "byteLength": 8215,
+      "sha256": "af7d9eaca12896a498259cbae3fa09d196d455b4e72af75d63ed1d1575ca944e"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/k12-core-literacy-planning/references/core-literacy.md",
+      "bundledPath": "k12-core-literacy-planning/references/core-literacy.md",
+      "byteLength": 4419,
+      "sha256": "47635d06a4a598b28c22a408f5f218e96dd2eca664ca74c1774bb95c848a47ee"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/k12-core-literacy-planning/references/subjects/humanities.md",
+      "bundledPath": "k12-core-literacy-planning/references/subjects/humanities.md",
+      "byteLength": 1906,
+      "sha256": "616dfe49b3f8c96c917f81a98d04a23b374f1ec509c6d59ee9874d7656353ccc"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/k12-core-literacy-planning/references/subjects/languages.md",
+      "bundledPath": "k12-core-literacy-planning/references/subjects/languages.md",
+      "byteLength": 2109,
+      "sha256": "b88c8350e51ffcaf502ef891e0e69f8351295b550c4fe7202efa595de7327b89"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/k12-core-literacy-planning/references/subjects/mathematics.md",
+      "bundledPath": "k12-core-literacy-planning/references/subjects/mathematics.md",
+      "byteLength": 1759,
+      "sha256": "c6a3867f7eb9546928c7ba08243ac3add5e4ec7a963c745191186565632712b1"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/k12-core-literacy-planning/references/subjects/science.md",
+      "bundledPath": "k12-core-literacy-planning/references/subjects/science.md",
+      "byteLength": 1845,
+      "sha256": "2e2e7589fe7798771e69f95bd8222fe0a87ef8f189e8785a0dc90880353e5047"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/k12-core-literacy-planning/SKILL.md",
+      "bundledPath": "k12-core-literacy-planning/SKILL.md",
+      "byteLength": 9843,
+      "sha256": "fbc03e9245406bac2d5b312f1a5711de311d17dc98eeb30d8eab298ee397c08f"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/learning-to-learn/SKILL.md",
+      "bundledPath": "learning-to-learn/SKILL.md",
+      "byteLength": 4359,
+      "sha256": "fe8be28613d01efe49a858bb89bf97f84273bd20311c805c36e2bfd28519c2ce"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/lecture-style/outline-constraints.json",
+      "bundledPath": "lecture-style/outline-constraints.json",
+      "byteLength": 925,
+      "sha256": "1b8aef5a81bbc59e9ef6691e7d65bae137301dde6466ea9fef49ff7d72a68de9"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/lecture-style/SKILL.md",
+      "bundledPath": "lecture-style/SKILL.md",
+      "byteLength": 6463,
+      "sha256": "540e7a4b34cd8d5de66861ebe96c73a14fcd87bc9c020e75edfc92080b23c42a"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/page-clone/SKILL.md",
+      "bundledPath": "page-clone/SKILL.md",
+      "byteLength": 14008,
+      "sha256": "eeb220cf64b6f18c82bb0fe6298603b4626463c401c5170594e80e88ec5561db"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/pptx-import/outline-constraints.json",
+      "bundledPath": "pptx-import/outline-constraints.json",
+      "byteLength": 327,
+      "sha256": "9354b1e7ee0d571a576ceac77b2f1df5ca871374ac3e0f3a96d10e7d24a85bf5"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/pptx-import/SKILL.md",
+      "bundledPath": "pptx-import/SKILL.md",
+      "byteLength": 10157,
+      "sha256": "f62f063784886b75c67b299b458f5e936f931503b464f0db716113c9fface1a3"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/pro-editing/outline-constraints.json",
+      "bundledPath": "pro-editing/outline-constraints.json",
+      "byteLength": 552,
+      "sha256": "a1e9a3f34122e56ff3c786df107960c2a80412525b210a288da91f3ca4e20ae3"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/pro-editing/SKILL.md",
+      "bundledPath": "pro-editing/SKILL.md",
+      "byteLength": 10860,
+      "sha256": "546a67da5c595646daea06722ff3d6bb183eeef63a0feb49e8d656d24a6f3df7"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/slide-craft/SKILL.md",
+      "bundledPath": "slide-craft/SKILL.md",
+      "byteLength": 15384,
+      "sha256": "cf35eea56909b1427f171c6798ba55392761edb081603138892368d1bd727081"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/slide-dsl/SKILL.md",
+      "bundledPath": "slide-dsl/SKILL.md",
+      "byteLength": 66783,
+      "sha256": "7234933c646c6d6436f8db2bd36862378c89d924a496a1db9ad485171180091a"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/social-emotional-learning/SKILL.md",
+      "bundledPath": "social-emotional-learning/SKILL.md",
+      "byteLength": 3589,
+      "sha256": "4aea1736a8855c2ef32767bf4e5e8428bc573a0d5b1cb9816c84d1ae34e86284"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/spiral-curriculum/SKILL.md",
+      "bundledPath": "spiral-curriculum/SKILL.md",
+      "byteLength": 8978,
+      "sha256": "fe6fe978ab5ac583fcccb9293d410d8da9e3cd7bb393900698095c2387da5b93"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/stage-design/SKILL.md",
+      "bundledPath": "stage-design/SKILL.md",
+      "byteLength": 5665,
+      "sha256": "7275ef6f005eb071e3c943edf3d4355c98a491ea13347c9320995cbfe3370609"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/stage-dsl/references/actions.md",
+      "bundledPath": "stage-dsl/references/actions.md",
+      "byteLength": 10753,
+      "sha256": "4e322e5c30140e948b0ab629c79b382c8a9076ff1bff928bbd9f3677a775fd47"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/stage-dsl/references/pbl.md",
+      "bundledPath": "stage-dsl/references/pbl.md",
+      "byteLength": 14577,
+      "sha256": "fdd430ebde436592ca602fe566a7ef78016a1843541a51d1e10c1a18e08b9c69"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/stage-dsl/references/quiz.md",
+      "bundledPath": "stage-dsl/references/quiz.md",
+      "byteLength": 10343,
+      "sha256": "99c4e4f19fb427af82faaa2d3be42ea2aaf0386246775c1be33be3bf1fb3e950"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/stage-dsl/references/widget.md",
+      "bundledPath": "stage-dsl/references/widget.md",
+      "byteLength": 13446,
+      "sha256": "f707d98280a8aa3eb8fa87376354909d37c31de9093d540a6ad9c798fad9fd93"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/stage-dsl/SKILL.md",
+      "bundledPath": "stage-dsl/SKILL.md",
+      "byteLength": 9531,
+      "sha256": "53a7d94da2b872076c448771d9cc48471ab5aad82dfe13bcc542cd16be7ce713"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/style-clone/outline-constraints.json",
+      "bundledPath": "style-clone/outline-constraints.json",
+      "byteLength": 843,
+      "sha256": "4e5c8332ca066b7a06cfd2de2437f0cb10469454b061c03e3f0887b6d5e2cfb4"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/style-clone/SKILL.md",
+      "bundledPath": "style-clone/SKILL.md",
+      "byteLength": 19813,
+      "sha256": "a8001f7b4c55ef37de6fd00200a43ab58090d5abe8fb1d9aaa426b4cf74a2df6"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/teacher-style-clone/outline-constraints.json",
+      "bundledPath": "teacher-style-clone/outline-constraints.json",
+      "byteLength": 349,
+      "sha256": "8bb817824d1c150e90cb6a0d2499cd04beae54175a7dae3622ff09f71ba7136d"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/teacher-style-clone/SKILL.md",
+      "bundledPath": "teacher-style-clone/SKILL.md",
+      "byteLength": 4024,
+      "sha256": "9bf4ae1bb9a484d4d426818821bd0530ca20f6f158390280c10c883b750e427b"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/understanding-by-design/SKILL.md",
+      "bundledPath": "understanding-by-design/SKILL.md",
+      "byteLength": 4211,
+      "sha256": "75af8be3ec7772b6ae97ac70ceedbb00fcfbb16a6d4addceb5f62ec0b3614808"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/vocational/outline-constraints.json",
+      "bundledPath": "vocational/outline-constraints.json",
+      "byteLength": 591,
+      "sha256": "4e577a427df5296cb70248143ee60fd473fb2b14429358e84df9795b33e3509a"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/vocational/SKILL.md",
+      "bundledPath": "vocational/SKILL.md",
+      "byteLength": 3339,
+      "sha256": "0544506924e469b49c89295fe414da440cd081adca520ff584049fafff25a43c"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/workshop-style/outline-constraints.json",
+      "bundledPath": "workshop-style/outline-constraints.json",
+      "byteLength": 1200,
+      "sha256": "a6c6f348356a6892e198c836b297524f4bf16989212a68d7146a5cb99fcf2711"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/workshop-style/SKILL.md",
+      "bundledPath": "workshop-style/SKILL.md",
+      "byteLength": 6597,
+      "sha256": "002a4c9842069fb6f24da4b2d3ed0b6a65b0cef08298f5ae05d5905e661d884a"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/zone-of-proximal-development/references/exercise-lesson.md",
+      "bundledPath": "zone-of-proximal-development/references/exercise-lesson.md",
+      "byteLength": 4905,
+      "sha256": "69870c3f8ff45d4295fece627a572d430fe444f860cb431795d9de30257ad1e1"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/zone-of-proximal-development/references/theory.md",
+      "bundledPath": "zone-of-proximal-development/references/theory.md",
+      "byteLength": 2224,
+      "sha256": "3bdbaa09c3d2e913ae0053eb1adb0d7778f52c56628e3d0e31cb05c2d365c9ec"
+    },
+    {
+      "sourcePath": "skills/agent-runtime/zone-of-proximal-development/SKILL.md",
+      "bundledPath": "zone-of-proximal-development/SKILL.md",
+      "byteLength": 10662,
+      "sha256": "cac0ff39f207570c3a40410fe2b61536ce4a9a5e54b33779a96015e45aab4049"
+    },
+    {
+      "sourcePath": "LICENSE",
+      "bundledPath": "LICENSE",
+      "byteLength": 1065,
+      "sha256": "ba252563743227138231604c9138dd400faca5a10c3cf206b466e5466c565a19"
+    }
+  ]
+}

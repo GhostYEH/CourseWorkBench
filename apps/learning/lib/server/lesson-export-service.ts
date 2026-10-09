@@ -9,33 +9,11 @@
  * 中途失败不会留下半成品；同名重复导出按最新内容覆盖（导出是可重建的派生视图）。
  */
 
-import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { StudyError, type LessonExportResultDto } from '@sew/study-contracts';
-import { buildLessonExport, projectPaths, type StudyStore } from '@sew/study-storage';
+import { buildLessonExport, type StudyStore } from '@sew/study-storage';
 import type { Session } from './service';
 import { loadRenderableFormalDocument } from './classroom-service';
-
-const publishFile = (directory: string, fileName: string, bytes: Uint8Array): string => {
-  const destination = join(directory, fileName);
-  const temporary = `${destination}.tmp-${process.pid}-${Date.now()}`;
-  try {
-    writeFileSync(temporary, bytes);
-    renameSync(temporary, destination);
-  } catch (error) {
-    try {
-      rmSync(temporary, { force: true });
-    } catch {
-      /* 清理失败不掩盖原始错误 */
-    }
-    throw new StudyError(
-      'INTERNAL',
-      { reason: 'export_write_failed' },
-      '导出文件写入失败，请检查项目目录权限与磁盘空间；未覆盖既有文件。',
-    );
-  }
-  return destination;
-};
+import { publishLessonExport } from './lesson-export-files';
 
 export const exportLesson = (
   session: Session,
@@ -75,9 +53,7 @@ export const exportLesson = (
     document: renderable.document,
   });
 
-  const exportsDir = projectPaths(session.displayPath).exportsDir;
-  mkdirSync(exportsDir, { recursive: true });
-  publishFile(exportsDir, pkg.fileName, pkg.bytes);
+  publishLessonExport(session.displayPath, pkg.fileName, pkg.bytes);
 
   return {
     projectId,

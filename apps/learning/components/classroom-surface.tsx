@@ -17,7 +17,7 @@ import { ClassroomPanel } from './classroom-panel';
  * - 播放位置写入 SQLite，浏览器缓存不作为恢复来源。
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import Link from 'next/link';
 import { HttpAssetStore } from '@openmaic/storage/asset/http';
 import { HttpDocumentStore } from '@openmaic/storage/document/http';
@@ -26,6 +26,7 @@ import type { ClassroomSceneBinding, ClassroomBoardEffectDto } from '@sew/study-
 import { apiFetch, getSessionToken, waitForSessionToken } from '../lib/client';
 import { resolveActiveBoardFocus, resolveActiveBoardLaser } from '../lib/classroom/board-focus';
 import { Stage } from './openmaic-adaptation/Stage';
+import { classroomShortcutFor } from './openmaic-adaptation/classroom-interaction';
 import { SceneRenderer } from './openmaic-adaptation/SceneRenderer';
 import { runClassroomLoad } from './openmaic-adaptation/classroom-load-lifecycle';
 import {
@@ -115,6 +116,12 @@ export const ClassroomSurface = ({
     'idle',
   );
   const [positionError, setPositionError] = useState<string | null>(null);
+  const [immersive, setImmersive] = useState(false);
+  const [rolesOpen, setRolesOpen] = useState(true);
+  const [immersionError, setImmersionError] = useState<string | null>(null);
+  const classroomRef = useRef<HTMLDivElement>(null);
+  const focusRestoreRef = useRef<HTMLElement | null>(null);
+  const wasImmersiveRef = useRef(false);
   const sceneIdRef = useRef(initialSceneId);
   sceneIdRef.current = sceneId;
 
@@ -181,6 +188,25 @@ export const ClassroomSurface = ({
         // 演示课件的图片与公式字体是仓库内登记的固定资源；正式课件本轮只用文本场景，
         // 不能拿演示资源清单去要求正式课时，也不能因此跳过真实文档加载。
         let demoImageUrl = '';
+        const formalImageUrls = new Map<string, string>();
+        if (recordScope === 'formal') {
+          const assetResult = await apiFetch(
+            `/api/maic/lesson-assets/${encodeURIComponent(stageId)}`,
+            apiResponses.classroomAssets,
+            { headers: { 'x-sew-project-id': projectId, 'x-sew-generation': String(generation) } },
+          );
+          if (!isCurrent()) return { outcome: 'cancelled' };
+          for (const asset of assetResult.assets) {
+            ownedRefs.push(asset.assetId);
+            const url = await assetStore.resolve(asset.assetId);
+            if (!url || (await hashUrlBytes(url)) !== asset.sha256)
+              throw new Error('正式课堂图片缺失或摘要不符，请检查项目资源后重试。');
+            if (!isCurrent()) return { outcome: 'cancelled' };
+            await waitForImage(url);
+            if (!isCurrent()) return { outcome: 'cancelled' };
+            formalImageUrls.set(asset.symbolicRef, url);
+          }
+        }
         if (recordScope === 'demo') {
           const assetResult = await apiFetch(
             `/api/maic/demo-assets/${encodeURIComponent(stageId)}`,
@@ -242,6 +268,17 @@ export const ClassroomSurface = ({
           isCurrent,
           loadFromAuthoritativeStore: async () => (await store.loadDocument(stageId)) ?? undefined,
           applyDocument: (lessonDocument) => {
+            if (recordScope === 'formal') {
+              for (const scene of lessonDocument.scenes) {
+                if (scene.type !== 'slide') continue;
+                for (const element of scene.content.canvas.elements) {
+                  if (element.type !== 'image') continue;
+                  const url = formalImageUrls.get(element.src);
+                  if (!url) throw new Error('正式课堂图片没有已审核资源绑定，已停止渲染。');
+                  element.src = url;
+                }
+              }
+            }
             if (recordScope === 'demo') {
               const slide = lessonDocument.scenes.find(
                 (scene) => scene.id === DEMO_ASSET_SCENE_ID && scene.type === 'slide',
@@ -314,15 +351,22 @@ export const ClassroomSurface = ({
       const lease = activeLeaseRef.current;
       if (!lease?.isCurrent()) return false;
       setPositionState('saving');
+      // 位置写入必须有界：服务崩溃/重启后连接可能挂起，若一直停在 saving 会永久禁用导航。
+      // 超时即按失败处理并释放导航，用户可以重试或切换场景；不会伪造「已保存」。
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort('position write timeout'), 8000);
       try {
         await apiFetch('/api/maic/state', apiResponses.classroomPosition, {
           method: 'PUT',
+          signal: controller.signal,
           body: JSON.stringify({ scope: { projectId, generation }, stageId, sceneId: nextSceneId }),
         });
         return lease.applyIfCurrent(() => setPositionState('saved'));
       } catch {
         lease.applyIfCurrent(() => setPositionState('failed'));
         return false;
+      } finally {
+        clearTimeout(timeout);
       }
     },
     [projectId, generation, stageId],
@@ -343,7 +387,8 @@ export const ClassroomSurface = ({
         setPositionError('播放位置未能写入当前项目；此场景暂不能继续，请检查项目会话后重试。');
       }
     } finally {
-      if (lease.isCurrent()) positionSaving.current = false;
+      // 无论租约是否仍当前，都要释放本次导航锁：否则一次失败/挂起会让导航永久禁用。
+      positionSaving.current = false;
     }
   };
 
@@ -354,8 +399,83 @@ export const ClassroomSurface = ({
     if (target) void selectScene(target.id);
   };
 
+  const toggleImmersive = useCallback(async (): Promise<void> => {
+    const element = classroomRef.current;
+    if (!element) return;
+    setImmersionError(null);
+    if (document.fullscreenElement === element) {
+      try {
+        await document.exitFullscreen();
+      } catch {
+        setImmersionError('无法退出沉浸模式，请使用浏览器的全屏退出控件。');
+      }
+      return;
+    }
+    focusRestoreRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : element;
+    try {
+      if (!element.requestFullscreen) throw new Error('fullscreen unavailable');
+      await element.requestFullscreen();
+      element.querySelector<HTMLElement>('.openmaic-stage')?.focus();
+    } catch {
+      setImmersionError('当前窗口未开放全屏功能，请检查浏览器或桌面窗口设置。');
+      focusRestoreRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleFullscreenChange = (): void => {
+      const active = document.fullscreenElement === classroomRef.current;
+      setImmersive(active);
+      if (wasImmersiveRef.current && !active) {
+        const restore = focusRestoreRef.current;
+        focusRestoreRef.current = null;
+        if (restore?.isConnected) requestAnimationFrame(() => restore.focus());
+      }
+      wasImmersiveRef.current = active;
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  useEffect(() => {
+    const element = classroomRef.current;
+    return () => {
+      if (element && document.fullscreenElement === element)
+        void document.exitFullscreen().catch(() => undefined);
+      const restore = focusRestoreRef.current;
+      focusRestoreRef.current = null;
+      if (restore?.isConnected) requestAnimationFrame(() => restore.focus());
+    };
+  }, [projectId, generation, stageId]);
+
+  const handleClassroomKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    const shortcut = classroomShortcutFor(event.nativeEvent);
+    if (!shortcut || shortcut === 'toggle-playback') return;
+    if (shortcut === 'exit-immersive' && document.fullscreenElement !== classroomRef.current)
+      return;
+    event.preventDefault();
+    if (shortcut === 'toggle-immersive' || shortcut === 'exit-immersive') {
+      void toggleImmersive();
+      return;
+    }
+    if (shortcut === 'previous') selectRelative(-1);
+    else if (shortcut === 'next') selectRelative(1);
+    else if (shortcut === 'first' && scenes?.[0]) void selectScene(scenes[0].id);
+    else if (shortcut === 'last' && scenes?.length) void selectScene(scenes[scenes.length - 1]!.id);
+  };
+
   return (
-    <div className="classroom">
+    <div
+      ref={classroomRef}
+      className="classroom"
+      data-immersive={immersive}
+      data-roles-open={rolesOpen}
+      tabIndex={0}
+      role="region"
+      aria-label="学习课堂，方向键切换场景，F 键沉浸"
+      onKeyDown={handleClassroomKeyDown}
+    >
       <header className="shell-top">
         <span className="brand">
           <span className="brand-mark" aria-hidden="true">
@@ -395,6 +515,11 @@ export const ClassroomSurface = ({
 
       <div className="classroom-main">
         <div className="classroom-stage">
+          {immersionError ? (
+            <Notice tone="error" role="alert">
+              {immersionError}
+            </Notice>
+          ) : null}
           {positionError ? (
             <Notice tone="error" role="alert">
               {positionError}
@@ -442,6 +567,10 @@ export const ClassroomSurface = ({
                 currentSceneId={current.id}
                 onPrevious={() => selectRelative(-1)}
                 onNext={() => selectRelative(1)}
+                immersive={immersive}
+                onToggleImmersive={() => void toggleImmersive()}
+                rolesOpen={rolesOpen}
+                onToggleRoles={() => setRolesOpen((open) => !open)}
               >
                 <SceneRenderer
                   scene={current}
@@ -466,7 +595,13 @@ export const ClassroomSurface = ({
           ) : null}
         </div>
 
-        <aside className="classroom-roles">
+        <aside
+          id="classroom-roles"
+          className="classroom-roles"
+          data-roles-open={rolesOpen}
+          aria-label="教师与同学角色面板"
+          aria-hidden={!rolesOpen}
+        >
           <div className="role-card">
             <div className="role-name">
               <span className="pill" data-tone="verified">

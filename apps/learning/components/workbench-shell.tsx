@@ -4,11 +4,20 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type {
-  KnowledgePointDto, MaterialDto, PreferencesDto, ProposalDto, QuestionListItemDto, WorkbenchStateDto,
+  KnowledgePointDto,
+  MaterialDto,
+  PreferencesDto,
+  ProposalDto,
+  QuestionListItemDto,
+  WorkbenchStateDto,
 } from '@sew/study-contracts';
 import { applyThemeToDocument, useAppStore } from '../lib/client';
 import {
-  buildProjectTree, defaultExpandedIds, flattenVisible, moveFocus, navigateWithArrow,
+  buildProjectTree,
+  defaultExpandedIds,
+  flattenVisible,
+  moveFocus,
+  navigateWithArrow,
   type FlatNode,
 } from '../lib/workbench-tree';
 import { ProjectActions } from './project-actions';
@@ -25,67 +34,68 @@ interface ShellProps {
 }
 
 const NAV = [
-  { key: 'project', label: '项目', glyph: '▤', href: '/workbench' },
-  { key: 'knowledge', label: '知识', glyph: '◆', href: '/workbench/knowledge' },
-  { key: 'review', label: '来源审核', glyph: '✓', href: '/workbench/review' },
-  { key: 'plan', label: '计划', glyph: '▦', href: '/workbench/plan' },
-  { key: 'lesson', label: '课程', glyph: '▥', href: '/workbench/lessons' },
-  { key: 'library', label: '课程库', glyph: '▩', href: '/workbench/library' },
-  { key: 'export', label: '导出', glyph: '↧', href: '/workbench/exports' },
-  { key: 'study', label: '学习', glyph: '✎', href: '/workbench/study' },
-  { key: 'mistakes', label: '错题', glyph: '✗', href: '/workbench/mistakes' },
-  { key: 'eval', label: '评测', glyph: '◎', href: '/workbench/eval' },
+  { key: 'project', label: '今日备考', glyph: '◉', href: '/workbench' },
+  { key: 'materials', label: '学习材料', glyph: '▤', href: '/workbench/materials' },
+  { key: 'knowledge', label: '知识梳理', glyph: '◆', href: '/workbench/knowledge' },
+  { key: 'plan', label: '备考计划', glyph: '▦', href: '/workbench/plan' },
+  { key: 'lesson', label: '互动课堂', glyph: '▥', href: '/workbench/lessons' },
+  { key: 'study', label: '练习巩固', glyph: '✎', href: '/workbench/study' },
+  { key: 'mistakes', label: '错题复习', glyph: '↻', href: '/workbench/mistakes' },
 ] as const;
 
 const SECTION_TABS: Record<string, Array<{ label: string; href: string }>> = {
-  project: [
-    { label: '总览', href: '/workbench' },
-    { label: '材料与来源', href: '/workbench/materials' },
-    { label: '科目设置', href: '/workbench/settings' },
-    { label: '个人档案与 UID', href: '/profile' },
-    { label: '外观与阅读', href: '/workbench/appearance' },
+  project: [],
+  materials: [
+    { label: '导入与查看材料', href: '/workbench/materials' },
+    { label: '核对知识点与原文', href: '/workbench/review' },
   ],
   knowledge: [
-    { label: '已确认知识', href: '/workbench/knowledge' },
-    { label: '生成准入自检', href: '/workbench/knowledge?tab=admission' },
-    { label: '考纲条目与覆盖', href: '/workbench/syllabus' },
+    { label: '知识点', href: '/workbench/knowledge' },
+    { label: '整理知识点', href: '/workbench/knowledge?tab=candidates' },
+    { label: '考纲覆盖', href: '/workbench/syllabus' },
+    { label: '检查能否用于学习', href: '/workbench/knowledge?tab=admission' },
   ],
-  review: [
-    { label: '独立来源审核', href: '/workbench/review' },
-    { label: '材料与来源', href: '/workbench/materials' },
-  ],
-  plan: [{ label: '备考计划', href: '/workbench/plan' }],
+  plan: [{ label: '我的备考计划', href: '/workbench/plan' }],
   lesson: [
-    { label: '课程与证据包', href: '/workbench/lessons' },
-    { label: '课程库', href: '/workbench/library' },
+    { label: '准备课程与进入课堂', href: '/workbench/lessons' },
+    { label: '我的课程库', href: '/workbench/library' },
+    { label: '课程助手', href: '/workbench/pro' },
   ],
-  export: [{ label: '导出课件', href: '/workbench/exports' }],
   study: [
-    { label: '今日学习', href: '/workbench/study' },
+    { label: '独立练习', href: '/workbench/study' },
     { label: '课堂与成员', href: '/workbench/rooms' },
-    { label: '双人共同课堂', href: '/workbench/collab' },
-    { label: '课堂演示', href: '/classroom/lesson-demo-monotonicity-1' },
+    { label: '共同学习', href: '/workbench/collab' },
   ],
-  mistakes: [
-    { label: '错题本', href: '/workbench/mistakes' },
-    { label: '模拟数据', href: '/workbench/mistakes?tab=simulation' },
+  mistakes: [{ label: '我的错题与复习', href: '/workbench/mistakes' }],
+  settings: [
+    { label: '备考目标与模型', href: '/workbench/settings' },
+    { label: '外观与阅读', href: '/workbench/appearance' },
+    { label: '导出课件', href: '/workbench/exports' },
+    { label: '媒体工具', href: '/workbench/media' },
+    { label: '学习评测', href: '/workbench/eval' },
+    { label: '个人档案', href: '/profile' },
   ],
-  eval: [{ label: '指标与用例', href: '/workbench/eval' }],
 };
 
 const sectionOf = (pathname: string): string => {
   const segment = pathname.split('/')[2] ?? '';
-  if (['materials', 'settings', 'appearance'].includes(segment)) return 'project';
+  if (['materials', 'review'].includes(segment)) return 'materials';
+  if (['settings', 'appearance', 'exports', 'media', 'eval'].includes(segment)) return 'settings';
   if (segment === 'syllabus') return 'knowledge';
-  if (segment === 'lessons' || segment === 'library') return 'lesson';
-  if (segment === 'exports') return 'export';
-  if (segment === 'rooms' || segment === 'collab') return 'study';
-  if (['knowledge', 'review', 'plan', 'study', 'mistakes', 'eval'].includes(segment)) return segment;
+  if (['lessons', 'library', 'pro'].includes(segment)) return 'lesson';
+  if (['rooms', 'collab'].includes(segment)) return 'study';
+  if (['knowledge', 'plan', 'study', 'mistakes'].includes(segment)) return segment;
   return 'project';
 };
 
 export const WorkbenchShell = ({
-  state, materials, proposals, questions, knowledge, preferences, children,
+  state,
+  materials,
+  proposals,
+  questions,
+  knowledge,
+  preferences,
+  children,
 }: ShellProps) => {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -93,7 +103,6 @@ export const WorkbenchShell = ({
   const panels = useAppStore((s) => s.panels);
   const toggleTree = useAppStore((s) => s.toggleTree);
   const toggleRight = useAppStore((s) => s.toggleRight);
-  const toggleBottom = useAppStore((s) => s.toggleBottom);
   const setRightTab = useAppStore((s) => s.setRightTab);
 
   const section = sectionOf(pathname);
@@ -112,16 +121,17 @@ export const WorkbenchShell = ({
   );
 
   const projectTree = useMemo(
-    () => buildProjectTree({
-      projectId: state.project.projectId,
-      projectName: state.project.displayName,
-      subject: state.project.subject,
-      materials,
-      knowledge,
-      proposals,
-      questions,
-      plan: state.plan,
-    }),
+    () =>
+      buildProjectTree({
+        projectId: state.project.projectId,
+        projectName: state.project.displayName,
+        subject: state.project.subject,
+        materials,
+        knowledge,
+        proposals,
+        questions,
+        plan: state.plan,
+      }),
     [state.project, state.plan, materials, knowledge, proposals, questions],
   );
 
@@ -129,7 +139,10 @@ export const WorkbenchShell = ({
   const [focusId, setFocusId] = useState<string>(projectTree.rootId);
   const focusPending = useRef(false);
   const nodeRefs = useRef(new Map<string, HTMLLIElement>());
-  const visibleNodes = useMemo(() => flattenVisible(projectTree, expanded), [projectTree, expanded]);
+  const visibleNodes = useMemo(
+    () => flattenVisible(projectTree, expanded),
+    [projectTree, expanded],
+  );
 
   useEffect(() => {
     if (!focusPending.current) return;
@@ -178,12 +191,16 @@ export const WorkbenchShell = ({
     }
   };
 
-  const registerNode = (id: string) => (element: HTMLLIElement | null): void => {
-    if (element) nodeRefs.current.set(id, element);
-    else nodeRefs.current.delete(id);
-  };
+  const registerNode =
+    (id: string) =>
+    (element: HTMLLIElement | null): void => {
+      if (element) nodeRefs.current.set(id, element);
+      else nodeRefs.current.delete(id);
+    };
 
-  const nodeProps = (node: FlatNode): {
+  const nodeProps = (
+    node: FlatNode,
+  ): {
     ref: (element: HTMLLIElement | null) => void;
     className: string;
     role: 'treeitem';
@@ -207,7 +224,11 @@ export const WorkbenchShell = ({
   const currentUrl = queryString ? `${pathname}?${queryString}` : pathname;
 
   const draftLabel =
-    state.counts.proposalsPending > 0 ? `草稿：${state.counts.proposalsPending} 项待审` : '草稿：无待提交';
+    state.counts.proposalsPending > 0
+      ? `${state.counts.proposalsPending} 项知识点待核对`
+      : state.counts.knowledgeVerified > 0
+        ? '知识点核对完成'
+        : '尚未整理知识点';
 
   return (
     <div className="shell" data-density={preferences.density}>
@@ -220,21 +241,33 @@ export const WorkbenchShell = ({
         </span>
         <span className="top-project">
           <strong title={state.project.displayPath}>{state.project.displayName}</strong>
-          <span className="muted mono">#{state.project.generation}</span>
         </span>
         <div className="top-actions">
-          <button type="button" className="btn btn-ghost" onClick={toggleTree} aria-pressed={panels.tree}>
-            项目树
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={toggleTree}
+            aria-pressed={panels.tree}
+          >
+            学习目录
           </button>
           <Link className="btn btn-ghost" href="/workbench/materials">
             导入材料
           </Link>
-          <Link className="btn" href="/workbench/review">
-            来源审核{pendingProposals.length > 0 ? `（${pendingProposals.length}）` : ''}
-          </Link>
-          <ProjectActions mode="manage" />
-          <button type="button" className="btn btn-ghost" onClick={toggleRight} aria-pressed={panels.right}>
-            侧栏
+          <details className="study-space-menu">
+            <summary className="btn btn-ghost">学习空间</summary>
+            <div className="study-space-popover">
+              <p className="muted">切换已有数据或为另一门科目建立独立空间。</p>
+              <ProjectActions mode="manage" />
+            </div>
+          </details>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={toggleRight}
+            aria-pressed={panels.right}
+          >
+            学习提示
           </button>
         </div>
       </header>
@@ -256,7 +289,11 @@ export const WorkbenchShell = ({
             </Link>
           ))}
           <span className="activity-spacer" />
-          <Link className="activity-item" href="/workbench/appearance" data-active={pathname === '/workbench/appearance'}>
+          <Link
+            className="activity-item"
+            href="/workbench/settings"
+            data-active={section === 'settings'}
+          >
             <span className="activity-glyph" aria-hidden="true">
               ⚙
             </span>
@@ -265,7 +302,13 @@ export const WorkbenchShell = ({
         </nav>
 
         <aside className="tree" data-hidden={!panels.tree}>
-          <ul className="tree-view" role="tree" aria-label="项目树" aria-multiselectable={false} onKeyDown={onKeyDown}>
+          <ul
+            className="tree-view"
+            role="tree"
+            aria-label="学习目录"
+            aria-multiselectable={false}
+            onKeyDown={onKeyDown}
+          >
             {rootNode ? (
               <li {...nodeProps(rootNode)}>
                 <span className="tree-row">
@@ -290,7 +333,12 @@ export const WorkbenchShell = ({
                                 if (!leafNode) return null;
                                 return (
                                   <li key={leaf.id} {...nodeProps(leafNode)}>
-                                    <Link className="tree-row tree-leaf" href={leaf.href} tabIndex={-1} title={leaf.note}>
+                                    <Link
+                                      className="tree-row tree-leaf"
+                                      href={leaf.href}
+                                      tabIndex={-1}
+                                      title={leaf.note}
+                                    >
                                       <span>{leaf.label}</span>
                                       <span className="count">{leaf.note}</span>
                                     </Link>
@@ -310,60 +358,62 @@ export const WorkbenchShell = ({
         </aside>
 
         <main className="center">
-          <nav className="tabs" aria-label="分区视图">
-            {tabs.map((tab) => {
-              const current = tab.href === currentUrl;
-              return (
-                <Link
-                  key={tab.href}
-                  className="tab"
-                  href={tab.href}
-                  data-current={current}
-                  aria-current={current ? 'page' : undefined}
-                >
-                  {tab.label}
-                </Link>
-              );
-            })}
-          </nav>
+          {tabs.length > 0 ? (
+            <nav className="tabs" aria-label="分区视图">
+              {tabs.map((tab) => {
+                const current = tab.href === currentUrl;
+                return (
+                  <Link
+                    key={tab.href}
+                    className="tab"
+                    href={tab.href}
+                    data-current={current}
+                    aria-current={current ? 'page' : undefined}
+                  >
+                    {tab.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          ) : null}
           <div className="content">{children}</div>
-          <section className="bottom-panel" data-expanded={panels.bottom} aria-label="任务与日志">
-            <div className="bottom-head">
-              <button type="button" className="btn btn-ghost" onClick={toggleBottom} aria-expanded={panels.bottom}>
-                {panels.bottom ? '▾' : '▸'} 任务与日志
-              </button>
-              <span className="muted">当前没有运行中的任务</span>
-              <span className="muted mono">run_id —</span>
-            </div>
-            {panels.bottom ? (
-              <div className="bottom-body">
-                <p className="muted">
-                  任务按实际步骤、等待条件与已提交结果展示；不使用伪造递增百分比。备考生成与课堂轮次共享预算，
-                  等待审核或作答时结束当前模型轮次。
-                </p>
-              </div>
-            ) : null}
-          </section>
         </main>
 
-        <div className="rail" aria-label="右侧面板切换">
-          <button type="button" data-active={panels.rightTab === 'assistant'} onClick={() => setRightTab('assistant')} title="AI 学习助手">
-            助
-          </button>
-          <button type="button" data-active={panels.rightTab === 'source'} onClick={() => setRightTab('source')} title="来源">
-            源
-          </button>
-          <button type="button" data-active={panels.rightTab === 'review'} onClick={() => setRightTab('review')} title="审核">
-            审
-          </button>
-        </div>
+        {panels.right ? (
+          <div className="rail" aria-label="右侧面板切换">
+            <button
+              type="button"
+              data-active={panels.rightTab === 'assistant'}
+              onClick={() => setRightTab('assistant')}
+              title="学习提示"
+            >
+              助
+            </button>
+            <button
+              type="button"
+              data-active={panels.rightTab === 'source'}
+              onClick={() => setRightTab('source')}
+              title="来源"
+            >
+              源
+            </button>
+            <button
+              type="button"
+              data-active={panels.rightTab === 'review'}
+              onClick={() => setRightTab('review')}
+              title="审核"
+            >
+              审
+            </button>
+          </div>
+        ) : null}
 
         <aside className="right-panel" data-hidden={!panels.right} aria-label="右侧面板">
           {panels.rightTab === 'assistant' ? (
             <div className="card">
-              <h2>AI 学习助手</h2>
+              <h2>学习提示</h2>
               <p className="secondary">
-                助手只提交候选与草案。已核实知识点表是教学权威源，审核入口由你操作。
+                从材料到知识点、计划和课程，按当前进度选择下一步。需要对话帮助时，可进入课程助手。
               </p>
               <ul className="check-list">
                 <li>
@@ -379,7 +429,8 @@ export const WorkbenchShell = ({
                 <li>
                   <span>准入</span>
                   <span>
-                    {state.admission.readyKnowledge} 项可教学 / {state.admission.blockedBySource} 项被阻断
+                    {state.admission.readyKnowledge} 项可教学 / {state.admission.blockedBySource}{' '}
+                    项被阻断
                   </span>
                 </li>
               </ul>
@@ -416,7 +467,10 @@ export const WorkbenchShell = ({
                   {pendingProposals.slice(0, 8).map((proposal) => (
                     <li key={proposal.proposalId}>
                       <span>{proposal.name}</span>
-                      <span className="pill" data-tone={proposal.mechanical.passed ? 'pending' : 'error'}>
+                      <span
+                        className="pill"
+                        data-tone={proposal.mechanical.passed ? 'pending' : 'error'}
+                      >
                         {proposal.mechanical.passed ? '待语义审核' : '缺少来源'}
                       </span>
                     </li>
@@ -432,10 +486,13 @@ export const WorkbenchShell = ({
       </div>
 
       <footer className="shell-status">
-        <span title={state.project.displayPath}>{state.project.displayPath}</span>
+        <span>学习数据保存在本机</span>
         <span>{draftLabel}</span>
         <span>
-          学习状态：{state.counts.attemptsReal > 0 ? `本人已提交 ${state.counts.attemptsReal} 次` : '尚未开始'}
+          学习状态：
+          {state.counts.attemptsReal > 0
+            ? `本人已提交 ${state.counts.attemptsReal} 次`
+            : '尚未开始'}
         </span>
         <span className="spacer" />
         <ModelConnectionIndicator />

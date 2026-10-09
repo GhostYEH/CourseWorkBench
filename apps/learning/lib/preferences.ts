@@ -35,6 +35,8 @@ export const DEFAULT_PREFERENCES: PreferencesDto = {
   panelTreeWidth: 240,
   panelRightWidth: 300,
   bottomPanelHeight: 28,
+  uiLocale: 'zh-CN',
+  courseLocale: 'zh-CN',
 };
 
 export const DEFAULT_TEACHING_PREFERENCE: TeachingPreferenceDto = {

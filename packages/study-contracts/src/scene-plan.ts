@@ -56,6 +56,10 @@ export const planElementSchema = z
     top: z.number().int().min(0).max(4000),
     width: z.number().int().min(20).max(4000),
     height: z.number().int().min(20).max(4000),
+    /** Optional to preserve the exact shape and digest of plans saved before visual editing. */
+    rotation: z.number().int().min(-180).max(180).optional(),
+    /** Optional painter order; absent values retain their existing array order. */
+    layerOrder: z.number().int().min(0).max(23).optional(),
     style: planElementStyleSchema,
   })
   .strict();
@@ -149,6 +153,22 @@ export const scenePlanMergeSchema = z
     fromVersion: z.number().int().positive(),
     /** 目标草案版本：合并结果将要写入这里。 */
     toVersion: z.number().int().positive(),
+    /**
+     * 逐项冲突决议（可选）：仅当 `mergedScenes` 里的冲突全部有决议时才改变合并结果；
+     * 缺省时冲突场景保留目标版本内容并如实报告。给出决议时必须是**全部**冲突各一条。
+     */
+    resolutions: z
+      .array(
+        z
+          .object({
+            sceneId: z.string().min(1),
+            choice: z.enum(['current', 'incoming', 'manual']),
+            scene: planSceneSchema.optional(),
+          })
+          .strict(),
+      )
+      .max(48)
+      .optional(),
   })
   .strict();
 export type ScenePlanMergeInput = z.infer<typeof scenePlanMergeSchema>;
@@ -341,7 +361,7 @@ export type ScenePlanReceiptState = (typeof SCENE_PLAN_RECEIPT_STATES)[number];
 export const scenePlanReceiptSchema = z
   .object({
     requestId: z.string().min(1),
-    action: z.enum(['save-scene-plan', 'apply-courseware']),
+    action: z.enum(['save-scene-plan', 'apply-courseware', 'save-scene-plan-draft']),
     state: z.enum(SCENE_PLAN_RECEIPT_STATES),
     /** 业务结果（completed 时为计划/候选 DTO）；failed/cancelled/unknown 时为 null。 */
     result: z.unknown().nullable(),
@@ -357,3 +377,68 @@ export const scenePlanReceiptSchema = z
   })
   .strict();
 export type ScenePlanReceiptDto = z.infer<typeof scenePlanReceiptSchema>;
+
+/**
+ * 场景计划的**持久编辑草稿**（LESSON-02 / OMA-024）。
+ *
+ * 编辑器的撤销/恢复栈只在组件内存里，跨桌面端口/重启即丢失。这里把「正在编辑、尚未保存」的
+ * 工作副本落项目 SQLite，绑定 owner/project/lesson/version 与**基线**（`baseRevision`/`baseDigest`）：
+ * - 重启或换端口后仍能恢复未保存的编辑；
+ * - 基线是「用户据以编辑的那一版计划」：服务端计划已推进时，草稿被视为过期，不能静默盖到新 revision 上；
+ * - 保存成功（`save-scene-plan`）后清草稿并更新基线；显式丢弃也清草稿。
+ *
+ * 草稿是**工作副本**，不是权威计划：它不参与教学、不驱动文档、不影响审核；只有保存成功才成为计划。
+ */
+export const SCENE_PLAN_DRAFT_VERSION = 1;
+
+export const scenePlanDraftSchema = z
+  .object({
+    draftVersion: z.literal(SCENE_PLAN_DRAFT_VERSION),
+    projectId: z.string().min(1),
+    lessonId: z.string().min(1),
+    lessonVersion: z.number().int().positive(),
+    /**
+     * 草稿自身的单调版本：每次保存 +1。它与权威计划 revision 是**不同**的约束——
+     * 计划 revision 判定「草稿是否基于旧计划」，草稿 revision 判定「写入是否乱序/过期」。
+     * 多窗口或重排的旧请求带着过期 `draftRevision` 提交时被拒，不会覆盖更新的编辑。
+     */
+    draftRevision: z.number().int().nonnegative(),
+    /** 编辑器据以编辑的计划 revision；服务端已推进时该草稿过期。 */
+    baseRevision: z.number().int().nonnegative(),
+    /** 编辑器据以编辑的计划内容摘要；当时无计划时为 null。 */
+    baseDigest: z.string().min(1).nullable(),
+    scenes: z.array(planSceneSchema).min(1).max(SCENE_PLAN_WRITE_LIMIT),
+    updatedAt: z.string(),
+  })
+  .strict();
+export type ScenePlanDraftDto = z.infer<typeof scenePlanDraftSchema>;
+
+/** 保存工作草稿：整份覆盖写，带 requestId 幂等；`expectedDraftRevision` 做草稿级 CAS 拒绝乱序写入。 */
+export const scenePlanDraftSaveSchema = z
+  .object({
+    scope: projectScopeSchema,
+    action: z.literal('save-scene-plan-draft'),
+    requestId: z.string().trim().min(1).max(200),
+    lessonId: z.string().min(1),
+    version: z.number().int().positive(),
+    baseRevision: z.number().int().nonnegative(),
+    /**
+     * 客户端读到的草稿 revision；与当前不符即拒绝（旧请求乱序到达、多窗口覆盖）。
+     * 省略表示「不检查草稿级 CAS」（用于首次保存或显式覆盖），但基线仍受计划 revision 约束。
+     */
+    expectedDraftRevision: z.number().int().nonnegative().optional(),
+    scenes: z.array(planSceneSchema).min(1).max(SCENE_PLAN_WRITE_LIMIT),
+  })
+  .strict();
+export type ScenePlanDraftSaveInput = z.infer<typeof scenePlanDraftSaveSchema>;
+
+/** 丢弃工作草稿。 */
+export const scenePlanDraftDiscardSchema = z
+  .object({
+    scope: projectScopeSchema,
+    action: z.literal('discard-scene-plan-draft'),
+    lessonId: z.string().min(1),
+    version: z.number().int().positive(),
+  })
+  .strict();
+export type ScenePlanDraftDiscardInput = z.infer<typeof scenePlanDraftDiscardSchema>;

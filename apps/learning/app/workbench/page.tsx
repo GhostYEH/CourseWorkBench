@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
+import { StudyGoalEntry } from '../../components/study-goal-entry';
 import { Stat } from '../../components/ui';
 import { bootstrapFromEnvironment, getSession } from '../../lib/server/service';
-import { readWorkbenchState } from '../../lib/server/workbench-data';
+import { readWorkbenchKnowledge, readWorkbenchState } from '../../lib/server/workbench-data';
+import { studyNextStep } from '../../lib/study-next-step';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,82 +13,139 @@ export default function WorkbenchOverview(): ReactNode {
   const session = getSession() ?? bootstrapFromEnvironment();
   if (!session) redirect('/no-project');
   const state = readWorkbenchState(session);
+  const hasGoal = Boolean(state.project.subject.trim() && state.project.goal.trim());
+  const admitted = readWorkbenchKnowledge(session).admittedIds.size;
   const reviewTasks = session.store.listReviewTasks(session.projectId, session.learnerUid);
-  const dueReviewTasks = reviewTasks.filter(task => task.status === 'confirmed' && task.dueAt <= new Date().toISOString());
+  const due = reviewTasks.filter(
+    (task) => task.status === 'confirmed' && task.dueAt <= new Date().toISOString(),
+  ).length;
+  const classrooms = session.store.listClassroomDocuments(session.projectId).filter((document) => {
+    if (document.recordScope !== 'formal') return false;
+    const link = session.store.getLessonClassroomLink(document.lessonId, session.projectId);
+    return link?.status === 'published' && link.stageId === document.stageId;
+  });
+  const next = studyNextStep({
+    hasGoal,
+    materials: state.counts.materials,
+    pending: state.counts.proposalsPending,
+    admitted,
+    hasPlan: state.plan.confirmedVersion !== null,
+    hasClassroom: classrooms.length > 0,
+  });
 
   return (
-    <div className="page-wide">
-      <div className="page-head">
-        <div>
-          <h1>{state.project.displayName}</h1>
-          <p>
-            {state.project.goal || '尚未填写学习目标。目标、考试日期与每天可用时间在「科目设置」中维护。'}
-          </p>
-        </div>
-        <div className="actions">
-          <Link className="btn" href="/workbench/materials">
-            导入材料
+    <div className="study-home">
+      <section className="study-hero">
+        <p className="study-eyebrow">学科备考工作台 · 学习从这里开始</p>
+        <h1>{hasGoal ? '今天，向你的备考目标再进一步' : '你准备学习什么？'}</h1>
+        <p className="secondary">
+          用你的教材和考纲，安排备考计划，在互动课堂里学懂，再通过练习巩固。
+        </p>
+        {hasGoal ? (
+          <div className="study-goal-summary">
+            <span className="pill" data-tone="info">
+              {state.project.subject}
+            </span>
+            <p>{state.project.goal}</p>
+            <span className="muted">
+              {state.project.dailyMinutes > 0
+                ? `每天 ${state.project.dailyMinutes} 分钟`
+                : '学习时间待设置'}
+              {state.project.examDate ? ` · 考试日期 ${state.project.examDate}` : ''}
+            </span>
+            <Link href="/workbench/settings">调整目标与时间</Link>
+          </div>
+        ) : (
+          <div id="study-goal-entry">
+            <StudyGoalEntry
+              key={`${session.projectId}:${session.generation}`}
+              project={state.project}
+            />
+          </div>
+        )}
+      </section>
+
+      {hasGoal ? (
+        <section className="study-next" aria-label="当前下一步">
+          <div>
+            <p className="study-eyebrow">接下来</p>
+            <h2>{next.title}</h2>
+            <p className="secondary">{next.description}</p>
+          </div>
+          <Link className="btn btn-primary" href={next.href}>
+            {next.action} →
           </Link>
-          <Link className="btn btn-primary" href="/workbench/knowledge?tab=candidates">
-            审核候选
-          </Link>
+        </section>
+      ) : null}
+
+      <div className="study-actions">
+        <Link className="study-action-card" href="/workbench/materials">
+          <span aria-hidden="true">01</span>
+          <h2>学习材料</h2>
+          <p>导入教材、考纲和讲义，整理要学的内容。</p>
+          <strong>{state.counts.materials} 份材料 →</strong>
+        </Link>
+        <Link className="study-action-card" href="/workbench/lessons">
+          <span aria-hidden="true">02</span>
+          <h2>互动课堂</h2>
+          <p>准备课程、听讲解，跟随课堂完成互动。</p>
+          <strong>
+            {classrooms.length > 0 ? `${classrooms.length} 节已发布课程` : '准备第一节课'} →
+          </strong>
+        </Link>
+        <Link
+          className="study-action-card"
+          href={due > 0 ? '/workbench/mistakes' : '/workbench/study'}
+        >
+          <span aria-hidden="true">03</span>
+          <h2>练习与复习</h2>
+          <p>独立作答，再回到错题本查看反馈和复习。</p>
+          <strong>
+            {due > 0 ? `${due} 项到期复习` : `${state.counts.questions} 道可用题目`} →
+          </strong>
+        </Link>
+      </div>
+
+      <section className="study-course-section">
+        <div className="page-head">
+          <h2>我的课程</h2>
+          <Link href="/workbench/library">查看课程库 →</Link>
         </div>
-      </div>
-
-      <div className="card">
-        <div className="grid-2">
-          <Stat value={state.counts.materials} label="材料版本" />
-          <Stat value={state.counts.knowledgeVerified} label="已核实知识点" />
-          <Stat value={state.counts.proposalsPending} label="待审核候选（不计入覆盖）" />
-          <Stat value={state.counts.questions} label="题目" />
-          <Stat value={state.counts.attemptsReal} label="本人真实作答" />
-          <Stat value={state.counts.attemptsSimulation} label="模拟作答（隔离存储）" />
-        </div>
-      </div>
-
-      <div className="card">
-        <h2>来源与准入</h2>
-        <p className="secondary">
-          正式教学与出题只能使用已核实、当前仍有效、范围合规且前置满足的知识点。来源不足只阻断受影响的任务，
-          其他已核实的任务仍可执行。
-        </p>
-        <div className="grid-2">
-          <Stat value={state.admission.readyKnowledge} label="可进入生成" />
-          <Stat value={state.admission.blockedBySource} label="被来源或范围阻断" />
-        </div>
-        <p className="muted" style={{ marginTop: 'var(--sew-space-3)' }}>
-          自检入口：
-          <Link href="/workbench/knowledge?tab=admission">生成准入自检</Link>
-        </p>
-      </div>
-
-      <div className="card">
-        <h2>下一步</h2>
-        <p><Link href="/workbench/mistakes">到期复习：{dueReviewTasks.length} 项 · 查看原作答、错因审核与复习安排</Link></p>
-        <ol className="reading" style={{ margin: 0, paddingLeft: '1.2em' }}>
-          {state.counts.materials === 0 ? <li>导入考纲或教材节选（支持 txt / md）。</li> : null}
-          {state.counts.materials > 0 && state.counts.knowledgeVerified === 0 ? (
-            <li>从材料段落提出知识点候选，并对照原文完成审核。</li>
-          ) : null}
-          {state.counts.proposalsPending > 0 ? <li>核对 {state.counts.proposalsPending} 项待审候选的引用是否支持该陈述。</li> : null}
-          {state.plan.confirmedVersion === null ? <li>确认备考计划（需要先有可准入知识点）。</li> : null}
-          {state.counts.questions === 0 && state.counts.knowledgeVerified > 0 ? (
-            <li>基于已核实知识点建立题目，题目身份由程序裁定。</li>
-          ) : null}
-          {state.counts.knowledgeVerified > 0 ? <li>进入课堂，用已审核内容完成一节课程与独立练习。</li> : null}
-        </ol>
-      </div>
-
-      <div className="card">
-        <h2>当前阶段边界</h2>
-        <p className="secondary">
-          已实现：项目与材料版本、规范化与指纹、候选与机械检查、人工语义审核、权威知识点表、生成准入、
-          题目身份裁定、作答分区与提交去重、外观与阅读设置、本地服务握手与身份边界。
-        </p>
-        <p className="secondary">
-          待接入：OpenMAIC 课堂基线（教师、白板、二维互动）、模型连接、备考计划自动生成、错题归因、
-          评测指标计算与 Windows 安装包。
-        </p>
+        {classrooms.length > 0 ? (
+          <div className="study-actions">
+            {classrooms.slice(0, 3).map((document) => (
+              <Link
+                className="study-action-card"
+                key={document.stageId}
+                href={`/classroom/${encodeURIComponent(document.lessonId)}`}
+              >
+                <span className="pill" data-tone="verified">
+                  已发布
+                </span>
+                <h3>{document.name}</h3>
+                <p>{document.description || `${document.sceneCount} 个课堂环节`}</p>
+                <strong>进入课堂 →</strong>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="card">
+            <p>还没有已发布的课程。{next.description}</p>
+            <Link className="btn" href={next.href}>
+              {next.action}
+            </Link>
+            <Link className="btn btn-ghost" href="/classroom/lesson-demo-monotonicity-1">
+              先体验函数单调性演示课
+            </Link>
+            <p className="muted">演示课使用独立示例内容，不计入你的备考进度。</p>
+          </div>
+        )}
+      </section>
+      <div className="study-stats">
+        <Stat value={admitted} label="可学习知识点" />
+        <Stat value={state.plan.taskCount} label="计划任务" />
+        <Stat value={state.counts.attemptsReal} label="已提交练习" />
+        <Stat value={due} label="到期复习" />
       </div>
     </div>
   );

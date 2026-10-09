@@ -175,7 +175,7 @@ describe('model connection command receipts', () => {
     };
     const serverStatus: ModelConnectionStatus = {
       ...status,
-      baseUrl: noncanonicalInput.baseUrl.replace(/\/+$/, ''),
+      baseUrl: noncanonicalInput.baseUrl!.replace(/\/+$/, ''),
     };
     const bridge = modelBridge();
 

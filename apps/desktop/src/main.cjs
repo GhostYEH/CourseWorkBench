@@ -79,9 +79,10 @@ const bootstrap = async () => {
     shell,
   });
   const window = windows.create();
+  const initialRoot = process.env.SEW_PROJECT_ROOT || settings.startupProjectRoot();
 
   try {
-    await service.start(process.env.SEW_PROJECT_ROOT || '');
+    await service.start(initialRoot);
   } catch (error) {
     dialog.showErrorBox('本地服务启动失败', String(error && error.message ? error.message : error));
     app.quit();
@@ -91,23 +92,35 @@ const bootstrap = async () => {
   const ready = service.getReady();
   const savedModel = settings.readModelCredentials();
   if (savedModel) {
-    await service.request('POST', '/internal/models', { action: 'configure', ...savedModel }).catch(() => {
-      console.error('[desktop] unable to restore model configuration');
-    });
+    await service
+      .request('POST', '/internal/models', { action: 'configure', ...savedModel })
+      .catch(() => {
+        console.error('[desktop] unable to restore model configuration');
+      });
+  }
+  // Validate the space before rendering: a damaged old space must not trap the
+  // learner on an error page without access to the native recovery controls.
+  let entry = '/workbench';
+  try {
+    const opened = await service.request(
+      'POST',
+      '/internal/project',
+      { action: 'open', path: initialRoot },
+      30000,
+    );
+    projects.adopt(opened.session);
+    settings.rememberProject(opened.session);
+  } catch {
+    await projects.close();
+    entry = '/no-project?recovery=1';
   }
   // 只加载已握手的准确本地 origin。
-  await window.loadURL(`${ready.origin}/workbench`);
+  await window.loadURL(`${ready.origin}${entry}`);
   // 下发前剥掉控制凭据：渲染层只拿到会话凭据。
   const { controlToken, ...rendererState } = ready;
   window.webContents.send(channels.serviceReady, rendererState);
 
-  if (service.getService().projectRoot) {
-    const session = await service.request('GET', '/internal/project').catch(() => null);
-    if (session) {
-      projects.adopt(session);
-      window.webContents.send(channels.projectOpen, projects.current());
-    }
-  }
+  if (projects.current()) window.webContents.send(channels.projectOpen, projects.current());
 };
 
 /**

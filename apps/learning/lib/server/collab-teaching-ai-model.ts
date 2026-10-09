@@ -297,6 +297,7 @@ export const generateCollabTeachingAi = async (
     let outcome: ModelGenerateOutcome;
     try {
       outcome = await deps.connection.generate(messages, {
+        route: 'teaching',
         maxTokens: reservation.maxTokens,
         signal: controller.signal,
       });

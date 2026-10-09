@@ -82,6 +82,7 @@ export const MP4_JOB_EVENTS = [
   'capture-completed',
   'begin-encoding',
   'encoding-completed',
+  'output-reconciled',
   'fail',
   'cancel',
   'requeue',
@@ -534,9 +535,10 @@ const TRANSITIONS: Readonly<Record<Mp4JobEvent, readonly Mp4JobState[]>> = {
   'capture-completed': ['capturing'],
   'begin-encoding': ['capturing'],
   'encoding-completed': ['encoding'],
+  'output-reconciled': ['failed'],
   fail: ['queued', 'preparing', 'blocked', 'capturing', 'encoding'],
   cancel: ['queued', 'preparing', 'blocked', 'capturing', 'encoding'],
-  requeue: ['failed'],
+  requeue: ['failed', 'blocked'],
 };
 
 /** 当前状态下允许的事件（界面据此禁用按钮，而不是点了再报错）。 */
@@ -780,7 +782,13 @@ export const applyMp4JobEvent = (
       return pushEvent(job, event, 'encoding', payload.at, 'FFmpeg 编码封装中');
     }
 
+    case 'output-reconciled':
     case 'encoding-completed': {
+      if (
+        event === 'output-reconciled' &&
+        (job.failure?.class !== 'result-unknown' || job.nextSegmentIndex !== plan.segments.length)
+      )
+        throw new StudyError('INVALID_ARGUMENT', { reason: 'mp4_output_not_reconcilable' });
       const output = payload.output;
       if (
         !output ||
@@ -855,7 +863,26 @@ export const applyMp4JobEvent = (
           maxAttempts: job.maxAttempts,
         });
       }
-      if (job.failure && !mp4FailureIsResumable(job.failure.class)) {
+      const repairedRuntime =
+        job.failure &&
+        ['runtime-missing', 'runtime-mismatch'].includes(job.failure.class) &&
+        payload.runtimes &&
+        mp4BlockingRuntimes(normalizeMp4Runtimes(payload.runtimes)).length === 0 &&
+        plan.runtimes
+          .filter((runtime) => runtime.required)
+          .every((required) =>
+            payload.runtimes!.some(
+              (actual) =>
+                actual.required &&
+                actual.kind === required.kind &&
+                actual.reference === required.reference &&
+                actual.status === 'available' &&
+                actual.expectedDigest === required.expectedDigest &&
+                (required.expectedDigest === null ||
+                  actual.actualDigest === required.expectedDigest),
+            ),
+          );
+      if (job.failure && !mp4FailureIsResumable(job.failure.class) && !repairedRuntime) {
         throw new StudyError('INVALID_ARGUMENT', {
           reason: 'mp4_failure_not_resumable',
           class: job.failure.class,

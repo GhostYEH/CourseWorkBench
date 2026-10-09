@@ -1,0 +1,22 @@
+{
+  "family": "Noto Sans CJK SC",
+  "face": "Regular",
+  "version": "2.004",
+  "format": "static OpenType CFF",
+  "upstreamRepository": "https://github.com/notofonts/noto-cjk",
+  "upstreamCommit": "523d033d6cb47f4a80c58a35753646f5c3608a78",
+  "fontSource": "https://raw.githubusercontent.com/notofonts/noto-cjk/523d033d6cb47f4a80c58a35753646f5c3608a78/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf",
+  "fontPath": "NotoSansCJKsc-Regular.otf",
+  "fontByteLength": 16437364,
+  "fontSha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b",
+  "license": "SIL Open Font License 1.1",
+  "licenseSource": "https://raw.githubusercontent.com/notofonts/noto-cjk/523d033d6cb47f4a80c58a35753646f5c3608a78/LICENSE",
+  "licensePath": "OFL.txt",
+  "licenseByteLength": 4301,
+  "licenseSha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",
+  "noticePath": "NOTICE.txt",
+  "noticeByteLength": 228,
+  "noticeSha256": "75b2ec9365b7dda3f77e98a58960855808269ef032db1037955e58b704baad2e",
+  "os2FsType": 0,
+  "reservedFontName": null
+}

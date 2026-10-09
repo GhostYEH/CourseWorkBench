@@ -1275,6 +1275,289 @@ CREATE TABLE collab_teaching_ai_states (
 );
 `,
   },
+  {
+    version: 35,
+    name: 'media_generation_tasks',
+    sql: `
+CREATE TABLE media_generation_tasks (
+  project_id TEXT NOT NULL,
+  request_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  task_json TEXT NOT NULL,
+  PRIMARY KEY (project_id, request_id),
+  UNIQUE (project_id, task_id)
+);
+CREATE INDEX idx_media_tasks_run ON media_generation_tasks(project_id, run_id);
+CREATE TABLE media_candidate_assets (
+  project_id TEXT NOT NULL,
+  asset_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  sha256 TEXT NOT NULL,
+  approved INTEGER NOT NULL DEFAULT 0 CHECK (approved IN (0,1)),
+  PRIMARY KEY (project_id, asset_id),
+  FOREIGN KEY (project_id, task_id) REFERENCES media_generation_tasks(project_id, task_id)
+);
+`,
+  },
+  {
+    version: 36,
+    name: 'mp4_export_jobs',
+    sql: `
+CREATE TABLE mp4_export_jobs (
+  project_id TEXT NOT NULL,
+  request_id TEXT NOT NULL,
+  job_id TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  task_json TEXT NOT NULL,
+  PRIMARY KEY(project_id, request_id),
+  UNIQUE(project_id, job_id)
+);
+CREATE TABLE mp4_export_segments (
+  project_id TEXT NOT NULL,
+  job_id TEXT NOT NULL,
+  segment_index INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  bytes BLOB NOT NULL,
+  PRIMARY KEY(project_id, job_id, segment_index),
+  FOREIGN KEY(project_id, job_id) REFERENCES mp4_export_jobs(project_id, job_id)
+);
+`,
+  },
+  {
+    version: 37,
+    name: 'material_extraction_originals',
+    sql: `
+CREATE TABLE material_extraction_originals (
+  material_id TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  receipt_json TEXT NOT NULL,
+  source_sha256 TEXT NOT NULL,
+  source_byte_length INTEGER NOT NULL,
+  source_bytes BLOB NOT NULL,
+  PRIMARY KEY(material_id, revision),
+  FOREIGN KEY(material_id, revision) REFERENCES source_versions(material_id, revision)
+);
+`,
+  },
+  {
+    version: 38,
+    name: 'execution_lease_fencing',
+    sql: `
+CREATE TABLE execution_leases (
+  project_id TEXT NOT NULL,
+  execution_key TEXT NOT NULL,
+  owner_id TEXT NOT NULL,
+  fence INTEGER NOT NULL CHECK(fence > 0),
+  expires_at INTEGER NOT NULL,
+  released INTEGER NOT NULL DEFAULT 0 CHECK(released IN (0,1)),
+  PRIMARY KEY(project_id,execution_key)
+);
+`,
+  },
+  {
+    version: 39,
+    name: 'private_pro_sessions_and_skills',
+    sql: `
+CREATE TABLE pro_sessions (
+  project_id TEXT NOT NULL, learner_uid TEXT NOT NULL, record_id TEXT NOT NULL,
+  request_id TEXT NOT NULL, intent_digest TEXT NOT NULL, revision INTEGER NOT NULL,
+  state_json TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN (0,1)),
+  PRIMARY KEY(project_id,learner_uid,record_id), UNIQUE(project_id,learner_uid,request_id)
+);
+CREATE TABLE pro_custom_skills (
+  project_id TEXT NOT NULL, learner_uid TEXT NOT NULL, record_id TEXT NOT NULL,
+  request_id TEXT NOT NULL, intent_digest TEXT NOT NULL, revision INTEGER NOT NULL,
+  state_json TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN (0,1)),
+  PRIMARY KEY(project_id,learner_uid,record_id), UNIQUE(project_id,learner_uid,request_id)
+);
+`,
+  },
+  {
+    version: 40,
+    name: 'scene_plan_patch_candidates',
+    sql: `
+-- 受限 AI 场景计划补丁候选（LESSON-02 / OMA-023）。模型只能提出受限补丁操作，
+-- 先落待核候选；人工逐项审核后，选中的可应用操作才按 save-scene-plan 的乐观并发写入计划。
+-- 来源绑定、知识点与场景身份不在补丁合同里，因此候选也不携带这些字段。
+CREATE TABLE lesson_scene_patch_candidates (
+  candidate_id  TEXT PRIMARY KEY,
+  project_id    TEXT NOT NULL REFERENCES projects(project_id),
+  lesson_id     TEXT NOT NULL,
+  base_version  INTEGER NOT NULL,
+  base_plan_revision INTEGER NOT NULL DEFAULT 0,
+  base_plan_digest TEXT,
+  status        TEXT NOT NULL CHECK (status IN ('pending','applied','rejected')),
+  candidate_json TEXT NOT NULL,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+CREATE INDEX idx_lesson_scene_patch_candidates_scope
+  ON lesson_scene_patch_candidates(project_id, lesson_id, base_version);
+-- 生成与处置的事务内回执：同一 requestId 与意图重试读回既有结论，不重复调用或写入。
+CREATE TABLE lesson_scene_patch_receipts (
+  project_id  TEXT NOT NULL,
+  request_id  TEXT NOT NULL,
+  action      TEXT NOT NULL CHECK (action IN ('propose','apply')),
+  intent_json TEXT NOT NULL,
+  state       TEXT NOT NULL CHECK (state IN ('completed','failed','cancelled','unknown')),
+  result_json TEXT,
+  message     TEXT NOT NULL DEFAULT '',
+  error_code  TEXT,
+  error_reason TEXT,
+  created_at  TEXT NOT NULL,
+  PRIMARY KEY(project_id, request_id)
+);
+`,
+  },
+  {
+    version: 41,
+    name: 'pro_external_tokens',
+    sql: `
+-- Pro 外部任务 API 的 bearer token（OMA-017）。数据库只保存 SHA-256 哈希，
+-- secret 明文只在创建/轮换时展示一次、永不落库/日志/导出；scopes 为最小 read/create/send。
+CREATE TABLE pro_external_tokens (
+  token_id     TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL,
+  owner_uid    TEXT NOT NULL,
+  label        TEXT NOT NULL,
+  secret_hash  TEXT NOT NULL,
+  scopes_json  TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  expires_at   TEXT NOT NULL,
+  revoked_at   TEXT,
+  UNIQUE(secret_hash)
+);
+CREATE INDEX idx_pro_external_tokens_owner
+  ON pro_external_tokens(project_id, owner_uid, created_at);
+`,
+  },
+  {
+    version: 42,
+    name: 'scene_plan_edit_drafts',
+    sql: `
+-- 场景计划的持久编辑草稿（LESSON-02 / OMA-024）。这是「正在编辑、尚未保存」的工作副本：
+-- 绑定项目/课程/版本与编辑基线（base_revision/base_digest），跨端口/重启恢复；
+-- 不参与教学、不驱动文档、不影响审核，只有 save-scene-plan 成功后才成为计划。
+CREATE TABLE lesson_scene_plan_drafts (
+  project_id     TEXT NOT NULL REFERENCES projects(project_id),
+  lesson_id      TEXT NOT NULL,
+  lesson_version INTEGER NOT NULL,
+  base_revision  INTEGER NOT NULL,
+  base_digest    TEXT,
+  draft_json     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL,
+  PRIMARY KEY (project_id, lesson_id, lesson_version)
+);
+`,
+  },
+  {
+    version: 43,
+    name: 'scene_plan_receipt_draft_action',
+    sql: `
+-- 放宽计划命令回执的 action CHECK：新增 'save-scene-plan-draft'（OMA-024 持久编辑草稿）。
+-- SQLite 不能直接改 CHECK，用建新表/搬数据/改名的方式重建。
+CREATE TABLE lesson_scene_plan_receipts_next (
+  project_id  TEXT NOT NULL,
+  request_id  TEXT NOT NULL,
+  action      TEXT NOT NULL CHECK (action IN ('save-scene-plan','apply-courseware','save-scene-plan-draft')),
+  intent_json TEXT NOT NULL,
+  state       TEXT NOT NULL CHECK (state IN ('completed','failed','cancelled','unknown')),
+  result_json TEXT,
+  message     TEXT NOT NULL DEFAULT '',
+  error_code  TEXT,
+  error_reason TEXT,
+  created_at  TEXT NOT NULL,
+  PRIMARY KEY(project_id, request_id)
+);
+INSERT INTO lesson_scene_plan_receipts_next
+  (project_id, request_id, action, intent_json, state, result_json, message, error_code, error_reason, created_at)
+SELECT project_id, request_id, action, intent_json, state, result_json, message, error_code, error_reason, created_at
+  FROM lesson_scene_plan_receipts;
+DROP TABLE lesson_scene_plan_receipts;
+ALTER TABLE lesson_scene_plan_receipts_next RENAME TO lesson_scene_plan_receipts;
+`,
+  },
+  {
+    version: 44,
+    name: 'pro_external_token_receipts',
+    sql: `
+-- 外部 token 管理命令的事务内回执（OMA-017）。凭据系统里「创建/轮换」非幂等会造成重复 token
+-- 或重复轮换（旧 secret 立即失效、再换新 secret）。同 requestId 与意图重发读回既有结论：
+-- 不重复创建、不重复轮换、不重复撤销。result_json 只存公开元数据（绝不含 secret 或哈希）。
+CREATE TABLE pro_external_token_receipts (
+  project_id  TEXT NOT NULL,
+  request_id  TEXT NOT NULL,
+  action      TEXT NOT NULL CHECK (action IN ('create','rotate','revoke')),
+  intent_json TEXT NOT NULL,
+  token_id    TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  PRIMARY KEY(project_id, request_id)
+);
+`,
+  },
+  {
+    version: 45,
+    name: 'scene_plan_draft_revision',
+    sql: `
+-- 编辑草稿自身的单调版本（OMA-024）：草稿级 CAS，拒绝乱序/过期写入。
+-- 与权威计划 revision 是不同约束：计划 revision 判「草稿是否基于旧计划」，草稿 revision 判
+-- 「写入是否乱序/过期」。多窗口或重排的旧请求带着过期 draft_revision 提交时被拒，不覆盖新编辑。
+-- 历史草稿（v42 建表）没有该列，默认 0 表示「尚无已记录的草稿版本」，首次保存会推进到 1。
+ALTER TABLE lesson_scene_plan_drafts ADD COLUMN draft_revision INTEGER NOT NULL DEFAULT 0;
+`,
+  },
+  {
+    version: 46,
+    name: 'deployment_access_codes',
+    sql: `
+-- 共享部署访问码（OMA-083）。数据库只保存 SHA-256 哈希，明文仅在签发时展示一次、永不落库/日志/导出。
+-- 访问码只授予「接入部署」能力（join/guest），不代替本人凭据认证；可撤销、可设有效期。
+CREATE TABLE deployment_access_codes (
+  code_id     TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES projects(project_id),
+  label       TEXT NOT NULL,
+  secret_hash TEXT NOT NULL,
+  scopes_json TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  expires_at  TEXT NOT NULL,
+  revoked_at  TEXT,
+  used_count  INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(secret_hash)
+);
+CREATE INDEX idx_deployment_access_codes_project
+  ON deployment_access_codes(project_id, created_at);
+-- 兑换收据：同 requestId 与意图重发读回既有授权，不重复计数。
+CREATE TABLE deployment_access_receipts (
+  project_id  TEXT NOT NULL,
+  request_id  TEXT NOT NULL,
+  code_id     TEXT NOT NULL,
+  uid         TEXT NOT NULL,
+  scope       TEXT NOT NULL CHECK (scope IN ('join','guest')),
+  intent_json TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  PRIMARY KEY(project_id, request_id)
+);
+`,
+  },
+  {
+    version: 47,
+    name: 'interactive_snapshots',
+    sql: `
+-- 互动保活快照（OMA-045）。非权威现场：按 (项目, stage, 场景, 本人) 一对一保存组件临时状态。
+-- 只有组件版本一致才恢复；版本不符或无快照则明确重置。快照不影响任何本人已提交记录。
+CREATE TABLE interactive_snapshots (
+  project_id     TEXT NOT NULL REFERENCES projects(project_id),
+  stage_id       TEXT NOT NULL,
+  scene_id       TEXT NOT NULL,
+  learner_uid    TEXT NOT NULL,
+  widget_version TEXT NOT NULL,
+  data_json      TEXT NOT NULL,
+  updated_at     TEXT NOT NULL,
+  PRIMARY KEY (project_id, stage_id, scene_id, learner_uid)
+);
+`,
+  },
 ];
 
 // Registration order is part of the upgrade protocol; reject duplicate, skipped, or reordered versions.

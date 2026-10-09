@@ -246,7 +246,7 @@ const readClassroomPersistence = async () =>
 
 const closeNativeProject = async () => {
   const closeButton = await window.webContents.executeJavaScript(`(() => {
-    const button = [...document.querySelectorAll('button')].find((item) => item.textContent.includes('关闭项目'));
+    const button = [...document.querySelectorAll('button')].find((item) => item.textContent.includes('退出学习空间'));
     if (!button) return false;
     button.click();
     return true;
@@ -256,7 +256,7 @@ const closeNativeProject = async () => {
     (url) => url.endsWith('/no-project'),
     'native project-close action did not navigate to no-project',
   );
-  await waitForText('还没有打开项目', 'closed-project page did not finish rendering');
+  await waitForText('选择学习空间', 'closed-project page did not finish rendering');
 };
 
 const run = async () => {
@@ -326,7 +326,7 @@ const run = async () => {
     (url) => url.endsWith('/no-project'),
     'initial no-project redirect did not finish',
   );
-  await waitForText('还没有打开项目', 'no-project page content did not load');
+  await waitForText('选择学习空间', 'no-project page content did not load');
   markStep('no-project-rendered', { servicePid: serviceChild.pid ?? null });
   const bridgeCheck = await window.webContents.executeJavaScript(`(() => {
     window.__smokeReady = null;
@@ -361,7 +361,7 @@ const run = async () => {
   );
 
   const openButton = await window.webContents.executeJavaScript(`(() => {
-    const button = [...document.querySelectorAll('button')].find((item) => item.textContent.includes('打开项目'));
+    const button = [...document.querySelectorAll('button')].find((item) => item.textContent.includes('导入已有学习空间'));
     if (!button) return false;
     button.click();
     return true;
@@ -371,7 +371,7 @@ const run = async () => {
     (url) => url.endsWith('/workbench'),
     'native project-open action did not navigate to the workbench',
   );
-  await waitForText('关闭项目', 'opened workbench page did not finish rendering');
+  await waitForText('退出学习空间', 'opened workbench page did not finish rendering');
   const workbenchText = await window.webContents.executeJavaScript('document.body.innerText');
   assert(
     workbenchText.includes('sew-electron-boundary-'),
@@ -617,7 +617,7 @@ const run = async () => {
 
   markStep('workbench-return-after-widget-started', { servicePid: serviceChild.pid ?? null });
   await window.loadURL(`${ready.origin}/workbench`);
-  await waitForText('关闭项目', 'returning to the workbench did not finish rendering');
+  await waitForText('退出学习空间', 'returning to the workbench did not finish rendering');
 
   const executeWorkbench = async (phase, script) => {
     try {
@@ -695,10 +695,17 @@ const run = async () => {
     await new Promise((resolveWait) => setTimeout(resolveWait, 150));
   };
 
+  await executeWorkbench(
+    'show-learning-directory',
+    `(() => {
+    const button = [...document.querySelectorAll('button')].find(item => item.textContent.trim() === '学习目录');
+    if (button && button.getAttribute('aria-pressed') !== 'true') button.click();
+  })()`,
+  );
   const treeStructure = await executeWorkbench(
     'tree-structure',
     `(() => {
-    const tree = document.querySelector('ul[role="tree"][aria-label="项目树"]');
+    const tree = document.querySelector('ul[role="tree"][aria-label="学习目录"]');
     if (!tree) return { found: false };
     const items = [...tree.querySelectorAll('[role="treeitem"]')];
     return {

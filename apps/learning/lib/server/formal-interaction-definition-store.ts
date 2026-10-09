@@ -131,6 +131,22 @@ export const reviewFormalInteractionDefinitions = (
         )
           throw new StudyError('INVALID_ARGUMENT');
       }
+      if (definition.kind === 'procedural_skill') {
+        // 步骤与工具编号唯一；每步的正确工具必须存在；正确顺序必须是全部步骤的一次排列。
+        // 否则「步骤技能核验」会有一个不可达的正确答案，或引用一个不存在的工具。
+        const tools = definition.tools.map((tool) => tool.id);
+        const steps = definition.steps.map((step) => step.id);
+        const order = definition.correctOrder;
+        if (
+          new Set(tools).size !== tools.length ||
+          new Set(steps).size !== steps.length ||
+          definition.steps.some((step) => !tools.includes(step.correctToolId)) ||
+          order.length !== steps.length ||
+          new Set(order).size !== order.length ||
+          order.some((id) => !steps.includes(id))
+        )
+          throw new StudyError('INVALID_ARGUMENT');
+      }
     }
     const frozen = formalInteractionFrozenSchema.parse({
       version: 1,

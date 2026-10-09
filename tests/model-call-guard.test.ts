@@ -392,6 +392,73 @@ describe('受 guard 约束的生成入口（注入假 fetcher）', () => {
     });
   };
 
+  it('租约被接管后只结算迟到请求用量，不写草案或改变运行状态', async () => {
+    const deferred = deferredConnection();
+    const runId = store.getLatestRun()!.runId;
+    const lease = store.executions.claim({
+      projectId,
+      key: 'test:background',
+      ownerId: 'old-worker',
+      now: Date.now(),
+      ttlMs: 120_000,
+    });
+    const pending = generateGuarded(
+      {
+        store,
+        projectId,
+        connection: deferred.runtime,
+        verifyExecutionLease: () => {
+          store.executions.assert(lease);
+        },
+      },
+      input({ requestId: 'lease-late-response' }),
+    );
+    store.executions.release(lease);
+    const replacement = store.executions.claim({
+      projectId,
+      key: lease.key,
+      ownerId: 'new-worker',
+      now: Date.now(),
+      ttlMs: 120_000,
+    });
+    deferred.complete();
+    const result = await pending;
+    expect(result.ok).toBe(false);
+    expect(result.text).toBeUndefined();
+    expect(store.getRun(runId)?.state).toBe('plan_confirmed');
+    expect(runEvents().some((row) => row.payload.type === 'draft_delta')).toBe(false);
+    expect(store.modelCallUsage(runId)).toMatchObject({ calls: 1, tokens: 30 });
+    expect(store.executions.assert(replacement).ownerId).toBe('new-worker');
+    expect(store.getModelUsageCall(projectId, 'lease-late-response')?.state).toBe('failed');
+  });
+
+  it('派发前租约已失效时按实际零用量结算并释放预占', async () => {
+    const runtime = connection();
+    const result = await generateGuarded(
+      {
+        store,
+        projectId,
+        connection: runtime,
+        verifyExecutionLease: () => {
+          throw new StudyError('VERSION_CONFLICT');
+        },
+      },
+      input({ requestId: 'preflight-lease-rejected' }),
+    );
+    expect(result.ok).toBe(false);
+    expect(requests).toHaveLength(0);
+    expect(result.usage.callsUsed).toBe(0);
+    expect(store.modelCallUsage(store.getLatestRun()!.runId)).toMatchObject({
+      calls: 0,
+      tokens: 0,
+    });
+    expect(store.getModelUsageCall(projectId, 'preflight-lease-rejected')).toMatchObject({
+      state: 'failed',
+      providerTokens: 0,
+      tokenMeasurement: 'actual',
+    });
+  });
+
   it.each(['completed', 'cancelled'] as const)(
     '迟到草案不恢复已 %s 的 run，但已派发调用保留台账',
     async (state) => {

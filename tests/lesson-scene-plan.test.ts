@@ -460,6 +460,32 @@ describe('场景计划与完整课件候选（存储层）', () => {
     expect(first.document.scenes).toHaveLength(2);
   });
 
+  it('可视编辑几何写入正式 DSL，旋转生效且图层顺序进入渲染顺序', () => {
+    const base = scenes();
+    base[0]!.elements = [
+      { ...element('el_front', '前景'), rotation: 25, layerOrder: 1 },
+      { ...element('el_back', '背景'), rotation: -10, layerOrder: 0 },
+    ];
+    const plan = save({ scenes: base });
+    const bundle = store.getEvidenceBundle(projectId, bundleId)!;
+    const document = buildPlannedLessonDocument({
+      bundle: bundle.bundle,
+      bundleDigest: bundle.digest,
+      plan,
+      lessonId,
+      lessonVersion,
+      title: '图层课件',
+      frozenAt: bundle.frozenAt,
+    }).document;
+    const slide = document.scenes[0]!;
+    expect(slide.type).toBe('slide');
+    if (slide.type !== 'slide') throw new Error('可视画布测试应装配幻灯片');
+    const elements = slide.content.canvas.elements;
+    expect(elements.map((item) => item.id)).toEqual(['el_back', 'el_front']);
+    expect(elements.map((item) => ('rotate' in item ? item.rotate : null))).toEqual([-10, 25]);
+    expect(validateScene(document.scenes[0]!).valid).toBe(true);
+  });
+
   it('已保存富文本装配保留格式并通过真实 DSL 校验，编码标签仍为文本', () => {
     const edited = scenes();
     edited[0]!.elements = [element('el_rich', '<b>中文 &amp; 条件</b>：x &lt; y\n<i>比较</i>')];

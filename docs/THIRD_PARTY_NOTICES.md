@@ -18,6 +18,12 @@
 
 ## 实现和分发登记
 
+可编辑 PowerPoint 序列化实际采用 `pptxgenjs@4.0.1`（MIT，Copyright (c) 2015-2022 Brent Ely），固定版本登记在学习服务依赖及锁文件中。完整许可保留在 [pptxgenjs-MIT.txt](licenses/pptxgenjs-MIT.txt)；服务组装脚本会复制到 `third-party/pptxgenjs/LICENSE`。本项目的课程准入、正文投影与文件读回适配为独立实现。当前未执行最终构建或分发验证。
+
+文档提取与原生公式 XML 检查新增固定依赖：`pdfjs-dist@6.4.299`（Apache-2.0）、`fflate@0.8.3`（MIT）、`@xmldom/xmldom@0.8.15`（MIT）。完整许可分别保留在 [PDF.js](licenses/pdfjs-dist-Apache-2.0.txt)、[fflate](licenses/fflate-MIT.txt)、[xmldom](licenses/xmldom-MIT.txt)，组装脚本会复制到服务 `third-party/`。尚未执行组装或最终 build。解析器仅处理授权本机文件，不将用户材料作为默认分发资源。
+
+原生 MP4 集成试验使用 `output/mp4-runtime-tests/` 下独立的 FFmpeg 9.0.2 essentials 测试发行版（GPLv3）及本机 Chrome，未把这些可执行文件加入依赖、全局 PATH 或桌面分发。视频能力的最终运行时分发与许可登记仍须独立验收，测试产物不能证明编码器已随包部署。
+
 实际复用 OpenMAIC 时保留文件/包版权与许可，维护基线摘要和修改说明。根 MIT 不替代第三方依赖、字体、图片、头像、视频和音频的独立许可；renderer 的字体声明随实际引入资源保留。随包 Node、Electron、原生驱动和所有分发依赖也按实际版本登记，未采用资源不写成已复制。
 
 来源材料的教材/真题版权与代码许可分别处理；导入不代表得到公开再分发教材的许可。用户私人材料不打进默认安装资源。
@@ -27,6 +33,12 @@
 下列许可文本从本地 LICENSE 完整保留。
 
 课堂核心直接采用 OpenMAIC 1.1.1 的播放引擎、类型、动作导航、游标和时序代码；逐文件源摘要与改动范围见 `apps/learning/components/openmaic-adaptation/upstream-provenance.json`。该目录保留完整 MIT 许可，安装资源内位于服务 `third-party/openmaic/`。课堂宿主与服务存储适配为独立实现，不能列为复制了完整上游组件。
+
+新增模型协议采用固定 AI SDK／AWS SDK／Smithy 依赖，均声明 Apache-2.0。逐项版本、完整许可路径与实际字节摘要见 [provider-sdk-receipts.json](licenses/provider-sdk-receipts.json)，服务组装脚本保留这些完整许可。SDK 的请求经受控传输适配；未用真实凭据验收外部服务。
+
+PPTX 中文可编辑字体实际采用静态 `NotoSansCJKsc-Regular.otf`，来源为 notofonts/noto-cjk commit `523d033d6cb47f4a80c58a35753646f5c3608a78`。原始字体、SIL OFL 1.1 全文、NOTICE 和字节回执位于 `apps/learning/resources/fonts/noto-sans-cjk-sc/`；服务组装保留该目录，PPTX 也包含字体许可。仅提供已验证的常规字重，缺失字形／粗体／斜体按实际资源缺口报告。
+
+Pro 内置技能采用固定 OpenMAIC v1.1.1（commit `33553362be22a8a5efe56c62f2c0472694705280`）的 24 个技能目录及其参考／约束文件。复制范围、逐文件 SHA-256 和 MIT 许可保留在 `apps/learning/resources/pro-skills/`；只作为有界提示上下文使用，不执行技能脚本。服务组装保留目录；最终分发尚未核验。
 
 ## Good Learning — MIT License
 

@@ -11,12 +11,16 @@ import {
 
 export const dynamic = 'force-dynamic';
 const noStore = { 'cache-control': 'no-store' };
+const reservedKey = (key: string): boolean => /^(?:director:|generation-pipeline:)/i.test(key);
 type RouteContext = { params: Promise<{ segments: string[] }> };
 
 const response = (value: unknown): NextResponse => NextResponse.json(value, { headers: noStore });
 const noContent = (): NextResponse => new NextResponse(null, { status: 204, headers: noStore });
 
-const parseValue = async (request: Request, scope: { projectId: string; generation: number }): Promise<unknown> => {
+const parseValue = async (
+  request: Request,
+  scope: { projectId: string; generation: number },
+): Promise<unknown> => {
   const raw = await readBoundedRuntimeJson(request, scope);
   const parsed = z.object({ value: z.unknown() }).strict().safeParse(raw);
   if (!parsed.success || !parsed.data || !Object.hasOwn(raw as object, 'value')) {
@@ -33,13 +37,20 @@ const dispatch = async (request: Request, context: RouteContext): Promise<NextRe
   const method = request.method.toUpperCase();
   if (segments.length === 1 && segments[0] === 'keys' && method === 'GET') {
     const url = new URL(request.url);
-    if ([...url.searchParams.keys()].some((key) => key !== 'prefix')) error(400, 'VALIDATION_FAILED', 'Unsupported KV keys query parameter');
-    return response(kv.keys(current.projectId, 'sew:classroom:owner:v1', url.searchParams.get('prefix') ?? ''));
+    if ([...url.searchParams.keys()].some((key) => key !== 'prefix'))
+      error(400, 'VALIDATION_FAILED', 'Unsupported KV keys query parameter');
+    return response(
+      kv
+        .keys(current.projectId, 'sew:classroom:owner:v1', url.searchParams.get('prefix') ?? '')
+        .filter((key) => !reservedKey(key)),
+    );
   }
   if (segments[0] !== 'entries' || segments.length !== 2) {
     throw new RuntimeHttpError(404, 'NOT_FOUND', 'Unknown KV operation');
   }
   const key = segments[1] ?? '';
+  if (reservedKey(key))
+    throw new RuntimeHttpError(403, 'RESERVED_KV_KEY', '任务状态只能通过受控调度接口访问');
   if (method === 'GET') {
     const value = kv.get(current.projectId, 'sew:classroom:owner:v1', key);
     if (value === null && !kv.keys(current.projectId, 'sew:classroom:owner:v1').includes(key)) {
@@ -62,11 +73,23 @@ const dispatch = async (request: Request, context: RouteContext): Promise<NextRe
 };
 
 export const GET = async (request: Request, context: RouteContext): Promise<NextResponse> => {
-  try { return await dispatch(request, context); } catch (caught) { return runtimeRouteError(caught) as NextResponse; }
+  try {
+    return await dispatch(request, context);
+  } catch (caught) {
+    return runtimeRouteError(caught) as NextResponse;
+  }
 };
 export const PUT = async (request: Request, context: RouteContext): Promise<NextResponse> => {
-  try { return await dispatch(request, context); } catch (caught) { return runtimeRouteError(caught) as NextResponse; }
+  try {
+    return await dispatch(request, context);
+  } catch (caught) {
+    return runtimeRouteError(caught) as NextResponse;
+  }
 };
 export const DELETE = async (request: Request, context: RouteContext): Promise<NextResponse> => {
-  try { return await dispatch(request, context); } catch (caught) { return runtimeRouteError(caught) as NextResponse; }
+  try {
+    return await dispatch(request, context);
+  } catch (caught) {
+    return runtimeRouteError(caught) as NextResponse;
+  }
 };

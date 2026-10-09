@@ -50,6 +50,24 @@ const makeDeflateZip = (entries: Array<{ path: string; content: string }>): Uint
 };
 
 describe('dependency-free zip archive', () => {
+  it('permits verified empty Office directory entries only under the explicit reader option', () => {
+    const zip = makeDeflateZip([
+      { path: 'ppt/', content: '' },
+      { path: 'ppt/presentation.xml', content: '<presentation/>' },
+    ]);
+    expect(() => readZip(zip)).toThrow('directory_entries_unsupported');
+    expect(readZip(zip, { allowEmptyDirectories: true }).map((part) => part.path)).toEqual([
+      'ppt/presentation.xml',
+    ]);
+    expect(() =>
+      readZip(makeDeflateZip([{ path: 'ppt/', content: 'hidden' }]), {
+        allowEmptyDirectories: true,
+      }),
+    ).toThrow('nonempty_directory_entry');
+    expect(() =>
+      readZip(makeDeflateZip([{ path: '../ppt/', content: '' }]), { allowEmptyDirectories: true }),
+    ).toThrow('invalid_path');
+  });
   it('round-trips stored entries and produces deterministic bytes', () => {
     const entries = [
       { path: 'manifest.json', bytes: text('{"a":1}') },

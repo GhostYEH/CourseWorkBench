@@ -80,6 +80,8 @@ const JSON_PARSE_ALLOWLIST = new Set([
   'apps/learning/lib/server/lesson-revision-model.ts',
   // 同一模式：完整课件候选的模型正文只在这里解码，随后立刻用严格 schema 校验。
   'apps/learning/lib/server/lesson-courseware-model.ts',
+  // 同一模式：受限场景计划补丁的模型正文只在这里解码，随后立刻用严格 schema 校验。
+  'apps/learning/lib/server/scene-plan-patch-model.ts',
   // PBL provider JSON is strictly validated before grounding and private persistence.
   'apps/learning/lib/server/pbl-model.ts',
   // Explicit author input is immediately parsed with the strict project definition schema.

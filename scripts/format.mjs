@@ -17,7 +17,7 @@ for (const filename of scope) {
     typeof filename !== 'string' ||
     path.isAbsolute(filename) ||
     filename.startsWith('-') ||
-    /[?*{}[\]\\]/.test(filename) ||
+    /[?*{}\\]/.test(filename) ||
     filename.split('/').includes('..') ||
     !(await stat(path.join(root, filename))).isFile()
   ) {

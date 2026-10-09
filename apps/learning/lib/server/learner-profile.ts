@@ -12,9 +12,51 @@ export const LEARNER_PROFILE_FILE_NAME = 'learner-profile.json';
 const isFileError = (error: unknown, code: string): boolean =>
   !!error && typeof error === 'object' && 'code' in error && error.code === code;
 
-const identityFailure = (reason: string): StudyError => new StudyError(
-  'INTERNAL', { reason }, '本地学习者身份读取或保存失败，已有身份未被重新生成，请检查用户数据目录',
+const identityFailure = (
+  reason: string,
+  details: Record<string, unknown> = {},
+): StudyError => new StudyError(
+  'INTERNAL',
+  { reason, ...details },
+  '本地学习者身份读取或保存失败，已有身份未被重新生成，请检查用户数据目录',
 );
+
+/**
+ * Windows 上对**已存在**文件做原子替换（rename）时，若目标文件恰好被杀毒/索引器/其他句柄短暂占用，
+ * 会返回 EPERM/EBUSY/EACCES。这类错误通常是瞬态的：有限次重试即可成功，且**不破坏原子性**
+ * （仍是同一目录内的 rename，不删原文件再写新文件）。非瞬态错误立即抛出。
+ */
+const TRANSIENT_REPLACE_CODES = new Set(['EPERM', 'EBUSY', 'EACCES', 'EAGAIN']);
+const REPLACE_ATTEMPTS = 4;
+
+/** 同步睡眠：重试之间给占用者一个释放窗口；不引入异步，保持 update 的原子临界区语义。 */
+const sleepSync = (ms: number): void => {
+  const shared = new Int32Array(new SharedArrayBuffer(4));
+  Atomics.wait(shared, 0, 0, ms);
+};
+
+/** 原子替换：瞬态占用重试；最终失败时抛出携带底层错误码与阶段的身份错误，便于现场诊断。 */
+const replaceAtomically = (temporary: string, file: string): void => {
+  let lastCode = 'unknown';
+  for (let attempt = 0; attempt < REPLACE_ATTEMPTS; attempt += 1) {
+    try {
+      fs.renameSync(temporary, file);
+      return;
+    } catch (error) {
+      lastCode =
+        error && typeof error === 'object' && 'code' in error
+          ? String((error as { code: unknown }).code)
+          : 'unknown';
+      if (!TRANSIENT_REPLACE_CODES.has(lastCode) || attempt === REPLACE_ATTEMPTS - 1) break;
+      sleepSync(15 * (attempt + 1));
+    }
+  }
+  throw identityFailure('identity_replace_failed', {
+    stage: 'rename',
+    code: lastCode,
+    attempts: REPLACE_ATTEMPTS,
+  });
+};
 
 /** The root is supplied by the trusted service, never by an HTTP body or project directory. */
 export const createLearnerProfileStore = (root: string) => {
@@ -110,7 +152,7 @@ export const createLearnerProfileStore = (root: string) => {
         ...current, displayName: parsed.data.displayName, revision: current.revision + 1,
       });
       temporary = writeTemporary(next);
-      try { fs.renameSync(temporary, file); } catch { throw identityFailure('identity_replace_failed'); }
+      try { replaceAtomically(temporary, file); } catch { throw identityFailure('identity_replace_failed'); }
       temporary = undefined;
       return next;
     } finally {
